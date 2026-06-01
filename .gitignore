@@ -1,0 +1,15 @@
+node_modules
+dist
+dist-ssr
+.env
+.env.*
+!.env.example
+.env.local
+.DS_Store
+*.log
+*.lnk
+*.exe
+*.msi
+*.pdb
+src-tauri/target
+src-tauri/gen

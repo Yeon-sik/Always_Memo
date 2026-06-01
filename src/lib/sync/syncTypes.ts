@@ -1,0 +1,47 @@
+import type { Device, LocalDataSnapshot } from "../../types";
+
+// 헤더와 설정 패널에서 공유하는 동기화 상태 모델이다.
+export type SyncMode = "offline" | "syncing" | "synced" | "error" | "local-only";
+
+export interface SyncStatus {
+  mode: SyncMode;
+  label: string;
+  detail: string;
+  isOnline: boolean;
+  lastSyncedAt: string | null;
+  isConfigured: boolean;
+}
+
+export interface SyncResult {
+  status: SyncStatus;
+  changedRows: number;
+  snapshot?: LocalDataSnapshot;
+}
+
+export interface SyncContext {
+  device: Device;
+  userId: string;
+}
+
+// Realtime/heartbeat 구현체가 정리 함수를 동일한 모양으로 반환하게 한다.
+export interface RealtimeSubscription {
+  unsubscribe(): Promise<void> | void;
+}
+
+export interface RealtimeOptions {
+  context: SyncContext;
+  getSnapshot: () => LocalDataSnapshot;
+  onSnapshot: (snapshot: LocalDataSnapshot, status: SyncStatus) => void;
+  onError: (message: string) => void;
+}
+
+// 로컬 전용 모드와 Supabase 모드를 같은 앱 훅에서 사용할 수 있게 하는 계약이다.
+export interface SyncClient {
+  getStatus(): SyncStatus;
+  isConfigured(): boolean;
+  pull(localSnapshot: LocalDataSnapshot, context: SyncContext): Promise<LocalDataSnapshot>;
+  push(localSnapshot: LocalDataSnapshot, context: SyncContext): Promise<SyncResult>;
+  subscribeRealtime(options: RealtimeOptions): RealtimeSubscription;
+  startHeartbeat(context: SyncContext): RealtimeSubscription;
+  getActiveDevices(context: SyncContext, fallbackDevices: Device[]): Promise<Device[]>;
+}
