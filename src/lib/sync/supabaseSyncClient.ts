@@ -88,6 +88,11 @@ interface Database {
 
 type SupabaseClient = SupabaseClientBase<Database, "public">;
 
+interface SupabaseSyncClientOptions {
+  supabaseUrl?: string;
+  supabaseAnonKey?: string;
+}
+
 // 브라우저/웹뷰의 네트워크 상태를 동기화 가능 여부의 1차 신호로 쓴다.
 function getOnlineState(): boolean {
   if (typeof navigator === "undefined") {
@@ -325,20 +330,26 @@ export class SupabaseSyncClient implements SyncClient {
   private readonly supabase: SupabaseClient | null;
   private status: SyncStatus;
 
-  constructor(
-    supabaseUrl = import.meta.env.VITE_SUPABASE_URL,
-    supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY,
-  ) {
-    const hasConfig = Boolean(supabaseUrl?.trim() && supabaseAnonKey?.trim());
-    this.supabase = hasConfig
-      ? createClient<Database, "public">(supabaseUrl.trim(), supabaseAnonKey.trim(), {
+  constructor({ supabaseUrl, supabaseAnonKey }: SupabaseSyncClientOptions = {}) {
+    const normalizedSupabaseUrl = supabaseUrl?.trim() ?? "";
+    const normalizedSupabaseAnonKey = supabaseAnonKey?.trim() ?? "";
+
+    if (normalizedSupabaseUrl && normalizedSupabaseAnonKey) {
+      this.supabase = createClient<Database, "public">(
+        normalizedSupabaseUrl,
+        normalizedSupabaseAnonKey,
+        {
           auth: {
             persistSession: false,
             autoRefreshToken: false,
           },
-        })
-      : null;
-    this.status = hasConfig
+        },
+      ) as SupabaseClient;
+    } else {
+      this.supabase = null;
+    }
+
+    this.status = this.supabase
       ? toConfiguredStatus("offline", "아직 동기화하지 않았습니다.", null)
       : toLocalOnlyStatus();
   }
@@ -698,6 +709,8 @@ export class SupabaseSyncClient implements SyncClient {
   }
 }
 
-export function createSupabaseSyncClient(): SupabaseSyncClient {
-  return new SupabaseSyncClient();
+export function createSupabaseSyncClient(
+  options: SupabaseSyncClientOptions = {},
+): SupabaseSyncClient {
+  return new SupabaseSyncClient(options);
 }

@@ -14,6 +14,11 @@ import {
   getConfiguredUserId,
 } from "../lib/sync/syncClientFactory";
 import type { SyncClient, SyncContext, SyncStatus } from "../lib/sync/syncTypes";
+import {
+  emptyRuntimeConfig,
+  loadRuntimeConfig,
+  type RuntimeConfig,
+} from "../lib/config/runtimeConfig";
 import type { SaveState } from "../components/HeaderBar";
 import {
   getAutostartEnabled,
@@ -75,9 +80,6 @@ interface UseLocalSyncMemoActions {
   updateTaskText: (taskId: string, text: string) => void;
 }
 
-const defaultSyncClient = createAppSyncClient();
-const defaultUserId = getConfiguredUserId();
-
 // 최초 렌더링에서 동기화 상태를 표시하기 위한 기본값이다.
 const initialSyncStatus: SyncStatus = {
   mode: "local-only",
@@ -100,9 +102,12 @@ function toSnapshot(
 // Realtime 구독, 활성 기기, 자동 실행 설정을 한곳에서 조율한다.
 export function useLocalSyncMemo(
   storage: StorageAdapter = localStorageAdapter,
-  syncClient: SyncClient = defaultSyncClient,
-  userId: string = defaultUserId,
+  injectedSyncClient?: SyncClient,
+  injectedUserId?: string,
 ): UseLocalSyncMemoState & UseLocalSyncMemoActions {
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(
+    null,
+  );
   const [device, setDevice] = useState<Device | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [activeDevices, setActiveDevices] = useState<Device[]>([]);
@@ -118,6 +123,17 @@ export function useLocalSyncMemo(
   const [autostartSupported, setAutostartSupported] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
   const snapshotRef = useRef<LocalDataSnapshot>(toSnapshot([], [], []));
+  const activeRuntimeConfig = runtimeConfig ?? emptyRuntimeConfig;
+  const isRuntimeConfigReady =
+    runtimeConfig !== null || Boolean(injectedSyncClient) || Boolean(injectedUserId);
+  const syncClient = useMemo(
+    () => injectedSyncClient ?? createAppSyncClient(activeRuntimeConfig),
+    [activeRuntimeConfig, injectedSyncClient],
+  );
+  const userId = useMemo(
+    () => injectedUserId ?? getConfiguredUserId(activeRuntimeConfig),
+    [activeRuntimeConfig, injectedUserId],
+  );
 
   const visibleNotes = useMemo(() => getVisibleNotes(notes), [notes]);
   const visibleTasks = useMemo(() => getVisibleTasks(tasks), [tasks]);
@@ -133,8 +149,35 @@ export function useLocalSyncMemo(
     snapshotRef.current = toSnapshot(notes, tasks, devices);
   }, [devices, notes, tasks]);
 
+  // 빌드 번들에 Supabase 값을 넣지 않기 위해 Tauri 실행 시점의 .env 파일을 먼저 읽는다.
+  useEffect(() => {
+    if (injectedSyncClient || injectedUserId) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function hydrateRuntimeConfig() {
+      const config = await loadRuntimeConfig();
+
+      if (isMounted) {
+        setRuntimeConfig(config);
+      }
+    }
+
+    void hydrateRuntimeConfig();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [injectedSyncClient, injectedUserId]);
+
   // 시작 시 로컬 데이터를 즉시 읽고, 가능하면 Supabase pull 결과와 병합한다.
   useEffect(() => {
+    if (!isRuntimeConfigReady) {
+      return;
+    }
+
     let isMounted = true;
 
     async function hydrate() {
@@ -198,7 +241,7 @@ export function useLocalSyncMemo(
     return () => {
       isMounted = false;
     };
-  }, [storage, syncClient, userId]);
+  }, [isRuntimeConfigReady, storage, syncClient, userId]);
 
   // Tauri 데스크톱 런타임에서만 부팅 시 자동 실행 상태를 확인한다.
   useEffect(() => {

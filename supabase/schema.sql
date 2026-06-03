@@ -1,5 +1,5 @@
 -- LocalSyncMemo development schema
--- 개발 초기에는 VITE_USER_ID 단일 사용자 식별자를 사용한다.
+-- 개발 초기에는 USER_ID 단일 사용자 식별자를 사용한다.
 -- 운영 배포 전에는 Supabase Auth 기반 RLS 정책으로 교체해야 한다.
 
 create table if not exists public.devices (
