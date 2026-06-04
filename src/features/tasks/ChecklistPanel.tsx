@@ -1,4 +1,5 @@
 import {
+  type FocusEvent as ReactFocusEvent,
   FormEvent,
   type PointerEvent as ReactPointerEvent,
   useEffect,
@@ -7,6 +8,7 @@ import {
 } from "react";
 import {
   CalendarDays,
+  Check,
   CheckSquare,
   Clock3,
   GripVertical,
@@ -19,7 +21,11 @@ type DropPlacement = "before" | "after";
 
 interface ChecklistPanelProps {
   tasks: Task[];
-  onAdd: (text: string) => void;
+  onAdd: (
+    text: string,
+    dueDate: string | null,
+    dueTime: string | null,
+  ) => void;
   onDelete: (taskId: string) => void;
   onReorder: (
     draggedTaskId: string,
@@ -45,6 +51,8 @@ export function ChecklistPanel({
   onUpdateText,
 }: ChecklistPanelProps) {
   const [draft, setDraft] = useState("");
+  const [draftDueDate, setDraftDueDate] = useState("");
+  const [draftDueTime, setDraftDueTime] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
@@ -54,6 +62,9 @@ export function ChecklistPanel({
   const dragOverTaskIdRef = useRef<string | null>(null);
   const dragOverPlacementRef = useRef<DropPlacement>("before");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const isDraftFormVisible =
+    isAdding || Boolean(draft) || Boolean(draftDueDate) || Boolean(draftDueTime);
+  const canSubmitDraft = draft.trim().length > 0;
 
   useEffect(() => {
     if (isAdding) {
@@ -111,20 +122,55 @@ export function ChecklistPanel({
 
   function submitDraft() {
     const nextText = draft.trim();
+    const nextDueDate = draftDueDate || null;
+    const nextDueTime = nextDueDate ? draftDueTime || null : null;
 
     if (!nextText) {
       setIsAdding(true);
       return;
     }
 
-    onAdd(nextText);
+    onAdd(nextText, nextDueDate, nextDueTime);
     setDraft("");
+    setDraftDueDate("");
+    setDraftDueTime("");
     setIsAdding(false);
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+  }
+
+  function handleHeaderAction() {
+    if (!isDraftFormVisible) {
+      setIsAdding(true);
+      return;
+    }
+
     submitDraft();
+  }
+
+  function handleDraftFormBlur(event: ReactFocusEvent<HTMLFormElement>) {
+    const nextFocusedElement = event.relatedTarget;
+
+    if (
+      nextFocusedElement instanceof Node &&
+      event.currentTarget.contains(nextFocusedElement)
+    ) {
+      return;
+    }
+
+    if (!draft.trim() && !draftDueDate && !draftDueTime) {
+      setIsAdding(false);
+    }
+  }
+
+  function handleDraftDueDateChange(value: string) {
+    setDraftDueDate(value);
+
+    if (!value) {
+      setDraftDueTime("");
+    }
   }
 
   function updateDropTarget(clientX: number, clientY: number) {
@@ -206,19 +252,25 @@ export function ChecklistPanel({
         </div>
         <button
           type="button"
-          onClick={submitDraft}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-700 text-white transition hover:bg-indigo-800"
-          title="할 일 추가"
-          aria-label="할 일 추가"
+          onClick={handleHeaderAction}
+          disabled={isDraftFormVisible && !canSubmitDraft}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-indigo-700 text-white transition hover:bg-indigo-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-500"
+          title={isDraftFormVisible ? "할 일 생성" : "할 일 입력 열기"}
+          aria-label={isDraftFormVisible ? "할 일 생성" : "할 일 입력 열기"}
         >
-          <Plus className="h-4 w-4" aria-hidden="true" />
+          {isDraftFormVisible ? (
+            <Check className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Plus className="h-4 w-4" aria-hidden="true" />
+          )}
         </button>
       </div>
 
       <form
         onSubmit={handleSubmit}
+        onBlur={handleDraftFormBlur}
         className={
-          isAdding || draft
+          isDraftFormVisible
             ? "shrink-0 border-b border-slate-200 bg-slate-50 p-2 dark:border-neutral-800 dark:bg-neutral-950"
             : "sr-only"
         }
@@ -230,15 +282,48 @@ export function ChecklistPanel({
           ref={inputRef}
           id="task-draft"
           value={draft}
-          onBlur={() => {
-            if (!draft.trim()) {
-              setIsAdding(false);
-            }
-          }}
           onChange={(event) => setDraft(event.target.value)}
           className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:placeholder:text-neutral-500"
           placeholder="할 일을 입력"
         />
+        <div className="mt-2 grid grid-cols-1 gap-1.5">
+          <label className="flex min-w-0 items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-500 dark:border-neutral-800 dark:bg-black dark:text-neutral-400">
+            <CalendarDays
+              className="h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span className="sr-only">날짜</span>
+            <input
+              type="date"
+              value={draftDueDate}
+              onInput={(event) =>
+                handleDraftDueDateChange(event.currentTarget.value)
+              }
+              onChange={(event) =>
+                handleDraftDueDateChange(event.target.value)
+              }
+              className="h-8 min-w-0 flex-1 border-0 bg-transparent text-[11px] text-slate-700 focus:outline-none dark:text-neutral-200"
+              aria-label="추가할 할 일 날짜"
+            />
+          </label>
+
+          <label className="flex min-w-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-500 dark:border-neutral-800 dark:bg-black dark:text-neutral-400">
+            <Clock3
+              className="h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span className="sr-only">시간</span>
+            <input
+              type="time"
+              value={draftDueTime}
+              disabled={!draftDueDate}
+              onInput={(event) => setDraftDueTime(event.currentTarget.value)}
+              onChange={(event) => setDraftDueTime(event.target.value)}
+              className="h-8 min-w-0 flex-1 border-0 bg-transparent text-[11px] text-slate-700 focus:outline-none disabled:cursor-not-allowed disabled:text-slate-400 dark:text-neutral-200 dark:disabled:text-neutral-600"
+              aria-label="추가할 할 일 시간"
+            />
+          </label>
+        </div>
       </form>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-2">

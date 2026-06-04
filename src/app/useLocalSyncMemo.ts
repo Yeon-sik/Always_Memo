@@ -61,7 +61,11 @@ interface UseLocalSyncMemoState {
 
 interface UseLocalSyncMemoActions {
   addNote: () => void;
-  addTask: (text: string) => void;
+  addTask: (
+    text: string,
+    dueDate?: string | null,
+    dueTime?: string | null,
+  ) => void;
   deleteNote: (noteId: string) => void;
   deleteTask: (taskId: string) => void;
   manualSync: () => Promise<void>;
@@ -575,7 +579,11 @@ export function useLocalSyncMemo(
 
   // 체크리스트 항목은 현재 보이는 항목의 가장 큰 orderIndex 뒤에 추가한다.
   const addTask = useCallback(
-    (text: string) => {
+    (
+      text: string,
+      dueDate: string | null = null,
+      dueTime: string | null = null,
+    ) => {
       if (!device) {
         return;
       }
@@ -584,6 +592,8 @@ export function useLocalSyncMemo(
         text,
         getNextOrderIndex(tasks),
         device.id,
+        dueDate,
+        dueTime,
       );
 
       setTasks((currentTasks) => [...currentTasks, task]);

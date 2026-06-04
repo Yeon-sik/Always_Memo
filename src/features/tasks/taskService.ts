@@ -30,6 +30,8 @@ export function createTask(
   text: string,
   orderIndex: number,
   deviceId: string,
+  dueDate: string | null = null,
+  dueTime: string | null = null,
 ): Task {
   const now = new Date().toISOString();
 
@@ -38,8 +40,8 @@ export function createTask(
     text,
     isDone: false,
     orderIndex,
-    dueDate: null,
-    dueTime: null,
+    dueDate,
+    dueTime: dueDate ? dueTime : null,
     updatedAt: now,
     deletedAt: null,
     deviceId,
