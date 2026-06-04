@@ -17,6 +17,8 @@ import type { SyncClient, SyncContext, SyncStatus } from "../lib/sync/syncTypes"
 import {
   emptyRuntimeConfig,
   loadRuntimeConfig,
+  saveSupabaseConfig as persistSupabaseConfig,
+  type SupabaseConfigInput,
   type RuntimeConfig,
 } from "../lib/config/runtimeConfig";
 import type { SaveState } from "../components/HeaderBar";
@@ -52,6 +54,7 @@ interface UseLocalSyncMemoState {
   selectedNote: Note | null;
   selectedNoteId: string | null;
   syncStatus: SyncStatus;
+  supabaseConfig: RuntimeConfig;
   tasks: Task[];
   userId: string;
 }
@@ -68,6 +71,7 @@ interface UseLocalSyncMemoActions {
     placement: "before" | "after",
   ) => void;
   selectNote: (noteId: string) => void;
+  saveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
   setAutostartEnabled: (enabled: boolean) => Promise<void>;
   toggleTask: (taskId: string) => void;
   updateSelectedNoteContent: (content: string) => void;
@@ -461,6 +465,31 @@ export function useLocalSyncMemo(
     }
   }, [device, storage, syncClient, userId]);
 
+  // 저장된 Supabase 설정은 빌드/env fallback보다 우선 적용한다.
+  const saveSupabaseConfig = useCallback(
+    async (config: SupabaseConfigInput) => {
+      try {
+        const nextRuntimeConfig = persistSupabaseConfig(config);
+        const nextSyncClient = createAppSyncClient(nextRuntimeConfig);
+
+        setRuntimeConfig(nextRuntimeConfig);
+        setSyncStatus(nextSyncClient.getStatus());
+        setIsReady(false);
+        setSaveState("saving");
+        setError(null);
+      } catch (caughtError) {
+        const message =
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Supabase 설정을 저장하지 못했습니다.";
+
+        setError(message);
+        throw caughtError;
+      }
+    },
+    [],
+  );
+
   // 설정 패널의 자동 실행 토글을 Tauri autostart 플러그인에 위임한다.
   const setAutostartEnabled = useCallback(async (enabled: boolean) => {
     const result = await setDesktopAutostartEnabled(enabled);
@@ -708,11 +737,13 @@ export function useLocalSyncMemo(
     notes: visibleNotes,
     reorderTasks,
     saveState,
+    saveSupabaseConfig,
     selectNote,
     selectedNote,
     selectedNoteId,
     setAutostartEnabled,
     syncStatus,
+    supabaseConfig: activeRuntimeConfig,
     tasks: visibleTasks,
     toggleTask,
     updateSelectedNoteContent,

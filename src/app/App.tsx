@@ -35,11 +35,13 @@ export function App() {
               currentDeviceId={memo.device?.id ?? null}
               isManualSyncing={memo.isManualSyncing}
               isSupabaseConfigured={memo.isSupabaseConfigured}
+              supabaseConfig={memo.supabaseConfig}
               syncStatus={memo.syncStatus}
               themeMode={themeMode}
               userId={memo.userId}
               onChangeThemeMode={setThemeMode}
               onManualSync={memo.manualSync}
+              onSaveSupabaseConfig={memo.saveSupabaseConfig}
               onToggleAutostart={memo.setAutostartEnabled}
             />
           ) : (

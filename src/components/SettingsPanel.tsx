@@ -1,16 +1,26 @@
+import { useEffect, useState, type FormEvent } from "react";
 import {
+  CheckCircle2,
+  KeyRound,
   Laptop,
+  Link as LinkIcon,
   Monitor,
   Moon,
   Power,
   RefreshCw,
+  Save,
   Server,
   Settings,
   Sun,
+  User,
   type LucideIcon,
 } from "lucide-react";
 import type { Device } from "../types";
 import type { SyncStatus } from "../lib/sync/syncTypes";
+import type {
+  RuntimeConfig,
+  SupabaseConfigInput,
+} from "../lib/config/runtimeConfig";
 import type { ThemeMode } from "../app/useThemeMode";
 
 interface SettingsPanelProps {
@@ -20,11 +30,13 @@ interface SettingsPanelProps {
   currentDeviceId: string | null;
   isManualSyncing: boolean;
   isSupabaseConfigured: boolean;
+  supabaseConfig: RuntimeConfig;
   syncStatus: SyncStatus;
   themeMode: ThemeMode;
   userId: string;
   onChangeThemeMode: (themeMode: ThemeMode) => void;
   onManualSync: () => Promise<void>;
+  onSaveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
   onToggleAutostart: (enabled: boolean) => Promise<void>;
 }
 
@@ -54,13 +66,57 @@ export function SettingsPanel({
   currentDeviceId,
   isManualSyncing,
   isSupabaseConfigured,
+  supabaseConfig,
   syncStatus,
   themeMode,
   userId,
   onChangeThemeMode,
   onManualSync,
+  onSaveSupabaseConfig,
   onToggleAutostart,
 }: SettingsPanelProps) {
+  const [supabaseUrl, setSupabaseUrl] = useState(supabaseConfig.supabaseUrl);
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(
+    supabaseConfig.supabaseAnonKey,
+  );
+  const [configuredUserId, setConfiguredUserId] = useState(
+    supabaseConfig.userId,
+  );
+  const [supabaseSaveStatus, setSupabaseSaveStatus] = useState<
+    "idle" | "saving" | "saved" | "error"
+  >("idle");
+  const configSourceLabel = supabaseConfig.loaded
+    ? supabaseConfig.sourcePath ?? "runtime"
+    : "not set";
+
+  useEffect(() => {
+    setSupabaseUrl(supabaseConfig.supabaseUrl);
+    setSupabaseAnonKey(supabaseConfig.supabaseAnonKey);
+    setConfiguredUserId(supabaseConfig.userId);
+  }, [
+    supabaseConfig.supabaseAnonKey,
+    supabaseConfig.supabaseUrl,
+    supabaseConfig.userId,
+  ]);
+
+  async function handleSupabaseConfigSubmit(
+    event: FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    setSupabaseSaveStatus("saving");
+
+    try {
+      await onSaveSupabaseConfig({
+        supabaseUrl,
+        supabaseAnonKey,
+        userId: configuredUserId,
+      });
+      setSupabaseSaveStatus("saved");
+    } catch {
+      setSupabaseSaveStatus("error");
+    }
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-slate-300 bg-white dark:border-neutral-800 dark:bg-black">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-slate-200 px-3 text-sm font-semibold text-slate-900 dark:border-neutral-800 dark:text-neutral-100">
@@ -138,6 +194,98 @@ export function SettingsPanel({
             />
             <span>{isManualSyncing ? "동기화 중" : "수동 동기화"}</span>
           </button>
+        </section>
+
+        <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
+          <form onSubmit={handleSupabaseConfigSubmit} className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                <KeyRound className="h-4 w-4 text-cyan-700 dark:text-cyan-300" aria-hidden="true" />
+                <span>Supabase config</span>
+              </div>
+              <span className="max-w-36 truncate text-xs font-medium text-slate-500 dark:text-neutral-400">
+                {configSourceLabel}
+              </span>
+            </div>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
+                <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                Supabase URL
+              </span>
+              <input
+                type="url"
+                value={supabaseUrl}
+                onChange={(event) => {
+                  setSupabaseUrl(event.target.value);
+                  setSupabaseSaveStatus("idle");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
+                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                Anon key
+              </span>
+              <input
+                type="password"
+                value={supabaseAnonKey}
+                onChange={(event) => {
+                  setSupabaseAnonKey(event.target.value);
+                  setSupabaseSaveStatus("idle");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
+                <User className="h-3.5 w-3.5" aria-hidden="true" />
+                User ID
+              </span>
+              <input
+                type="text"
+                value={configuredUserId}
+                onChange={(event) => {
+                  setConfiguredUserId(event.target.value);
+                  setSupabaseSaveStatus("idle");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
+              />
+            </label>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={supabaseSaveStatus === "saving"}
+                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-cyan-500 dark:text-black dark:hover:bg-cyan-400 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                <span>
+                  {supabaseSaveStatus === "saving" ? "Saving" : "Save config"}
+                </span>
+              </button>
+              {supabaseSaveStatus === "saved" ? (
+                <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200 px-2 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  saved
+                </span>
+              ) : null}
+              {supabaseSaveStatus === "error" ? (
+                <span className="inline-flex h-9 items-center rounded-md border border-red-200 px-2 text-xs font-medium text-red-700 dark:border-red-900 dark:text-red-300">
+                  failed
+                </span>
+              ) : null}
+            </div>
+          </form>
         </section>
 
         <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
