@@ -114,6 +114,18 @@ shoulders, arms, or core. The V1 UI does not ask for the exact strength exercise
 For `cardio`, `category` stores the fixed cardio option and `exerciseName` can mirror it.
 For `other`, `category` can be `기타` and `exerciseName` stores the user's custom workout name.
 
+Strength part options are fixed and can be selected multiple at once:
+
+- 가슴
+- 등
+- 하체
+- 어깨
+- 복부
+- 삼두
+- 이두
+
+When multiple strength parts are selected, create one workout record per selected part.
+
 ### Meal Record
 
 Purpose: record menu, calories, and protein only, while leaving a clean path for carbs and fat.
@@ -209,7 +221,7 @@ Below the calendar, provide three compact add flows:
 1. Add workout record
    - date
    - workout type
-   - strength: where
+   - strength: one or more fixed body parts
    - cardio: fixed cardio option
    - other: exercise name
 

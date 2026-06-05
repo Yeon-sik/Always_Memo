@@ -102,6 +102,14 @@ interface UseLocalSyncMemoActions {
     category: string,
     exerciseName: string,
   ) => void;
+  addWorkoutRecords: (
+    records: Array<{
+      date: string;
+      workoutType: WorkoutType;
+      category: string;
+      exerciseName: string;
+    }>,
+  ) => void;
   deleteMealRecord: (recordId: string) => void;
   deleteNote: (noteId: string) => void;
   deleteTask: (taskId: string) => void;
@@ -789,6 +797,37 @@ export function useLocalSyncMemo(
     [device],
   );
 
+  const addWorkoutRecords = useCallback(
+    (
+      records: Array<{
+        date: string;
+        workoutType: WorkoutType;
+        category: string;
+        exerciseName: string;
+      }>,
+    ) => {
+      if (!device || records.length === 0) {
+        return;
+      }
+
+      const nextRecords = records.map((record) =>
+        createWorkoutRecord(
+          record.date,
+          record.workoutType,
+          record.category,
+          record.exerciseName,
+          device.id,
+        ),
+      );
+
+      setWorkoutRecords((currentRecords) => [
+        ...currentRecords,
+        ...nextRecords,
+      ]);
+    },
+    [device],
+  );
+
   const addMealRecord = useCallback(
     (
       date: string,
@@ -943,6 +982,7 @@ export function useLocalSyncMemo(
     addTask,
     addWeightRecord,
     addWorkoutRecord,
+    addWorkoutRecords,
     autostartEnabled,
     autostartSupported,
     deleteMealRecord,

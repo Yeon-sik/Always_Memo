@@ -52,6 +52,7 @@ export function App() {
               onAddMealRecord={memo.addMealRecord}
               onAddWeightRecord={memo.addWeightRecord}
               onAddWorkoutRecord={memo.addWorkoutRecord}
+              onAddWorkoutRecords={memo.addWorkoutRecords}
               onDeleteMealRecord={memo.deleteMealRecord}
               onDeleteWeightRecord={memo.deleteWeightRecord}
               onDeleteWorkoutRecord={memo.deleteWorkoutRecord}

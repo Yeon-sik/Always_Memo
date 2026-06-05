@@ -14,6 +14,16 @@ export const cardioWorkoutOptions = [
   "실내 싸이클",
 ] as const;
 
+export const strengthWorkoutParts = [
+  "가슴",
+  "등",
+  "하체",
+  "어깨",
+  "복부",
+  "삼두",
+  "이두",
+] as const;
+
 export const workoutTypeLabels: Record<WorkoutType, string> = {
   strength: "헬스",
   cardio: "유산소",

@@ -35,6 +35,7 @@ import {
   cardioWorkoutOptions,
   getWorkoutSubcategoryLabel,
   getWorkoutTypeLabel,
+  strengthWorkoutParts,
   workoutTypeLabels,
 } from "./fitnessService";
 
@@ -54,6 +55,14 @@ interface FitnessPanelProps {
     workoutType: WorkoutType,
     category: string,
     exerciseName: string,
+  ) => void;
+  onAddWorkoutRecords: (
+    records: Array<{
+      date: string;
+      workoutType: WorkoutType;
+      category: string;
+      exerciseName: string;
+    }>,
   ) => void;
   onDeleteMealRecord: (recordId: string) => void;
   onDeleteWeightRecord: (recordId: string) => void;
@@ -146,6 +155,7 @@ export function FitnessPanel({
   onAddMealRecord,
   onAddWeightRecord,
   onAddWorkoutRecord,
+  onAddWorkoutRecords,
   onDeleteMealRecord,
   onDeleteWeightRecord,
   onDeleteWorkoutRecord,
@@ -161,7 +171,9 @@ export function FitnessPanel({
   const [rangeEndDate, setRangeEndDate] = useState(currentMonthRange.endDate);
   const [workoutDate, setWorkoutDate] = useState(today);
   const [workoutType, setWorkoutType] = useState<WorkoutType>("strength");
-  const [workoutCategory, setWorkoutCategory] = useState("");
+  const [selectedStrengthParts, setSelectedStrengthParts] = useState<string[]>(
+    [],
+  );
   const [workoutCardioType, setWorkoutCardioType] = useState<string>(
     cardioWorkoutOptions[0],
   );
@@ -245,16 +257,18 @@ export function FitnessPanel({
     }
 
     if (workoutType === "strength") {
-      if (!workoutCategory.trim()) {
-        setFormError("헬스 기록은 어디가 필요합니다.");
+      if (selectedStrengthParts.length === 0) {
+        setFormError("헬스 기록은 부위를 하나 이상 선택해야 합니다.");
         return;
       }
 
-      onAddWorkoutRecord(
-        workoutDate,
-        workoutType,
-        workoutCategory.trim(),
-        workoutCategory.trim(),
+      onAddWorkoutRecords(
+        selectedStrengthParts.map((part) => ({
+          date: workoutDate,
+          workoutType,
+          category: part,
+          exerciseName: part,
+        })),
       );
     } else if (workoutType === "cardio") {
       if (!workoutCardioType) {
@@ -282,8 +296,17 @@ export function FitnessPanel({
       );
     }
 
-    setWorkoutCategory("");
+    setSelectedStrengthParts([]);
     setWorkoutExerciseName("");
+    setFormError(null);
+  }
+
+  function toggleStrengthPart(part: string) {
+    setSelectedStrengthParts((currentParts) =>
+      currentParts.includes(part)
+        ? currentParts.filter((currentPart) => currentPart !== part)
+        : [...currentParts, part],
+    );
     setFormError(null);
   }
 
@@ -656,14 +679,35 @@ export function FitnessPanel({
             </select>
           </FieldLabel>
           {workoutType === "strength" ? (
-            <FieldLabel label="어디">
-              <input
-                value={workoutCategory}
-                onChange={(event) => setWorkoutCategory(event.target.value)}
-                className="field-input"
-                placeholder="가슴, 등, 하체"
-              />
-            </FieldLabel>
+            <div className="mb-2">
+              <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-neutral-300">
+                어디
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {strengthWorkoutParts.map((part) => {
+                  const isSelected = selectedStrengthParts.includes(part);
+
+                  return (
+                    <label
+                      key={part}
+                      className={
+                        isSelected
+                          ? "flex min-h-9 items-center gap-2 rounded-md border border-teal-500 bg-teal-50 px-2 text-sm font-semibold text-teal-900 dark:border-teal-500 dark:bg-teal-950/40 dark:text-teal-100"
+                          : "flex min-h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
+                      }
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleStrengthPart(part)}
+                        className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-700"
+                      />
+                      <span>{part}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
           ) : null}
           {workoutType === "cardio" ? (
             <FieldLabel label="유산소 종류">
