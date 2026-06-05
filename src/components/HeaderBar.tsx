@@ -1,4 +1,5 @@
 import {
+  CalendarDays,
   Cloud,
   CloudOff,
   Dumbbell,
@@ -12,7 +13,7 @@ import type { Device } from "../types";
 import type { SyncStatus } from "../lib/sync/syncTypes";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
-export type HeaderView = "memo" | "fitness" | "settings";
+export type HeaderView = "records" | "memo" | "fitness" | "settings";
 
 interface HeaderBarProps {
   activeView: HeaderView;
@@ -27,9 +28,9 @@ const viewItems: Array<{
   label: string;
   icon: typeof NotebookTabs;
 }> = [
+  { view: "records", label: "기록", icon: CalendarDays },
   { view: "memo", label: "메모", icon: NotebookTabs },
   { view: "fitness", label: "운동", icon: Dumbbell },
-  { view: "settings", label: "설정", icon: Settings },
 ];
 
 function getSaveLabel(saveState: SaveState): string {
@@ -90,32 +91,48 @@ export function HeaderBar({
           </p>
         </div>
 
-        <nav
-          className="grid h-9 shrink-0 grid-cols-3 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-950"
-          aria-label="주요 화면"
-        >
-          {viewItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeView === item.view;
+        <div className="flex shrink-0 items-center gap-2">
+          <nav
+            className="grid h-9 shrink-0 grid-cols-3 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-950"
+            aria-label="주요 화면"
+          >
+            {viewItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeView === item.view;
 
-            return (
-              <button
-                key={item.view}
-                type="button"
-                onClick={() => onChangeView(item.view)}
-                className={
-                  isActive
-                    ? "inline-flex min-w-20 items-center justify-center gap-1.5 rounded bg-white px-2 font-semibold text-slate-950 shadow-sm dark:bg-neutral-800 dark:text-neutral-50"
-                    : "inline-flex min-w-20 items-center justify-center gap-1.5 rounded px-2 font-semibold text-slate-500 transition hover:text-slate-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-                }
-                aria-current={isActive ? "page" : undefined}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
+              return (
+                <button
+                  key={item.view}
+                  type="button"
+                  onClick={() => onChangeView(item.view)}
+                  className={
+                    isActive
+                      ? "inline-flex min-w-16 items-center justify-center gap-1.5 rounded bg-white px-2 font-semibold text-slate-950 shadow-sm dark:bg-neutral-800 dark:text-neutral-50"
+                      : "inline-flex min-w-16 items-center justify-center gap-1.5 rounded px-2 font-semibold text-slate-500 transition hover:text-slate-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                  }
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+          <button
+            type="button"
+            onClick={() => onChangeView("settings")}
+            className={
+              activeView === "settings"
+                ? "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-950 shadow-sm dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
+                : "inline-flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-500 transition hover:text-slate-900 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400 dark:hover:text-neutral-100"
+            }
+            aria-current={activeView === "settings" ? "page" : undefined}
+            aria-label="설정"
+            title="설정"
+          >
+            <Settings className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">

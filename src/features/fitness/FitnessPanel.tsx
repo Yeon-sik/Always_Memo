@@ -1,9 +1,7 @@
-import { FormEvent, type ReactNode, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   Download,
   Dumbbell,
   Plus,
@@ -19,9 +17,7 @@ import type {
 } from "../../types";
 import {
   formatKoreanDate,
-  formatLocalDate,
   getCurrentMonthRange,
-  parseDateInput,
 } from "./fitnessDate";
 import {
   calculateFitnessStats,
@@ -38,9 +34,14 @@ import {
   strengthWorkoutParts,
   workoutTypeLabels,
 } from "./fitnessService";
+import {
+  RecordCalendar,
+  type RecordMarkerSet,
+} from "../records/RecordCalendar";
 
 interface FitnessPanelProps {
   mealRecords: MealRecord[];
+  selectedDate: string;
   weightRecords: WeightRecord[];
   workoutRecords: WorkoutRecord[];
   onAddMealRecord: (
@@ -65,57 +66,24 @@ interface FitnessPanelProps {
     }>,
   ) => void;
   onDeleteMealRecord: (recordId: string) => void;
+  onSelectDate: (date: string) => void;
   onDeleteWeightRecord: (recordId: string) => void;
   onDeleteWorkoutRecord: (recordId: string) => void;
 }
 
 type ActionPanel = "stats" | "export" | null;
 
-const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
 const workoutTypeOptions: WorkoutType[] = ["strength", "cardio", "other"];
-
-function getMonthCells(monthDate: Date): Array<string | null> {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const cells: Array<string | null> = [];
-
-  for (let index = 0; index < firstDay.getDay(); index += 1) {
-    cells.push(null);
-  }
-
-  for (let day = 1; day <= lastDay.getDate(); day += 1) {
-    cells.push(formatLocalDate(new Date(year, month, day)));
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(null);
-  }
-
-  return cells;
-}
-
-function getMonthTitle(monthDate: Date): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric",
-    month: "long",
-  }).format(monthDate);
-}
 
 function groupPresenceByDate(
   workoutRecords: WorkoutRecord[],
   mealRecords: MealRecord[],
   weightRecords: WeightRecord[],
-): Map<string, { workout: boolean; meal: boolean; weight: boolean }> {
-  const map = new Map<
-    string,
-    { workout: boolean; meal: boolean; weight: boolean }
-  >();
+): Map<string, RecordMarkerSet> {
+  const map = new Map<string, RecordMarkerSet>();
 
   function ensure(date: string) {
-    const current =
-      map.get(date) ?? { workout: false, meal: false, weight: false };
+    const current = map.get(date) ?? {};
     map.set(date, current);
     return current;
   }
@@ -150,6 +118,7 @@ function downloadMarkdown(fileName: string, markdown: string): void {
 
 export function FitnessPanel({
   mealRecords,
+  selectedDate,
   weightRecords,
   workoutRecords,
   onAddMealRecord,
@@ -157,19 +126,17 @@ export function FitnessPanel({
   onAddWorkoutRecord,
   onAddWorkoutRecords,
   onDeleteMealRecord,
+  onSelectDate,
   onDeleteWeightRecord,
   onDeleteWorkoutRecord,
 }: FitnessPanelProps) {
-  const today = formatLocalDate();
   const currentMonthRange = getCurrentMonthRange();
-  const [selectedDate, setSelectedDate] = useState(today);
-  const [visibleMonth, setVisibleMonth] = useState(parseDateInput(today));
   const [actionPanel, setActionPanel] = useState<ActionPanel>(null);
   const [rangeStartDate, setRangeStartDate] = useState(
     currentMonthRange.startDate,
   );
   const [rangeEndDate, setRangeEndDate] = useState(currentMonthRange.endDate);
-  const [workoutDate, setWorkoutDate] = useState(today);
+  const [workoutDate, setWorkoutDate] = useState(selectedDate);
   const [workoutType, setWorkoutType] = useState<WorkoutType>("strength");
   const [selectedStrengthParts, setSelectedStrengthParts] = useState<string[]>(
     [],
@@ -178,18 +145,23 @@ export function FitnessPanel({
     cardioWorkoutOptions[0],
   );
   const [workoutExerciseName, setWorkoutExerciseName] = useState("");
-  const [mealDate, setMealDate] = useState(today);
+  const [mealDate, setMealDate] = useState(selectedDate);
   const [mealMenu, setMealMenu] = useState("");
   const [mealCalories, setMealCalories] = useState("");
   const [mealProteinGrams, setMealProteinGrams] = useState("");
-  const [weightDate, setWeightDate] = useState(today);
+  const [weightDate, setWeightDate] = useState(selectedDate);
   const [weightKg, setWeightKg] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const monthCells = useMemo(() => getMonthCells(visibleMonth), [visibleMonth]);
   const markerByDate = useMemo(
     () => groupPresenceByDate(workoutRecords, mealRecords, weightRecords),
     [mealRecords, weightRecords, workoutRecords],
   );
+
+  useEffect(() => {
+    setWorkoutDate(selectedDate);
+    setMealDate(selectedDate);
+    setWeightDate(selectedDate);
+  }, [selectedDate]);
   const selectedWorkoutRecords = useMemo(
     () => workoutRecords.filter((record) => record.date === selectedDate),
     [selectedDate, workoutRecords],
@@ -230,22 +202,10 @@ export function FitnessPanel({
   );
 
   function selectDate(date: string) {
-    setSelectedDate(date);
+    onSelectDate(date);
     setWorkoutDate(date);
     setMealDate(date);
     setWeightDate(date);
-  }
-
-  function moveMonth(offset: number) {
-    setVisibleMonth(
-      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1),
-    );
-  }
-
-  function handleTodayClick() {
-    const nextToday = formatLocalDate();
-    selectDate(nextToday);
-    setVisibleMonth(parseDateInput(nextToday));
   }
 
   function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
@@ -493,92 +453,11 @@ export function FitnessPanel({
       ) : null}
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-        <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => moveMonth(-1)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              aria-label="이전 달"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <div className="min-w-0 text-center">
-              <div className="truncate text-sm font-semibold text-slate-950 dark:text-neutral-50">
-                {getMonthTitle(visibleMonth)}
-              </div>
-              <button
-                type="button"
-                onClick={handleTodayClick}
-                className="mt-1 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-200"
-              >
-                오늘로 이동
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => moveMonth(1)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              aria-label="다음 달"
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 dark:text-neutral-400">
-            {weekDays.map((day) => (
-              <div key={day} className="py-1">
-                {day}
-              </div>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {monthCells.map((date, index) => {
-              const markers = date ? markerByDate.get(date) : null;
-              const isSelected = date === selectedDate;
-              const isToday = date === today;
-
-              return date ? (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => selectDate(date)}
-                  className={
-                    isSelected
-                      ? "flex aspect-square min-h-16 flex-col items-center justify-between rounded-md border border-teal-600 bg-teal-50 p-1 text-sm font-semibold text-teal-950 dark:border-teal-400 dark:bg-teal-950/50 dark:text-teal-100"
-                      : "flex aspect-square min-h-16 flex-col items-center justify-between rounded-md border border-slate-200 bg-white p-1 text-sm text-slate-800 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
-                  }
-                >
-                  <span
-                    className={
-                      isToday
-                        ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-semibold text-white dark:bg-neutral-100 dark:text-black"
-                        : "inline-flex h-6 min-w-6 items-center justify-center px-1.5 text-xs font-semibold"
-                    }
-                  >
-                    {Number(date.slice(-2))}
-                  </span>
-                  <span className="flex h-3 items-center justify-center gap-1">
-                    {markers?.workout ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    ) : null}
-                    {markers?.meal ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
-                    ) : null}
-                    {markers?.weight ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                </button>
-              ) : (
-                <div
-                  key={`blank-${index}`}
-                  className="aspect-square min-h-16 rounded-md border border-transparent"
-                />
-              );
-            })}
-          </div>
-        </div>
+        <RecordCalendar
+          markerByDate={markerByDate}
+          selectedDate={selectedDate}
+          onSelectDate={selectDate}
+        />
 
         <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
           <div className="mb-3 flex min-w-0 items-center gap-2">
