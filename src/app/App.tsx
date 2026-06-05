@@ -3,7 +3,9 @@ import { HeaderBar, type HeaderView } from "../components/HeaderBar";
 import { StatusBanner } from "../components/StatusBanner";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { FitnessPanel } from "../features/fitness/FitnessPanel";
+import { formatLocalDate } from "../features/fitness/fitnessDate";
 import { MemoPanel } from "../features/notes/MemoPanel";
+import { RecordsPanel } from "../features/records/RecordsPanel";
 import { ChecklistPanel } from "../features/tasks/ChecklistPanel";
 import { useLocalSyncMemo } from "./useLocalSyncMemo";
 import { useThemeMode } from "./useThemeMode";
@@ -11,7 +13,8 @@ import { useThemeMode } from "./useThemeMode";
 export function App() {
   const memo = useLocalSyncMemo();
   const { setThemeMode, themeMode } = useThemeMode();
-  const [activeView, setActiveView] = useState<HeaderView>("memo");
+  const [activeView, setActiveView] = useState<HeaderView>("records");
+  const [selectedDate, setSelectedDate] = useState(formatLocalDate());
 
   return (
     <div className="flex h-screen min-h-[640px] min-w-[420px] justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
@@ -44,18 +47,26 @@ export function App() {
               onSaveSupabaseConfig={memo.saveSupabaseConfig}
               onToggleAutostart={memo.setAutostartEnabled}
             />
+          ) : activeView === "records" ? (
+            <RecordsPanel
+              mealRecords={memo.mealRecords}
+              notes={memo.notes}
+              selectedDate={selectedDate}
+              tasks={memo.tasks}
+              weightRecords={memo.weightRecords}
+              workoutRecords={memo.workoutRecords}
+              onSelectDate={setSelectedDate}
+            />
           ) : activeView === "fitness" ? (
             <FitnessPanel
               mealRecords={memo.mealRecords}
+              selectedDate={selectedDate}
               weightRecords={memo.weightRecords}
               workoutRecords={memo.workoutRecords}
               onAddMealRecord={memo.addMealRecord}
               onAddWeightRecord={memo.addWeightRecord}
               onAddWorkoutRecord={memo.addWorkoutRecord}
               onAddWorkoutRecords={memo.addWorkoutRecords}
-              onDeleteMealRecord={memo.deleteMealRecord}
-              onDeleteWeightRecord={memo.deleteWeightRecord}
-              onDeleteWorkoutRecord={memo.deleteWorkoutRecord}
             />
           ) : (
             <div className="grid h-full min-h-0 grid-cols-2 gap-3">

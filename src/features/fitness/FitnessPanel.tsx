@@ -1,15 +1,11 @@
-import { FormEvent, type ReactNode, useMemo, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   Download,
   Dumbbell,
   Plus,
   Salad,
   Scale,
-  Trash2,
 } from "lucide-react";
 import type {
   MealRecord,
@@ -17,12 +13,7 @@ import type {
   WorkoutRecord,
   WorkoutType,
 } from "../../types";
-import {
-  formatKoreanDate,
-  formatLocalDate,
-  getCurrentMonthRange,
-  parseDateInput,
-} from "./fitnessDate";
+import { getCurrentMonthRange } from "./fitnessDate";
 import {
   calculateFitnessStats,
   formatMetric,
@@ -33,14 +24,13 @@ import {
 } from "./export/fitnessMarkdownExport";
 import {
   cardioWorkoutOptions,
-  getWorkoutSubcategoryLabel,
-  getWorkoutTypeLabel,
   strengthWorkoutParts,
   workoutTypeLabels,
 } from "./fitnessService";
 
 interface FitnessPanelProps {
   mealRecords: MealRecord[];
+  selectedDate: string;
   weightRecords: WeightRecord[];
   workoutRecords: WorkoutRecord[];
   onAddMealRecord: (
@@ -64,76 +54,11 @@ interface FitnessPanelProps {
       exerciseName: string;
     }>,
   ) => void;
-  onDeleteMealRecord: (recordId: string) => void;
-  onDeleteWeightRecord: (recordId: string) => void;
-  onDeleteWorkoutRecord: (recordId: string) => void;
 }
 
 type ActionPanel = "stats" | "export" | null;
 
-const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
 const workoutTypeOptions: WorkoutType[] = ["strength", "cardio", "other"];
-
-function getMonthCells(monthDate: Date): Array<string | null> {
-  const year = monthDate.getFullYear();
-  const month = monthDate.getMonth();
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const cells: Array<string | null> = [];
-
-  for (let index = 0; index < firstDay.getDay(); index += 1) {
-    cells.push(null);
-  }
-
-  for (let day = 1; day <= lastDay.getDate(); day += 1) {
-    cells.push(formatLocalDate(new Date(year, month, day)));
-  }
-
-  while (cells.length % 7 !== 0) {
-    cells.push(null);
-  }
-
-  return cells;
-}
-
-function getMonthTitle(monthDate: Date): string {
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric",
-    month: "long",
-  }).format(monthDate);
-}
-
-function groupPresenceByDate(
-  workoutRecords: WorkoutRecord[],
-  mealRecords: MealRecord[],
-  weightRecords: WeightRecord[],
-): Map<string, { workout: boolean; meal: boolean; weight: boolean }> {
-  const map = new Map<
-    string,
-    { workout: boolean; meal: boolean; weight: boolean }
-  >();
-
-  function ensure(date: string) {
-    const current =
-      map.get(date) ?? { workout: false, meal: false, weight: false };
-    map.set(date, current);
-    return current;
-  }
-
-  for (const record of workoutRecords) {
-    ensure(record.date).workout = true;
-  }
-
-  for (const record of mealRecords) {
-    ensure(record.date).meal = true;
-  }
-
-  for (const record of weightRecords) {
-    ensure(record.date).weight = true;
-  }
-
-  return map;
-}
 
 function downloadMarkdown(fileName: string, markdown: string): void {
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
@@ -150,26 +75,21 @@ function downloadMarkdown(fileName: string, markdown: string): void {
 
 export function FitnessPanel({
   mealRecords,
+  selectedDate,
   weightRecords,
   workoutRecords,
   onAddMealRecord,
   onAddWeightRecord,
   onAddWorkoutRecord,
   onAddWorkoutRecords,
-  onDeleteMealRecord,
-  onDeleteWeightRecord,
-  onDeleteWorkoutRecord,
 }: FitnessPanelProps) {
-  const today = formatLocalDate();
   const currentMonthRange = getCurrentMonthRange();
-  const [selectedDate, setSelectedDate] = useState(today);
-  const [visibleMonth, setVisibleMonth] = useState(parseDateInput(today));
   const [actionPanel, setActionPanel] = useState<ActionPanel>(null);
   const [rangeStartDate, setRangeStartDate] = useState(
     currentMonthRange.startDate,
   );
   const [rangeEndDate, setRangeEndDate] = useState(currentMonthRange.endDate);
-  const [workoutDate, setWorkoutDate] = useState(today);
+  const [workoutDate, setWorkoutDate] = useState(selectedDate);
   const [workoutType, setWorkoutType] = useState<WorkoutType>("strength");
   const [selectedStrengthParts, setSelectedStrengthParts] = useState<string[]>(
     [],
@@ -178,30 +98,19 @@ export function FitnessPanel({
     cardioWorkoutOptions[0],
   );
   const [workoutExerciseName, setWorkoutExerciseName] = useState("");
-  const [mealDate, setMealDate] = useState(today);
+  const [mealDate, setMealDate] = useState(selectedDate);
   const [mealMenu, setMealMenu] = useState("");
   const [mealCalories, setMealCalories] = useState("");
   const [mealProteinGrams, setMealProteinGrams] = useState("");
-  const [weightDate, setWeightDate] = useState(today);
+  const [weightDate, setWeightDate] = useState(selectedDate);
   const [weightKg, setWeightKg] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-  const monthCells = useMemo(() => getMonthCells(visibleMonth), [visibleMonth]);
-  const markerByDate = useMemo(
-    () => groupPresenceByDate(workoutRecords, mealRecords, weightRecords),
-    [mealRecords, weightRecords, workoutRecords],
-  );
-  const selectedWorkoutRecords = useMemo(
-    () => workoutRecords.filter((record) => record.date === selectedDate),
-    [selectedDate, workoutRecords],
-  );
-  const selectedMealRecords = useMemo(
-    () => mealRecords.filter((record) => record.date === selectedDate),
-    [mealRecords, selectedDate],
-  );
-  const selectedWeightRecords = useMemo(
-    () => weightRecords.filter((record) => record.date === selectedDate),
-    [selectedDate, weightRecords],
-  );
+
+  useEffect(() => {
+    setWorkoutDate(selectedDate);
+    setMealDate(selectedDate);
+    setWeightDate(selectedDate);
+  }, [selectedDate]);
   const stats = useMemo(
     () =>
       calculateFitnessStats(
@@ -228,25 +137,6 @@ export function FitnessPanel({
     rangeStartDate,
     rangeEndDate,
   );
-
-  function selectDate(date: string) {
-    setSelectedDate(date);
-    setWorkoutDate(date);
-    setMealDate(date);
-    setWeightDate(date);
-  }
-
-  function moveMonth(offset: number) {
-    setVisibleMonth(
-      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1),
-    );
-  }
-
-  function handleTodayClick() {
-    const nextToday = formatLocalDate();
-    selectDate(nextToday);
-    setVisibleMonth(parseDateInput(nextToday));
-  }
 
   function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -358,7 +248,7 @@ export function FitnessPanel({
             운동
           </h2>
           <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-            오늘 날짜: {formatKoreanDate(selectedDate)}
+            날짜는 각 기록 추가 폼에서 선택합니다.
           </p>
         </div>
 
@@ -491,153 +381,6 @@ export function FitnessPanel({
           )}
         </div>
       ) : null}
-
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-        <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={() => moveMonth(-1)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              aria-label="이전 달"
-            >
-              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <div className="min-w-0 text-center">
-              <div className="truncate text-sm font-semibold text-slate-950 dark:text-neutral-50">
-                {getMonthTitle(visibleMonth)}
-              </div>
-              <button
-                type="button"
-                onClick={handleTodayClick}
-                className="mt-1 text-xs font-semibold text-teal-700 hover:text-teal-900 dark:text-teal-300 dark:hover:text-teal-200"
-              >
-                오늘로 이동
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => moveMonth(1)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
-              aria-label="다음 달"
-            >
-              <ChevronRight className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-500 dark:text-neutral-400">
-            {weekDays.map((day) => (
-              <div key={day} className="py-1">
-                {day}
-              </div>
-            ))}
-          </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
-            {monthCells.map((date, index) => {
-              const markers = date ? markerByDate.get(date) : null;
-              const isSelected = date === selectedDate;
-              const isToday = date === today;
-
-              return date ? (
-                <button
-                  key={date}
-                  type="button"
-                  onClick={() => selectDate(date)}
-                  className={
-                    isSelected
-                      ? "flex aspect-square min-h-16 flex-col items-center justify-between rounded-md border border-teal-600 bg-teal-50 p-1 text-sm font-semibold text-teal-950 dark:border-teal-400 dark:bg-teal-950/50 dark:text-teal-100"
-                      : "flex aspect-square min-h-16 flex-col items-center justify-between rounded-md border border-slate-200 bg-white p-1 text-sm text-slate-800 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
-                  }
-                >
-                  <span
-                    className={
-                      isToday
-                        ? "inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-slate-900 px-1.5 text-xs font-semibold text-white dark:bg-neutral-100 dark:text-black"
-                        : "inline-flex h-6 min-w-6 items-center justify-center px-1.5 text-xs font-semibold"
-                    }
-                  >
-                    {Number(date.slice(-2))}
-                  </span>
-                  <span className="flex h-3 items-center justify-center gap-1">
-                    {markers?.workout ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                    ) : null}
-                    {markers?.meal ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
-                    ) : null}
-                    {markers?.weight ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    ) : null}
-                  </span>
-                </button>
-              ) : (
-                <div
-                  key={`blank-${index}`}
-                  className="aspect-square min-h-16 rounded-md border border-transparent"
-                />
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
-          <div className="mb-3 flex min-w-0 items-center gap-2">
-            <CalendarDays
-              className="h-4 w-4 shrink-0 text-teal-700 dark:text-teal-300"
-              aria-hidden="true"
-            />
-            <h3 className="truncate text-sm font-semibold text-slate-950 dark:text-neutral-50">
-              {formatKoreanDate(selectedDate)}
-            </h3>
-          </div>
-
-          <div className="space-y-3">
-            <RecordList
-              title="운동"
-              icon={<Dumbbell className="h-4 w-4 text-red-600" aria-hidden="true" />}
-              emptyText="운동 기록 없음"
-              records={selectedWorkoutRecords}
-              renderRecord={(record) => (
-                <>
-                  <span className="font-semibold">
-                    {getWorkoutTypeLabel(record)} -{" "}
-                    {getWorkoutSubcategoryLabel(record)}
-                  </span>
-                </>
-              )}
-              onDelete={onDeleteWorkoutRecord}
-            />
-            <RecordList
-              title="식사"
-              icon={<Salad className="h-4 w-4 text-yellow-600" aria-hidden="true" />}
-              emptyText="식사 기록 없음"
-              records={selectedMealRecords}
-              renderRecord={(record) => (
-                <>
-                  <span className="font-semibold">{record.menu}</span>
-                  <span className="text-slate-500 dark:text-neutral-400">
-                    {record.calories.toLocaleString("ko-KR")} kcal / 단백질{" "}
-                    {formatMetric(record.proteinGrams)} g
-                  </span>
-                </>
-              )}
-              onDelete={onDeleteMealRecord}
-            />
-            <RecordList
-              title="체중"
-              icon={<Scale className="h-4 w-4 text-emerald-600" aria-hidden="true" />}
-              emptyText="체중 기록 없음"
-              records={selectedWeightRecords}
-              renderRecord={(record) => (
-                <span className="font-semibold">
-                  {formatMetric(record.weightKg)} kg
-                </span>
-              )}
-              onDelete={onDeleteWeightRecord}
-            />
-          </div>
-        </div>
-      </div>
 
       {formError ? (
         <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
@@ -861,62 +604,5 @@ function SubmitButton({ label }: { label: string }) {
       <Plus className="h-4 w-4" aria-hidden="true" />
       {label}
     </button>
-  );
-}
-
-function RecordList<T extends { id: string }>({
-  emptyText,
-  icon,
-  onDelete,
-  records,
-  renderRecord,
-  title,
-}: {
-  emptyText: string;
-  icon: ReactNode;
-  onDelete: (recordId: string) => void;
-  records: T[];
-  renderRecord: (record: T) => ReactNode;
-  title: string;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-neutral-300">
-        {icon}
-        <span>{title}</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-neutral-900 dark:text-neutral-400">
-          {records.length}
-        </span>
-      </div>
-      {records.length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
-          {emptyText}
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {records.map((record) => (
-            <div
-              key={record.id}
-              className="flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-sm text-slate-800 dark:border-neutral-800 dark:text-neutral-100"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 flex-col gap-0.5">
-                  {renderRecord(record)}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onDelete(record.id)}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-700 dark:text-neutral-500 dark:hover:bg-red-950/50 dark:hover:text-red-300"
-                aria-label={`${title} 기록 삭제`}
-                title={`${title} 기록 삭제`}
-              >
-                <Trash2 className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
