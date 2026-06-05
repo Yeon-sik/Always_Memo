@@ -15,7 +15,7 @@ export function App() {
 
   return (
     <div className="flex h-screen min-h-[640px] min-w-[420px] justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
-      <div className="flex h-full w-full max-w-[960px] flex-col border-x border-slate-300 bg-slate-100 shadow-panel dark:border-neutral-800 dark:bg-black dark:shadow-none">
+      <div className="flex h-full w-full max-w-[520px] flex-col border-x border-slate-300 bg-slate-100 shadow-panel dark:border-neutral-800 dark:bg-black dark:shadow-none">
         <HeaderBar
           activeView={activeView}
           device={memo.device}
