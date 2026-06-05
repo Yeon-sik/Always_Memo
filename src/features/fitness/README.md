@@ -1,0 +1,95 @@
+# Fitness Feature Directory Contract
+
+This directory owns the `운동` top-level tab.
+
+The tab includes three record domains:
+
+- workout records
+- meal records
+- weight records
+
+The feature must stay local-first and follow the existing note/task soft-delete and sync patterns.
+
+## Planned Structure
+
+```txt
+src/features/fitness/
+  README.md
+  FitnessPanel.tsx
+  calendar/
+    FitnessCalendar.tsx
+    calendarMarkers.ts
+  workouts/
+    WorkoutRecordForm.tsx
+    WorkoutRecordList.tsx
+    workoutService.ts
+  meals/
+    MealRecordForm.tsx
+    MealRecordList.tsx
+    mealService.ts
+  weight/
+    WeightRecordForm.tsx
+    WeightRecordList.tsx
+    weightService.ts
+  stats/
+    FitnessStatsPanel.tsx
+    fitnessStats.ts
+  export/
+    FitnessExportPanel.tsx
+    fitnessMarkdownExport.ts
+```
+
+## Directory Responsibilities
+
+### `calendar`
+
+- Month grid rendering.
+- Selected date state handoff.
+- Record type marker calculation.
+- Marker color order: workout red, meal yellow, weight green.
+
+### `workouts`
+
+- Workout record creation and display.
+- Fields: date, category, exercise name.
+- No sets, reps, exercise load, or routine logic in V1.
+
+### `meals`
+
+- Meal record creation and display.
+- Fields: date, menu, calories, protein grams.
+- Keep carbs and fat available in the data model as nullable future fields, but hide them in V1 UI.
+
+### `weight`
+
+- Weight record creation and display.
+- Field: weight in kg.
+- Do not support lb in V1.
+
+### `stats`
+
+- Date range selection contract.
+- Workout totals by category.
+- Meal averages for calories and protein.
+- Weight average, min, and max.
+
+### `export`
+
+- Blog-ready Markdown export.
+- File naming contract: `yeonsik-fitness-report-YYYYMMDD-YYYYMMDD.md`.
+- Export content order: summary, workouts, meals, weight.
+
+## Implementation Rule
+
+Do not put fitness logic into the existing task model.
+Workout records are historical logs, not checklist tasks.
+
+The first implementation should keep the surface small:
+
+1. app shell tab split
+2. local entity types
+3. calendar with markers
+4. add forms
+5. statistics
+6. Markdown export
+7. Supabase sync
