@@ -307,12 +307,20 @@ export function RecordsPanel({
 function MarkerLegend() {
   return (
     <div className="flex shrink-0 items-center gap-1.5" aria-label="달력 표시 범례">
-      <span className="box-border h-2 w-2 rounded-full border border-slate-400 bg-white shadow-sm dark:border-neutral-200 dark:bg-neutral-100" />
-      <span className="box-border h-2 w-2 rounded-full border border-transparent bg-sky-400 shadow-sm" />
-      <span className="box-border h-2 w-2 rounded-full border border-transparent bg-red-500 shadow-sm" />
-      <span className="box-border h-2 w-2 rounded-full border border-transparent bg-yellow-400 shadow-sm" />
-      <span className="box-border h-2 w-2 rounded-full border border-transparent bg-emerald-500 shadow-sm" />
+      <MarkerLegendDot className="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100" />
+      <MarkerLegendDot className="bg-sky-400" />
+      <MarkerLegendDot className="bg-red-500" />
+      <MarkerLegendDot className="bg-yellow-400" />
+      <MarkerLegendDot className="bg-emerald-500" />
     </div>
+  );
+}
+
+function MarkerLegendDot({ className }: { className: string }) {
+  return (
+    <span className="inline-flex h-2 w-2 items-center justify-center">
+      <span className={`block h-1.5 w-1.5 rounded-full ${className}`} />
+    </span>
   );
 }
 
@@ -358,7 +366,9 @@ function DailyItem({
 }) {
   return (
     <div className="flex min-h-10 items-start gap-2 rounded-md border border-slate-200 px-2 py-2 dark:border-neutral-800">
-      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${markerClassName}`} />
+      <span className="mt-1.5 inline-flex h-2 w-2 shrink-0 items-center justify-center">
+        <span className={`block h-1.5 w-1.5 rounded-full ${markerClassName}`} />
+      </span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );

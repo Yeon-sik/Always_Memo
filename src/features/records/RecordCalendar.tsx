@@ -62,27 +62,27 @@ const markerStyles: Array<{
   {
     key: "note",
     label: "메모",
-    className: "border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100",
+    className: "border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100",
   },
   {
     key: "task",
     label: "할 일",
-    className: "border-transparent bg-sky-400",
+    className: "bg-sky-400",
   },
   {
     key: "workout",
     label: "운동",
-    className: "border-transparent bg-red-500",
+    className: "bg-red-500",
   },
   {
     key: "meal",
     label: "식사",
-    className: "border-transparent bg-yellow-400",
+    className: "bg-yellow-400",
   },
   {
     key: "weight",
     label: "체중",
-    className: "border-transparent bg-emerald-500",
+    className: "bg-emerald-500",
   },
 ];
 
@@ -188,9 +188,11 @@ export function RecordCalendar({
                   markers?.[marker.key] ? (
                     <span
                       key={marker.key}
-                      className={`box-border h-1.5 w-1.5 rounded-full border shadow-sm ${marker.className}`}
                       title={marker.label}
-                    />
+                      className="inline-flex h-2 w-2 items-center justify-center"
+                    >
+                      <span className={`block h-1.5 w-1.5 rounded-full ${marker.className}`} />
+                    </span>
                   ) : null,
                 )}
               </span>
