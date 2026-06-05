@@ -67,10 +67,6 @@ export function App() {
               onAddWeightRecord={memo.addWeightRecord}
               onAddWorkoutRecord={memo.addWorkoutRecord}
               onAddWorkoutRecords={memo.addWorkoutRecords}
-              onDeleteMealRecord={memo.deleteMealRecord}
-              onSelectDate={setSelectedDate}
-              onDeleteWeightRecord={memo.deleteWeightRecord}
-              onDeleteWorkoutRecord={memo.deleteWorkoutRecord}
             />
           ) : (
             <div className="grid h-full min-h-0 grid-cols-2 gap-3">
