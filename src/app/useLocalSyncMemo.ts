@@ -5,7 +5,16 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Device, LocalDataSnapshot, Note, Task } from "../types";
+import type {
+  Device,
+  LocalDataSnapshot,
+  MealRecord,
+  Note,
+  Task,
+  WeightRecord,
+  WorkoutRecord,
+  WorkoutType,
+} from "../types";
 import { getOrCreateDevice, upsertDevice } from "../lib/device/device";
 import type { StorageAdapter } from "../lib/storage/storageAdapter";
 import { localStorageAdapter } from "../lib/storage/localStorageAdapter";
@@ -39,6 +48,17 @@ import {
   softDeleteTask,
   updateTask,
 } from "../features/tasks/taskService";
+import {
+  createMealRecord,
+  createWeightRecord,
+  createWorkoutRecord,
+  getVisibleMealRecords,
+  getVisibleWeightRecords,
+  getVisibleWorkoutRecords,
+  softDeleteMealRecord,
+  softDeleteWeightRecord,
+  softDeleteWorkoutRecord,
+} from "../features/fitness/fitnessService";
 
 interface UseLocalSyncMemoState {
   activeDevices: Device[];
@@ -49,6 +69,7 @@ interface UseLocalSyncMemoState {
   isManualSyncing: boolean;
   isReady: boolean;
   isSupabaseConfigured: boolean;
+  mealRecords: MealRecord[];
   notes: Note[];
   saveState: SaveState;
   selectedNote: Note | null;
@@ -57,17 +78,43 @@ interface UseLocalSyncMemoState {
   supabaseConfig: RuntimeConfig;
   tasks: Task[];
   userId: string;
+  weightRecords: WeightRecord[];
+  workoutRecords: WorkoutRecord[];
 }
 
 interface UseLocalSyncMemoActions {
+  addMealRecord: (
+    date: string,
+    menu: string,
+    calories: number,
+    proteinGrams: number,
+  ) => void;
   addNote: () => void;
   addTask: (
     text: string,
     dueDate?: string | null,
     dueTime?: string | null,
   ) => void;
+  addWeightRecord: (date: string, weightKg: number) => void;
+  addWorkoutRecord: (
+    date: string,
+    workoutType: WorkoutType,
+    category: string,
+    exerciseName: string,
+  ) => void;
+  addWorkoutRecords: (
+    records: Array<{
+      date: string;
+      workoutType: WorkoutType;
+      category: string;
+      exerciseName: string;
+    }>,
+  ) => void;
+  deleteMealRecord: (recordId: string) => void;
   deleteNote: (noteId: string) => void;
   deleteTask: (taskId: string) => void;
+  deleteWeightRecord: (recordId: string) => void;
+  deleteWorkoutRecord: (recordId: string) => void;
   manualSync: () => Promise<void>;
   reorderTasks: (
     draggedTaskId: string,
@@ -101,9 +148,19 @@ const initialSyncStatus: SyncStatus = {
 function toSnapshot(
   notes: Note[],
   tasks: Task[],
+  workoutRecords: WorkoutRecord[],
+  mealRecords: MealRecord[],
+  weightRecords: WeightRecord[],
   devices: Device[],
 ): LocalDataSnapshot {
-  return { notes, tasks, devices };
+  return {
+    notes,
+    tasks,
+    workoutRecords,
+    mealRecords,
+    weightRecords,
+    devices,
+  };
 }
 
 // 앱의 핵심 상태 훅: 로컬 우선 로딩, 자동 저장, Supabase 동기화,
@@ -121,6 +178,9 @@ export function useLocalSyncMemo(
   const [activeDevices, setActiveDevices] = useState<Device[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [workoutRecords, setWorkoutRecords] = useState<WorkoutRecord[]>([]);
+  const [mealRecords, setMealRecords] = useState<MealRecord[]>([]);
+  const [weightRecords, setWeightRecords] = useState<WeightRecord[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +190,9 @@ export function useLocalSyncMemo(
   const [autostartEnabled, setAutostartState] = useState(false);
   const [autostartSupported, setAutostartSupported] = useState(false);
   const [isManualSyncing, setIsManualSyncing] = useState(false);
-  const snapshotRef = useRef<LocalDataSnapshot>(toSnapshot([], [], []));
+  const snapshotRef = useRef<LocalDataSnapshot>(
+    toSnapshot([], [], [], [], [], []),
+  );
   const activeRuntimeConfig = runtimeConfig ?? emptyRuntimeConfig;
   const isRuntimeConfigReady =
     runtimeConfig !== null || Boolean(injectedSyncClient) || Boolean(injectedUserId);
@@ -145,6 +207,18 @@ export function useLocalSyncMemo(
 
   const visibleNotes = useMemo(() => getVisibleNotes(notes), [notes]);
   const visibleTasks = useMemo(() => getVisibleTasks(tasks), [tasks]);
+  const visibleWorkoutRecords = useMemo(
+    () => getVisibleWorkoutRecords(workoutRecords),
+    [workoutRecords],
+  );
+  const visibleMealRecords = useMemo(
+    () => getVisibleMealRecords(mealRecords),
+    [mealRecords],
+  );
+  const visibleWeightRecords = useMemo(
+    () => getVisibleWeightRecords(weightRecords),
+    [weightRecords],
+  );
   const isSupabaseConfigured = syncClient.isConfigured();
 
   const selectedNote = useMemo(
@@ -154,8 +228,15 @@ export function useLocalSyncMemo(
 
   // Realtime 콜백은 오래 살아 있으므로 최신 스냅샷을 ref로 공유한다.
   useEffect(() => {
-    snapshotRef.current = toSnapshot(notes, tasks, devices);
-  }, [devices, notes, tasks]);
+    snapshotRef.current = toSnapshot(
+      notes,
+      tasks,
+      workoutRecords,
+      mealRecords,
+      weightRecords,
+      devices,
+    );
+  }, [devices, mealRecords, notes, tasks, weightRecords, workoutRecords]);
 
   // 빌드 번들에 Supabase 값을 넣지 않기 위해 Tauri 실행 시점의 .env 파일을 먼저 읽는다.
   useEffect(() => {
@@ -217,6 +298,9 @@ export function useLocalSyncMemo(
         setActiveDevices([currentDevice]);
         setNotes(nextSnapshot.notes);
         setTasks(nextSnapshot.tasks);
+        setWorkoutRecords(nextSnapshot.workoutRecords);
+        setMealRecords(nextSnapshot.mealRecords);
+        setWeightRecords(nextSnapshot.weightRecords);
         setSelectedNoteId(nextVisibleNotes[0]?.id ?? null);
         setSyncStatus(syncClient.getStatus());
         setIsReady(true);
@@ -287,6 +371,9 @@ export function useLocalSyncMemo(
         snapshotRef.current = snapshot;
         setNotes(snapshot.notes);
         setTasks(snapshot.tasks);
+        setWorkoutRecords(snapshot.workoutRecords);
+        setMealRecords(snapshot.mealRecords);
+        setWeightRecords(snapshot.weightRecords);
         setDevices(snapshot.devices);
         setSyncStatus(status);
         setError(null);
@@ -324,6 +411,9 @@ export function useLocalSyncMemo(
     const snapshot: LocalDataSnapshot = {
       notes,
       tasks,
+      workoutRecords,
+      mealRecords,
+      weightRecords,
       devices: upsertDevice(devices, currentDevice),
     };
     const context: SyncContext = { device: currentDevice, userId };
@@ -354,7 +444,19 @@ export function useLocalSyncMemo(
     }, 400);
 
     return () => window.clearTimeout(saveTimer);
-  }, [device, devices, isReady, notes, storage, syncClient, tasks, userId]);
+  }, [
+    device,
+    devices,
+    isReady,
+    mealRecords,
+    notes,
+    storage,
+    syncClient,
+    tasks,
+    userId,
+    weightRecords,
+    workoutRecords,
+  ]);
 
   // 브라우저/웹뷰 네트워크 이벤트를 반영해 헤더의 동기화 상태를 갱신한다.
   useEffect(() => {
@@ -445,6 +547,9 @@ export function useLocalSyncMemo(
       snapshotRef.current = pulledSnapshot;
       setNotes(pulledSnapshot.notes);
       setTasks(pulledSnapshot.tasks);
+      setWorkoutRecords(pulledSnapshot.workoutRecords);
+      setMealRecords(pulledSnapshot.mealRecords);
+      setWeightRecords(pulledSnapshot.weightRecords);
       setDevices(pulledSnapshot.devices);
       setSyncStatus(pushResult.status);
       setError(
@@ -669,6 +774,146 @@ export function useLocalSyncMemo(
     [device],
   );
 
+  const addWorkoutRecord = useCallback(
+    (
+      date: string,
+      workoutType: WorkoutType,
+      category: string,
+      exerciseName: string,
+    ) => {
+      if (!device) {
+        return;
+      }
+
+      const record = createWorkoutRecord(
+        date,
+        workoutType,
+        category,
+        exerciseName,
+        device.id,
+      );
+      setWorkoutRecords((currentRecords) => [...currentRecords, record]);
+    },
+    [device],
+  );
+
+  const addWorkoutRecords = useCallback(
+    (
+      records: Array<{
+        date: string;
+        workoutType: WorkoutType;
+        category: string;
+        exerciseName: string;
+      }>,
+    ) => {
+      if (!device || records.length === 0) {
+        return;
+      }
+
+      const nextRecords = records.map((record) =>
+        createWorkoutRecord(
+          record.date,
+          record.workoutType,
+          record.category,
+          record.exerciseName,
+          device.id,
+        ),
+      );
+
+      setWorkoutRecords((currentRecords) => [
+        ...currentRecords,
+        ...nextRecords,
+      ]);
+    },
+    [device],
+  );
+
+  const addMealRecord = useCallback(
+    (
+      date: string,
+      menu: string,
+      calories: number,
+      proteinGrams: number,
+    ) => {
+      if (!device) {
+        return;
+      }
+
+      const record = createMealRecord(
+        date,
+        menu,
+        calories,
+        proteinGrams,
+        device.id,
+      );
+      setMealRecords((currentRecords) => [...currentRecords, record]);
+    },
+    [device],
+  );
+
+  const addWeightRecord = useCallback(
+    (date: string, weightKg: number) => {
+      if (!device) {
+        return;
+      }
+
+      const record = createWeightRecord(date, weightKg, device.id);
+      setWeightRecords((currentRecords) => [...currentRecords, record]);
+    },
+    [device],
+  );
+
+  const deleteWorkoutRecord = useCallback(
+    (recordId: string) => {
+      if (!device) {
+        return;
+      }
+
+      setWorkoutRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? softDeleteWorkoutRecord(record, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const deleteMealRecord = useCallback(
+    (recordId: string) => {
+      if (!device) {
+        return;
+      }
+
+      setMealRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? softDeleteMealRecord(record, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const deleteWeightRecord = useCallback(
+    (recordId: string) => {
+      if (!device) {
+        return;
+      }
+
+      setWeightRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? softDeleteWeightRecord(record, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
   const reorderTasks = useCallback(
     (
       draggedTaskId: string,
@@ -732,18 +977,26 @@ export function useLocalSyncMemo(
 
   return {
     activeDevices,
+    addMealRecord,
     addNote,
     addTask,
+    addWeightRecord,
+    addWorkoutRecord,
+    addWorkoutRecords,
     autostartEnabled,
     autostartSupported,
+    deleteMealRecord,
     deleteNote,
     deleteTask,
+    deleteWeightRecord,
+    deleteWorkoutRecord,
     device,
     error,
     isManualSyncing,
     isReady,
     isSupabaseConfigured,
     manualSync,
+    mealRecords: visibleMealRecords,
     notes: visibleNotes,
     reorderTasks,
     saveState,
@@ -761,5 +1014,7 @@ export function useLocalSyncMemo(
     updateTaskSchedule,
     updateTaskText,
     userId,
+    weightRecords: visibleWeightRecords,
+    workoutRecords: visibleWorkoutRecords,
   };
 }

@@ -10,34 +10,31 @@ The tab includes three record domains:
 
 The feature must stay local-first and follow the existing note/task soft-delete and sync patterns.
 
-## Planned Structure
+## Current Structure
 
 ```txt
 src/features/fitness/
   README.md
   FitnessPanel.tsx
+  fitnessDate.ts
+  fitnessService.ts
   calendar/
-    FitnessCalendar.tsx
-    calendarMarkers.ts
+    .gitkeep
   workouts/
-    WorkoutRecordForm.tsx
-    WorkoutRecordList.tsx
-    workoutService.ts
+    .gitkeep
   meals/
-    MealRecordForm.tsx
-    MealRecordList.tsx
-    mealService.ts
+    .gitkeep
   weight/
-    WeightRecordForm.tsx
-    WeightRecordList.tsx
-    weightService.ts
+    .gitkeep
   stats/
-    FitnessStatsPanel.tsx
     fitnessStats.ts
   export/
-    FitnessExportPanel.tsx
     fitnessMarkdownExport.ts
 ```
+
+The MVP keeps the UI in `FitnessPanel.tsx` and extracts pure date, service,
+statistics, and Markdown export logic. Split the UI into the lower directories
+only when the panel becomes difficult to scan or test.
 
 ## Directory Responsibilities
 
@@ -51,7 +48,12 @@ src/features/fitness/
 ### `workouts`
 
 - Workout record creation and display.
-- Fields: date, category, exercise name.
+- Fields: date, workout type, subcategory, exercise name.
+- Workout type options: strength, cardio, other.
+- Strength records use a fixed multi-select body-part list as the subcategory and do not ask for the exact exercise name in V1.
+- Multiple selected strength parts create one workout record per selected part.
+- Cardio records use the fixed cardio option as the subcategory.
+- Other records use the entered exercise name as the subcategory.
 - No sets, reps, exercise load, or routine logic in V1.
 
 ### `meals`
@@ -69,7 +71,7 @@ src/features/fitness/
 ### `stats`
 
 - Date range selection contract.
-- Workout totals by category.
+- Workout totals by `type - subcategory`.
 - Meal averages for calories and protein.
 - Weight average, min, and max.
 

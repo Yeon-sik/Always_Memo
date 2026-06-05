@@ -122,7 +122,7 @@ Deliverable:
 
 Statistics contract:
 
-- Workout: total count and total count by category.
+- Workout: total count and total count by `type - subcategory`.
 - Meal: average calories and average protein.
 - Weight: average, min, max.
 
@@ -227,14 +227,14 @@ PDF, DOCX, and HTML export can be added later if there is real demand.
 
 These should be decided during implementation, not before:
 
-- Should workout category use presets, free text, or both?
+- Should strength subcategory allow custom body parts beyond the fixed list?
 - Should meal averages be per record or per day after the user records consistently?
 - Should a day allow multiple weight records or only the latest one?
 - Should exported Markdown include Korean labels only, or bilingual labels?
 
 Default V1 answers:
 
-- workout category: free text
+- strength subcategory: fixed multi-select list
 - meal average: per record
 - weight records: allow multiple, statistics use all visible records
 - export labels: Korean

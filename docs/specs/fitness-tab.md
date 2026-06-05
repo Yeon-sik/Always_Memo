@@ -66,13 +66,28 @@ For Supabase-backed rows, keep:
 
 ### Workout Record
 
-Purpose: record where/body category and exercise name only.
+Purpose: record the workout type first, then the smallest useful subcategory.
+
+Workout type options:
+
+- `strength`: 헬스
+- `cardio`: 유산소
+- `other`: 기타
+
+Cardio option list:
+
+- 실내 달리기
+- 실내 걷기
+- 계단 오르기
+- 실외 싸이클
+- 실내 싸이클
 
 TypeScript shape:
 
 ```ts
 export interface WorkoutRecord extends SyncableEntity {
   date: string;
+  workoutType: "strength" | "cardio" | "other";
   category: string;
   exerciseName: string;
 }
@@ -85,6 +100,7 @@ create table if not exists public.workout_records (
   id uuid primary key,
   user_id text not null,
   date date not null,
+  workout_type text not null,
   category text not null,
   exercise_name text not null,
   updated_at timestamptz not null,
@@ -93,8 +109,22 @@ create table if not exists public.workout_records (
 );
 ```
 
-`category` means the user's "where" field, for example chest, back, legs, shoulders,
-arms, core, cardio, or custom text. It should stay free-text in V1 to avoid premature taxonomy work.
+For `strength`, `category` means the user's "where" field, for example chest, back, legs,
+shoulders, arms, or core. The V1 UI does not ask for the exact strength exercise name.
+For `cardio`, `category` stores the fixed cardio option and `exerciseName` can mirror it.
+For `other`, `category` can be `기타` and `exerciseName` stores the user's custom workout name.
+
+Strength part options are fixed and can be selected multiple at once:
+
+- 가슴
+- 등
+- 하체
+- 어깨
+- 복부
+- 삼두
+- 이두
+
+When multiple strength parts are selected, create one workout record per selected part.
 
 ### Meal Record
 
@@ -190,8 +220,10 @@ Below the calendar, provide three compact add flows:
 
 1. Add workout record
    - date
-   - category
-   - exercise name
+   - workout type
+   - strength: one or more fixed body parts
+   - cardio: fixed cardio option
+   - other: exercise name
 
 2. Add meal record
    - date
@@ -229,18 +261,17 @@ Workout statistics use totals, not averages.
 Required output:
 
 - Total workout records in the period.
-- Total count per workout category.
-- Optional secondary list: count per exercise name.
+- Total count per workout type and subcategory.
 
 Example:
 
 ```txt
 운동 기록: 18회
-가슴: 5회
-등: 4회
-하체: 4회
-어깨: 3회
-유산소: 2회
+헬스 - 가슴운동: 5회
+헬스 - 등운동: 4회
+헬스 - 하체운동: 4회
+유산소 - 계단 오르기: 3회
+기타 - 클라이밍: 2회
 ```
 
 ### Meal Statistics
@@ -321,8 +352,8 @@ Example outline:
 
 ### 2026-06-05
 
-- 가슴: 벤치프레스
-- 유산소: 러닝
+- 헬스 - 가슴운동
+- 유산소 - 실내 달리기
 
 ## 식사
 

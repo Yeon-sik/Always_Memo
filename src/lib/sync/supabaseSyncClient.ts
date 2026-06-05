@@ -2,7 +2,16 @@ import {
   createClient,
   type SupabaseClient as SupabaseClientBase,
 } from "@supabase/supabase-js";
-import type { Device, LocalDataSnapshot, Note, Task } from "../../types";
+import type {
+  Device,
+  LocalDataSnapshot,
+  MealRecord,
+  Note,
+  Task,
+  WeightRecord,
+  WorkoutRecord,
+  WorkoutType,
+} from "../../types";
 import type {
   RealtimeOptions,
   RealtimeSubscription,
@@ -33,6 +42,42 @@ interface TaskRow {
   order_index: number;
   due_date: string | null;
   due_time: string | null;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+interface WorkoutRecordRow {
+  id: string;
+  user_id: string;
+  date: string;
+  workout_type: WorkoutType;
+  category: string;
+  exercise_name: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+interface MealRecordRow {
+  id: string;
+  user_id: string;
+  date: string;
+  menu: string;
+  calories: number;
+  protein_grams: number;
+  carbs_grams: number | null;
+  fat_grams: number | null;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+interface WeightRecordRow {
+  id: string;
+  user_id: string;
+  date: string;
+  weight_kg: number;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -72,6 +117,24 @@ interface Database {
         Row: TaskRow;
         Insert: TaskRow;
         Update: Partial<TaskRow>;
+        Relationships: [];
+      };
+      workout_records: {
+        Row: WorkoutRecordRow;
+        Insert: WorkoutRecordRow;
+        Update: Partial<WorkoutRecordRow>;
+        Relationships: [];
+      };
+      meal_records: {
+        Row: MealRecordRow;
+        Insert: MealRecordRow;
+        Update: Partial<MealRecordRow>;
+        Relationships: [];
+      };
+      weight_records: {
+        Row: WeightRecordRow;
+        Insert: WeightRecordRow;
+        Update: Partial<WeightRecordRow>;
         Relationships: [];
       };
       devices: {
@@ -164,6 +227,49 @@ function taskFromRow(row: TaskRow): Task {
   };
 }
 
+function normalizeWorkoutType(value: string): WorkoutType {
+  return value === "cardio" || value === "other" ? value : "strength";
+}
+
+function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
+  return {
+    id: row.id,
+    date: row.date,
+    workoutType: normalizeWorkoutType(row.workout_type),
+    category: row.category,
+    exerciseName: row.exercise_name,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+function mealRecordFromRow(row: MealRecordRow): MealRecord {
+  return {
+    id: row.id,
+    date: row.date,
+    menu: row.menu,
+    calories: row.calories,
+    proteinGrams: row.protein_grams,
+    carbsGrams: row.carbs_grams,
+    fatGrams: row.fat_grams,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
+  return {
+    id: row.id,
+    date: row.date,
+    weightKg: row.weight_kg,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
 function deviceFromRow(row: DeviceRow): Device {
   return {
     id: row.id,
@@ -197,6 +303,54 @@ function taskToRow(task: Task, userId: string): TaskRow {
     updated_at: task.updatedAt,
     deleted_at: task.deletedAt,
     device_id: task.deviceId,
+  };
+}
+
+function workoutRecordToRow(
+  record: WorkoutRecord,
+  userId: string,
+): WorkoutRecordRow {
+  return {
+    id: record.id,
+    user_id: userId,
+    date: record.date,
+    workout_type: record.workoutType,
+    category: record.category,
+    exercise_name: record.exerciseName,
+    updated_at: record.updatedAt,
+    deleted_at: record.deletedAt,
+    device_id: record.deviceId,
+  };
+}
+
+function mealRecordToRow(record: MealRecord, userId: string): MealRecordRow {
+  return {
+    id: record.id,
+    user_id: userId,
+    date: record.date,
+    menu: record.menu,
+    calories: record.calories,
+    protein_grams: record.proteinGrams,
+    carbs_grams: record.carbsGrams,
+    fat_grams: record.fatGrams,
+    updated_at: record.updatedAt,
+    deleted_at: record.deletedAt,
+    device_id: record.deviceId,
+  };
+}
+
+function weightRecordToRow(
+  record: WeightRecord,
+  userId: string,
+): WeightRecordRow {
+  return {
+    id: record.id,
+    user_id: userId,
+    date: record.date,
+    weight_kg: record.weightKg,
+    updated_at: record.updatedAt,
+    deleted_at: record.deletedAt,
+    device_id: record.deviceId,
   };
 }
 
@@ -282,6 +436,18 @@ function mergeSnapshot(
   return {
     notes: mergeEntities(localSnapshot.notes, incomingSnapshot.notes),
     tasks: mergeEntities(localSnapshot.tasks, incomingSnapshot.tasks),
+    workoutRecords: mergeEntities(
+      localSnapshot.workoutRecords,
+      incomingSnapshot.workoutRecords,
+    ),
+    mealRecords: mergeEntities(
+      localSnapshot.mealRecords,
+      incomingSnapshot.mealRecords,
+    ),
+    weightRecords: mergeEntities(
+      localSnapshot.weightRecords,
+      incomingSnapshot.weightRecords,
+    ),
     devices: mergeDevices(localSnapshot.devices, incomingSnapshot.devices),
   };
 }
@@ -308,6 +474,36 @@ function applyRemoteTask(
   };
 }
 
+function applyRemoteWorkoutRecord(
+  snapshot: LocalDataSnapshot,
+  remoteRecord: WorkoutRecord,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workoutRecords: mergeEntities(snapshot.workoutRecords, [remoteRecord]),
+  };
+}
+
+function applyRemoteMealRecord(
+  snapshot: LocalDataSnapshot,
+  remoteRecord: MealRecord,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    mealRecords: mergeEntities(snapshot.mealRecords, [remoteRecord]),
+  };
+}
+
+function applyRemoteWeightRecord(
+  snapshot: LocalDataSnapshot,
+  remoteRecord: WeightRecord,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    weightRecords: mergeEntities(snapshot.weightRecords, [remoteRecord]),
+  };
+}
+
 // Supabase 에러와 unknown 예외를 UI에 표시 가능한 문자열로 통일한다.
 function toErrorMessage(caughtError: unknown): string {
   if (caughtError instanceof Error) {
@@ -320,7 +516,13 @@ function toErrorMessage(caughtError: unknown): string {
 // supabase-js의 from().upsert 타입을 테이블별 row 타입으로 좁혀 사용한다.
 function upsertTable<Row>(
   supabase: SupabaseClient,
-  tableName: "notes" | "tasks" | "devices",
+  tableName:
+    | "notes"
+    | "tasks"
+    | "devices"
+    | "workout_records"
+    | "meal_records"
+    | "weight_records",
 ): UpsertTable<Row> {
   return supabase.from(tableName) as unknown as UpsertTable<Row>;
 }
@@ -410,13 +612,32 @@ export class SupabaseSyncClient implements SyncClient {
     this.status = toConfiguredStatus("syncing", "Supabase에서 변경사항을 가져오는 중입니다.", this.status.lastSyncedAt);
 
     try {
-      const [notesResult, tasksResult, devicesResult] = await Promise.all([
+      const [
+        notesResult,
+        tasksResult,
+        workoutRecordsResult,
+        mealRecordsResult,
+        weightRecordsResult,
+        devicesResult,
+      ] = await Promise.all([
         this.supabase
           .from("notes")
           .select("*")
           .eq("user_id", context.userId),
         this.supabase
           .from("tasks")
+          .select("*")
+          .eq("user_id", context.userId),
+        this.supabase
+          .from("workout_records")
+          .select("*")
+          .eq("user_id", context.userId),
+        this.supabase
+          .from("meal_records")
+          .select("*")
+          .eq("user_id", context.userId),
+        this.supabase
+          .from("weight_records")
           .select("*")
           .eq("user_id", context.userId),
         this.supabase
@@ -433,6 +654,18 @@ export class SupabaseSyncClient implements SyncClient {
         throw tasksResult.error;
       }
 
+      if (workoutRecordsResult.error) {
+        throw workoutRecordsResult.error;
+      }
+
+      if (mealRecordsResult.error) {
+        throw mealRecordsResult.error;
+      }
+
+      if (weightRecordsResult.error) {
+        throw weightRecordsResult.error;
+      }
+
       if (devicesResult.error) {
         throw devicesResult.error;
       }
@@ -440,6 +673,13 @@ export class SupabaseSyncClient implements SyncClient {
       const incomingSnapshot: LocalDataSnapshot = {
         notes: (notesResult.data ?? []).map(noteFromRow),
         tasks: (tasksResult.data ?? []).map(taskFromRow),
+        workoutRecords: (workoutRecordsResult.data ?? []).map(
+          workoutRecordFromRow,
+        ),
+        mealRecords: (mealRecordsResult.data ?? []).map(mealRecordFromRow),
+        weightRecords: (weightRecordsResult.data ?? []).map(
+          weightRecordFromRow,
+        ),
         devices: (devicesResult.data ?? []).map(deviceFromRow),
       };
       const mergedSnapshot = mergeSnapshot(localSnapshot, incomingSnapshot);
@@ -490,6 +730,15 @@ export class SupabaseSyncClient implements SyncClient {
       const ownTasks = localSnapshot.tasks
         .filter((task) => task.deviceId === context.device.id)
         .map((task) => taskToRow(task, context.userId));
+      const ownWorkoutRecords = localSnapshot.workoutRecords
+        .filter((record) => record.deviceId === context.device.id)
+        .map((record) => workoutRecordToRow(record, context.userId));
+      const ownMealRecords = localSnapshot.mealRecords
+        .filter((record) => record.deviceId === context.device.id)
+        .map((record) => mealRecordToRow(record, context.userId));
+      const ownWeightRecords = localSnapshot.weightRecords
+        .filter((record) => record.deviceId === context.device.id)
+        .map((record) => weightRecordToRow(record, context.userId));
       let changedRows = 0;
 
       const deviceResult = await upsertTable<DeviceRow>(
@@ -529,6 +778,45 @@ export class SupabaseSyncClient implements SyncClient {
         }
 
         changedRows += ownTasks.length;
+      }
+
+      if (ownWorkoutRecords.length > 0) {
+        const workoutRecordsResult = await upsertTable<WorkoutRecordRow>(
+          this.supabase,
+          "workout_records",
+        ).upsert(ownWorkoutRecords, { onConflict: "id" });
+
+        if (workoutRecordsResult.error) {
+          throw workoutRecordsResult.error;
+        }
+
+        changedRows += ownWorkoutRecords.length;
+      }
+
+      if (ownMealRecords.length > 0) {
+        const mealRecordsResult = await upsertTable<MealRecordRow>(
+          this.supabase,
+          "meal_records",
+        ).upsert(ownMealRecords, { onConflict: "id" });
+
+        if (mealRecordsResult.error) {
+          throw mealRecordsResult.error;
+        }
+
+        changedRows += ownMealRecords.length;
+      }
+
+      if (ownWeightRecords.length > 0) {
+        const weightRecordsResult = await upsertTable<WeightRecordRow>(
+          this.supabase,
+          "weight_records",
+        ).upsert(ownWeightRecords, { onConflict: "id" });
+
+        if (weightRecordsResult.error) {
+          throw weightRecordsResult.error;
+        }
+
+        changedRows += ownWeightRecords.length;
       }
 
       const now = new Date().toISOString();
@@ -608,6 +896,93 @@ export class SupabaseSyncClient implements SyncClient {
           this.status = toConfiguredStatus(
             "synced",
             "다른 기기의 체크리스트 변경사항을 반영했습니다.",
+            new Date().toISOString(),
+          );
+          onSnapshot(nextSnapshot, this.status);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "workout_records",
+          filter: `user_id=eq.${context.userId}`,
+        },
+        (payload) => {
+          const typedPayload =
+            payload as unknown as PostgresChangePayload<WorkoutRecordRow>;
+          const row = typedPayload.new;
+
+          if (!row || row.device_id === context.device.id) {
+            return;
+          }
+
+          const nextSnapshot = applyRemoteWorkoutRecord(
+            getSnapshot(),
+            workoutRecordFromRow(row),
+          );
+          this.status = toConfiguredStatus(
+            "synced",
+            "다른 기기의 운동 기록 변경을 반영했습니다.",
+            new Date().toISOString(),
+          );
+          onSnapshot(nextSnapshot, this.status);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "meal_records",
+          filter: `user_id=eq.${context.userId}`,
+        },
+        (payload) => {
+          const typedPayload =
+            payload as unknown as PostgresChangePayload<MealRecordRow>;
+          const row = typedPayload.new;
+
+          if (!row || row.device_id === context.device.id) {
+            return;
+          }
+
+          const nextSnapshot = applyRemoteMealRecord(
+            getSnapshot(),
+            mealRecordFromRow(row),
+          );
+          this.status = toConfiguredStatus(
+            "synced",
+            "다른 기기의 식사 기록 변경을 반영했습니다.",
+            new Date().toISOString(),
+          );
+          onSnapshot(nextSnapshot, this.status);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "weight_records",
+          filter: `user_id=eq.${context.userId}`,
+        },
+        (payload) => {
+          const typedPayload =
+            payload as unknown as PostgresChangePayload<WeightRecordRow>;
+          const row = typedPayload.new;
+
+          if (!row || row.device_id === context.device.id) {
+            return;
+          }
+
+          const nextSnapshot = applyRemoteWeightRecord(
+            getSnapshot(),
+            weightRecordFromRow(row),
+          );
+          this.status = toConfiguredStatus(
+            "synced",
+            "다른 기기의 체중 기록 변경을 반영했습니다.",
             new Date().toISOString(),
           );
           onSnapshot(nextSnapshot, this.status);

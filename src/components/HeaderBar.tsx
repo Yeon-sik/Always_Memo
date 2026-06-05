@@ -1,6 +1,7 @@
 import {
   Cloud,
   CloudOff,
+  Dumbbell,
   HardDrive,
   Monitor,
   NotebookTabs,
@@ -11,16 +12,25 @@ import type { Device } from "../types";
 import type { SyncStatus } from "../lib/sync/syncTypes";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
-export type HeaderView = "workspace" | "settings";
+export type HeaderView = "memo" | "fitness" | "settings";
 
 interface HeaderBarProps {
   activeView: HeaderView;
   device: Device | null;
   syncStatus: SyncStatus;
   saveState: SaveState;
-  onShowSettings: () => void;
-  onShowWorkspace: () => void;
+  onChangeView: (view: HeaderView) => void;
 }
+
+const viewItems: Array<{
+  view: HeaderView;
+  label: string;
+  icon: typeof NotebookTabs;
+}> = [
+  { view: "memo", label: "메모", icon: NotebookTabs },
+  { view: "fitness", label: "운동", icon: Dumbbell },
+  { view: "settings", label: "설정", icon: Settings },
+];
 
 function getSaveLabel(saveState: SaveState): string {
   if (saveState === "saving") {
@@ -59,8 +69,7 @@ export function HeaderBar({
   device,
   syncStatus,
   saveState,
-  onShowSettings,
-  onShowWorkspace,
+  onChangeView,
 }: HeaderBarProps) {
   const SyncIcon =
     syncStatus.mode === "offline" || syncStatus.mode === "local-only"
@@ -68,39 +77,53 @@ export function HeaderBar({
       : syncStatus.mode === "syncing"
         ? RefreshCw
         : Cloud;
-  const isSettingsView = activeView === "settings";
 
   return (
     <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-2 dark:border-neutral-900 dark:bg-black">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold tracking-normal text-slate-950 dark:text-neutral-50">
             Yeonsik's Note
           </h1>
           <p className="truncate text-[11px] text-slate-500 dark:text-neutral-400">
-            로컬 우선 메모장
+            로컬 우선 개인 기록 앱
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={isSettingsView ? onShowWorkspace : onShowSettings}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:bg-neutral-900"
-          title={isSettingsView ? "메모로 돌아가기" : "설정 열기"}
-          aria-label={isSettingsView ? "메모로 돌아가기" : "설정 열기"}
+        <nav
+          className="grid h-9 shrink-0 grid-cols-3 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-950"
+          aria-label="주요 화면"
         >
-          {isSettingsView ? (
-            <NotebookTabs className="h-4 w-4" aria-hidden="true" />
-          ) : (
-            <Settings className="h-4 w-4" aria-hidden="true" />
-          )}
-          <span>{isSettingsView ? "메모" : "설정"}</span>
-        </button>
+          {viewItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeView === item.view;
+
+            return (
+              <button
+                key={item.view}
+                type="button"
+                onClick={() => onChangeView(item.view)}
+                className={
+                  isActive
+                    ? "inline-flex min-w-20 items-center justify-center gap-1.5 rounded bg-white px-2 font-semibold text-slate-950 shadow-sm dark:bg-neutral-800 dark:text-neutral-50"
+                    : "inline-flex min-w-20 items-center justify-center gap-1.5 rounded px-2 font-semibold text-slate-500 transition hover:text-slate-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+                }
+                aria-current={isActive ? "page" : undefined}
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
       </div>
 
       <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
         <div className="flex h-8 min-w-0 items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 text-slate-700 dark:border-neutral-800 dark:bg-black dark:text-neutral-300">
-          <Monitor className="h-4 w-4 shrink-0 text-teal-700 dark:text-teal-300" aria-hidden="true" />
+          <Monitor
+            className="h-4 w-4 shrink-0 text-teal-700 dark:text-teal-300"
+            aria-hidden="true"
+          />
           <span className="min-w-0 truncate">
             {device?.name ?? "기기 확인 중"}
           </span>

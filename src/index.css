@@ -38,12 +38,14 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid #0f766e;
   outline-offset: 2px;
@@ -51,4 +53,10 @@ textarea:focus-visible {
 
 ::selection {
   background: rgba(15, 118, 110, 0.16);
+}
+
+@layer components {
+  .field-input {
+    @apply h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 placeholder:text-slate-400 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:placeholder:text-neutral-500;
+  }
 }
