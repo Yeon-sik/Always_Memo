@@ -21,8 +21,11 @@ export interface Task extends SyncableEntity {
   dueTime: string | null;
 }
 
+export type WorkoutType = "strength" | "cardio" | "other";
+
 export interface WorkoutRecord extends SyncableEntity {
   date: string;
+  workoutType: WorkoutType;
   category: string;
   exerciseName: string;
 }

@@ -11,7 +11,12 @@ import {
   Scale,
   Trash2,
 } from "lucide-react";
-import type { MealRecord, WeightRecord, WorkoutRecord } from "../../types";
+import type {
+  MealRecord,
+  WeightRecord,
+  WorkoutRecord,
+  WorkoutType,
+} from "../../types";
 import {
   formatKoreanDate,
   formatLocalDate,
@@ -26,6 +31,12 @@ import {
   createFitnessExportFileName,
   createFitnessMarkdownExport,
 } from "./export/fitnessMarkdownExport";
+import {
+  cardioWorkoutOptions,
+  getWorkoutSubcategoryLabel,
+  getWorkoutTypeLabel,
+  workoutTypeLabels,
+} from "./fitnessService";
 
 interface FitnessPanelProps {
   mealRecords: MealRecord[];
@@ -40,6 +51,7 @@ interface FitnessPanelProps {
   onAddWeightRecord: (date: string, weightKg: number) => void;
   onAddWorkoutRecord: (
     date: string,
+    workoutType: WorkoutType,
     category: string,
     exerciseName: string,
   ) => void;
@@ -51,6 +63,7 @@ interface FitnessPanelProps {
 type ActionPanel = "stats" | "export" | null;
 
 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
+const workoutTypeOptions: WorkoutType[] = ["strength", "cardio", "other"];
 
 function getMonthCells(monthDate: Date): Array<string | null> {
   const year = monthDate.getFullYear();
@@ -147,7 +160,11 @@ export function FitnessPanel({
   );
   const [rangeEndDate, setRangeEndDate] = useState(currentMonthRange.endDate);
   const [workoutDate, setWorkoutDate] = useState(today);
+  const [workoutType, setWorkoutType] = useState<WorkoutType>("strength");
   const [workoutCategory, setWorkoutCategory] = useState("");
+  const [workoutCardioType, setWorkoutCardioType] = useState<string>(
+    cardioWorkoutOptions[0],
+  );
   const [workoutExerciseName, setWorkoutExerciseName] = useState("");
   const [mealDate, setMealDate] = useState(today);
   const [mealMenu, setMealMenu] = useState("");
@@ -222,16 +239,49 @@ export function FitnessPanel({
   function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!workoutDate || !workoutCategory.trim() || !workoutExerciseName.trim()) {
-      setFormError("운동 기록은 날짜, 부위/카테고리, 운동명이 필요합니다.");
+    if (!workoutDate) {
+      setFormError("운동 기록은 날짜가 필요합니다.");
       return;
     }
 
-    onAddWorkoutRecord(
-      workoutDate,
-      workoutCategory.trim(),
-      workoutExerciseName.trim(),
-    );
+    if (workoutType === "strength") {
+      if (!workoutCategory.trim() || !workoutExerciseName.trim()) {
+        setFormError("헬스 기록은 어디와 무슨 운동이 필요합니다.");
+        return;
+      }
+
+      onAddWorkoutRecord(
+        workoutDate,
+        workoutType,
+        workoutCategory.trim(),
+        workoutExerciseName.trim(),
+      );
+    } else if (workoutType === "cardio") {
+      if (!workoutCardioType) {
+        setFormError("유산소 기록은 종류 선택이 필요합니다.");
+        return;
+      }
+
+      onAddWorkoutRecord(
+        workoutDate,
+        workoutType,
+        workoutCardioType,
+        workoutCardioType,
+      );
+    } else {
+      if (!workoutExerciseName.trim()) {
+        setFormError("기타 기록은 무슨 운동인지 필요합니다.");
+        return;
+      }
+
+      onAddWorkoutRecord(
+        workoutDate,
+        workoutType,
+        "기타",
+        workoutExerciseName.trim(),
+      );
+    }
+
     setWorkoutCategory("");
     setWorkoutExerciseName("");
     setFormError(null);
@@ -361,12 +411,12 @@ export function FitnessPanel({
                   {stats.workoutTotal}회
                 </p>
                 <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-neutral-400">
-                  {stats.workoutByCategory.length === 0 ? (
+                  {stats.workoutBySubcategory.length === 0 ? (
                     <p>기록 없음</p>
                   ) : (
-                    stats.workoutByCategory.map((item) => (
-                      <p key={item.category}>
-                        {item.category}: {item.count}회
+                    stats.workoutBySubcategory.map((item) => (
+                      <p key={item.label}>
+                        {item.label}: {item.count}회
                       </p>
                     ))
                   )}
@@ -526,10 +576,15 @@ export function FitnessPanel({
               records={selectedWorkoutRecords}
               renderRecord={(record) => (
                 <>
-                  <span className="font-semibold">{record.category}</span>
-                  <span className="text-slate-500 dark:text-neutral-400">
-                    {record.exerciseName}
+                  <span className="font-semibold">
+                    {getWorkoutTypeLabel(record)} -{" "}
+                    {getWorkoutSubcategoryLabel(record)}
                   </span>
+                  {record.workoutType === "strength" ? (
+                    <span className="text-slate-500 dark:text-neutral-400">
+                      {record.exerciseName}
+                    </span>
+                  ) : null}
                 </>
               )}
               onDelete={onDeleteWorkoutRecord}
@@ -589,22 +644,69 @@ export function FitnessPanel({
               className="field-input"
             />
           </FieldLabel>
-          <FieldLabel label="어디">
-            <input
-              value={workoutCategory}
-              onChange={(event) => setWorkoutCategory(event.target.value)}
+          <FieldLabel label="대분류">
+            <select
+              value={workoutType}
+              onChange={(event) => {
+                setWorkoutType(event.target.value as WorkoutType);
+                setFormError(null);
+              }}
               className="field-input"
-              placeholder="가슴, 등, 하체"
-            />
+            >
+              {workoutTypeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {workoutTypeLabels[type]}
+                </option>
+              ))}
+            </select>
           </FieldLabel>
-          <FieldLabel label="무슨 운동">
-            <input
-              value={workoutExerciseName}
-              onChange={(event) => setWorkoutExerciseName(event.target.value)}
-              className="field-input"
-              placeholder="벤치프레스"
-            />
-          </FieldLabel>
+          {workoutType === "strength" ? (
+            <>
+              <FieldLabel label="어디">
+                <input
+                  value={workoutCategory}
+                  onChange={(event) => setWorkoutCategory(event.target.value)}
+                  className="field-input"
+                  placeholder="가슴, 등, 하체"
+                />
+              </FieldLabel>
+              <FieldLabel label="무슨 운동">
+                <input
+                  value={workoutExerciseName}
+                  onChange={(event) =>
+                    setWorkoutExerciseName(event.target.value)
+                  }
+                  className="field-input"
+                  placeholder="벤치프레스"
+                />
+              </FieldLabel>
+            </>
+          ) : null}
+          {workoutType === "cardio" ? (
+            <FieldLabel label="유산소 종류">
+              <select
+                value={workoutCardioType}
+                onChange={(event) => setWorkoutCardioType(event.target.value)}
+                className="field-input"
+              >
+                {cardioWorkoutOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </FieldLabel>
+          ) : null}
+          {workoutType === "other" ? (
+            <FieldLabel label="무슨 운동">
+              <input
+                value={workoutExerciseName}
+                onChange={(event) => setWorkoutExerciseName(event.target.value)}
+                className="field-input"
+                placeholder="클라이밍, 스트레칭"
+              />
+            </FieldLabel>
+          ) : null}
           <SubmitButton label="운동 추가" />
         </form>
 

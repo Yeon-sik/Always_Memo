@@ -1,10 +1,10 @@
 import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
 import { isWithinDateRange } from "../fitnessDate";
+import { getWorkoutStatsLabel } from "../fitnessService";
 
 export interface FitnessStats {
   workoutTotal: number;
-  workoutByCategory: Array<{ category: string; count: number }>;
-  workoutByExercise: Array<{ exerciseName: string; count: number }>;
+  workoutBySubcategory: Array<{ label: string; count: number }>;
   mealCount: number;
   averageCalories: number | null;
   averageProteinGrams: number | null;
@@ -65,20 +65,12 @@ export function calculateFitnessStats(
   const rangedMeals = getRecordsInRange(mealRecords, startDate, endDate);
   const rangedWeights = getRecordsInRange(weightRecords, startDate, endDate);
   const weightValues = rangedWeights.map((record) => record.weightKg);
-  const workoutByCategory = countBy(rangedWorkouts, (record) => record.category);
-  const workoutByExercise = countBy(
-    rangedWorkouts,
-    (record) => record.exerciseName,
-  );
+  const workoutBySubcategory = countBy(rangedWorkouts, getWorkoutStatsLabel);
 
   return {
     workoutTotal: rangedWorkouts.length,
-    workoutByCategory: workoutByCategory.map(({ key, count }) => ({
-      category: key,
-      count,
-    })),
-    workoutByExercise: workoutByExercise.map(({ key, count }) => ({
-      exerciseName: key,
+    workoutBySubcategory: workoutBySubcategory.map(({ key, count }) => ({
+      label: key,
       count,
     })),
     mealCount: rangedMeals.length,

@@ -6,6 +6,7 @@ import type {
   Task,
   WeightRecord,
   WorkoutRecord,
+  WorkoutType,
 } from "../../types";
 import { createEmptySnapshot, type StorageAdapter } from "./storageAdapter";
 
@@ -89,9 +90,15 @@ function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
   const deletedAt = value.deletedAt as string | null;
   const deviceId = value.deviceId as string;
 
+  const workoutType: WorkoutType =
+    value.workoutType === "cardio" || value.workoutType === "other"
+      ? value.workoutType
+      : "strength";
+
   return {
     id,
     date: value.date,
+    workoutType,
     category: value.category,
     exerciseName: value.exerciseName,
     updatedAt,

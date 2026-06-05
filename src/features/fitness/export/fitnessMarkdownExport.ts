@@ -1,5 +1,9 @@
 import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
 import { formatKoreanDate, isWithinDateRange } from "../fitnessDate";
+import {
+  getWorkoutSubcategoryLabel,
+  getWorkoutTypeLabel,
+} from "../fitnessService";
 import { calculateFitnessStats, formatMetric } from "../stats/fitnessStats";
 
 interface FitnessExportInput {
@@ -100,11 +104,11 @@ export function createFitnessMarkdownExport({
     "",
   ];
 
-  if (stats.workoutByCategory.length > 0) {
-    lines.push("### 운동 카테고리별 총합", "");
+  if (stats.workoutBySubcategory.length > 0) {
+    lines.push("### 운동 소분류별 총합", "");
 
-    for (const item of stats.workoutByCategory) {
-      lines.push(`- ${item.category}: ${item.count}회`);
+    for (const item of stats.workoutBySubcategory) {
+      lines.push(`- ${item.label}: ${item.count}회`);
     }
 
     lines.push("");
@@ -114,7 +118,15 @@ export function createFitnessMarkdownExport({
     lines,
     "운동",
     rangedWorkouts,
-    (record) => `- ${record.category}: ${record.exerciseName}`,
+    (record) => {
+      const groupLabel = `${getWorkoutTypeLabel(
+        record,
+      )} - ${getWorkoutSubcategoryLabel(record)}`;
+
+      return record.workoutType === "strength"
+        ? `- ${groupLabel}: ${record.exerciseName}`
+        : `- ${groupLabel}`;
+    },
   );
   appendEmptyAwareSection(
     lines,

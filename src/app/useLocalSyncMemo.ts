@@ -13,6 +13,7 @@ import type {
   Task,
   WeightRecord,
   WorkoutRecord,
+  WorkoutType,
 } from "../types";
 import { getOrCreateDevice, upsertDevice } from "../lib/device/device";
 import type { StorageAdapter } from "../lib/storage/storageAdapter";
@@ -97,6 +98,7 @@ interface UseLocalSyncMemoActions {
   addWeightRecord: (date: string, weightKg: number) => void;
   addWorkoutRecord: (
     date: string,
+    workoutType: WorkoutType,
     category: string,
     exerciseName: string,
   ) => void;
@@ -765,13 +767,19 @@ export function useLocalSyncMemo(
   );
 
   const addWorkoutRecord = useCallback(
-    (date: string, category: string, exerciseName: string) => {
+    (
+      date: string,
+      workoutType: WorkoutType,
+      category: string,
+      exerciseName: string,
+    ) => {
       if (!device) {
         return;
       }
 
       const record = createWorkoutRecord(
         date,
+        workoutType,
         category,
         exerciseName,
         device.id,

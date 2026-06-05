@@ -9,4 +9,5 @@ export type {
   Task,
   WeightRecord,
   WorkoutRecord,
+  WorkoutType,
 } from "./entities";
