@@ -50,7 +50,7 @@ only when the panel becomes difficult to scan or test.
 - Workout record creation and display.
 - Fields: date, workout type, subcategory, exercise name.
 - Workout type options: strength, cardio, other.
-- Strength records use `where` as the subcategory and still store the exercise name.
+- Strength records use `where` as the subcategory and do not ask for the exact exercise name in V1.
 - Cardio records use the fixed cardio option as the subcategory.
 - Other records use the entered exercise name as the subcategory.
 - No sets, reps, exercise load, or routine logic in V1.

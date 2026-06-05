@@ -245,8 +245,8 @@ export function FitnessPanel({
     }
 
     if (workoutType === "strength") {
-      if (!workoutCategory.trim() || !workoutExerciseName.trim()) {
-        setFormError("헬스 기록은 어디와 무슨 운동이 필요합니다.");
+      if (!workoutCategory.trim()) {
+        setFormError("헬스 기록은 어디가 필요합니다.");
         return;
       }
 
@@ -254,7 +254,7 @@ export function FitnessPanel({
         workoutDate,
         workoutType,
         workoutCategory.trim(),
-        workoutExerciseName.trim(),
+        workoutCategory.trim(),
       );
     } else if (workoutType === "cardio") {
       if (!workoutCardioType) {
@@ -580,11 +580,6 @@ export function FitnessPanel({
                     {getWorkoutTypeLabel(record)} -{" "}
                     {getWorkoutSubcategoryLabel(record)}
                   </span>
-                  {record.workoutType === "strength" ? (
-                    <span className="text-slate-500 dark:text-neutral-400">
-                      {record.exerciseName}
-                    </span>
-                  ) : null}
                 </>
               )}
               onDelete={onDeleteWorkoutRecord}
@@ -661,26 +656,14 @@ export function FitnessPanel({
             </select>
           </FieldLabel>
           {workoutType === "strength" ? (
-            <>
-              <FieldLabel label="어디">
-                <input
-                  value={workoutCategory}
-                  onChange={(event) => setWorkoutCategory(event.target.value)}
-                  className="field-input"
-                  placeholder="가슴, 등, 하체"
-                />
-              </FieldLabel>
-              <FieldLabel label="무슨 운동">
-                <input
-                  value={workoutExerciseName}
-                  onChange={(event) =>
-                    setWorkoutExerciseName(event.target.value)
-                  }
-                  className="field-input"
-                  placeholder="벤치프레스"
-                />
-              </FieldLabel>
-            </>
+            <FieldLabel label="어디">
+              <input
+                value={workoutCategory}
+                onChange={(event) => setWorkoutCategory(event.target.value)}
+                className="field-input"
+                placeholder="가슴, 등, 하체"
+              />
+            </FieldLabel>
           ) : null}
           {workoutType === "cardio" ? (
             <FieldLabel label="유산소 종류">

@@ -123,9 +123,7 @@ export function createFitnessMarkdownExport({
         record,
       )} - ${getWorkoutSubcategoryLabel(record)}`;
 
-      return record.workoutType === "strength"
-        ? `- ${groupLabel}: ${record.exerciseName}`
-        : `- ${groupLabel}`;
+      return `- ${groupLabel}`;
     },
   );
   appendEmptyAwareSection(

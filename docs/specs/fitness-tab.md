@@ -110,7 +110,7 @@ create table if not exists public.workout_records (
 ```
 
 For `strength`, `category` means the user's "where" field, for example chest, back, legs,
-shoulders, arms, or core, and `exerciseName` stores the actual exercise.
+shoulders, arms, or core. The V1 UI does not ask for the exact strength exercise name.
 For `cardio`, `category` stores the fixed cardio option and `exerciseName` can mirror it.
 For `other`, `category` can be `기타` and `exerciseName` stores the user's custom workout name.
 
@@ -209,7 +209,7 @@ Below the calendar, provide three compact add flows:
 1. Add workout record
    - date
    - workout type
-   - strength: where and exercise name
+   - strength: where
    - cardio: fixed cardio option
    - other: exercise name
 
@@ -340,8 +340,8 @@ Example outline:
 
 ### 2026-06-05
 
-- 가슴: 벤치프레스
-- 유산소: 러닝
+- 헬스 - 가슴운동
+- 유산소 - 실내 달리기
 
 ## 식사
 
