@@ -683,27 +683,25 @@ export function FitnessPanel({
               <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-neutral-300">
                 어디
               </div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
                 {strengthWorkoutParts.map((part) => {
                   const isSelected = selectedStrengthParts.includes(part);
 
                   return (
-                    <label
+                    <button
+                      type="button"
                       key={part}
+                      aria-pressed={isSelected}
+                      title={part}
+                      onClick={() => toggleStrengthPart(part)}
                       className={
                         isSelected
-                          ? "flex min-h-9 items-center gap-2 rounded-md border border-teal-500 bg-teal-50 px-2 text-sm font-semibold text-teal-900 dark:border-teal-500 dark:bg-teal-950/40 dark:text-teal-100"
-                          : "flex min-h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-2 text-sm font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
+                          ? "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-teal-500 bg-teal-50 px-1 text-xs font-semibold text-teal-900 dark:border-teal-500 dark:bg-teal-950/40 dark:text-teal-100"
+                          : "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-slate-300 bg-white px-1 text-xs font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
                       }
                     >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => toggleStrengthPart(part)}
-                        className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-700"
-                      />
-                      <span>{part}</span>
-                    </label>
+                      <span className="whitespace-nowrap leading-none">{part}</span>
+                    </button>
                   );
                 })}
               </div>
