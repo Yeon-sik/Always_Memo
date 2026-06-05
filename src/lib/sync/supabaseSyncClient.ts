@@ -282,6 +282,18 @@ function mergeSnapshot(
   return {
     notes: mergeEntities(localSnapshot.notes, incomingSnapshot.notes),
     tasks: mergeEntities(localSnapshot.tasks, incomingSnapshot.tasks),
+    workoutRecords: mergeEntities(
+      localSnapshot.workoutRecords,
+      incomingSnapshot.workoutRecords,
+    ),
+    mealRecords: mergeEntities(
+      localSnapshot.mealRecords,
+      incomingSnapshot.mealRecords,
+    ),
+    weightRecords: mergeEntities(
+      localSnapshot.weightRecords,
+      incomingSnapshot.weightRecords,
+    ),
     devices: mergeDevices(localSnapshot.devices, incomingSnapshot.devices),
   };
 }
@@ -440,6 +452,9 @@ export class SupabaseSyncClient implements SyncClient {
       const incomingSnapshot: LocalDataSnapshot = {
         notes: (notesResult.data ?? []).map(noteFromRow),
         tasks: (tasksResult.data ?? []).map(taskFromRow),
+        workoutRecords: [],
+        mealRecords: [],
+        weightRecords: [],
         devices: (devicesResult.data ?? []).map(deviceFromRow),
       };
       const mergedSnapshot = mergeSnapshot(localSnapshot, incomingSnapshot);

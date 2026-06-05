@@ -1,4 +1,12 @@
-import type { Device, LocalDataSnapshot, Note, Task } from "../../types";
+import type {
+  Device,
+  LocalDataSnapshot,
+  MealRecord,
+  Note,
+  Task,
+  WeightRecord,
+  WorkoutRecord,
+} from "../../types";
 import { createEmptySnapshot, type StorageAdapter } from "./storageAdapter";
 
 const STORAGE_KEY = "localsyncmemo:snapshot:v1";
@@ -8,56 +16,143 @@ interface StoredEnvelope {
   snapshot: LocalDataSnapshot;
 }
 
-// localStorage에서 읽은 JSON은 unknown이므로 런타임 타입 가드로 검증한다.
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isSyncableEntity(value: Record<string, unknown>): boolean {
+  return (
+    typeof value.id === "string" &&
+    typeof value.updatedAt === "string" &&
+    isNullableString(value.deletedAt) &&
+    typeof value.deviceId === "string"
+  );
 }
 
 function isNote(value: unknown): value is Note {
   return (
     isRecord(value) &&
-    typeof value.id === "string" &&
+    isSyncableEntity(value) &&
     typeof value.title === "string" &&
-    typeof value.content === "string" &&
-    typeof value.updatedAt === "string" &&
-    (typeof value.deletedAt === "string" || value.deletedAt === null) &&
-    typeof value.deviceId === "string"
+    typeof value.content === "string"
   );
 }
 
 function normalizeTask(value: unknown): Task | null {
   if (
     !isRecord(value) ||
-    typeof value.id !== "string" ||
+    !isSyncableEntity(value) ||
     typeof value.text !== "string" ||
     typeof value.isDone !== "boolean" ||
-    typeof value.orderIndex !== "number" ||
-    typeof value.updatedAt !== "string" ||
-    !(typeof value.deletedAt === "string" || value.deletedAt === null) ||
-    typeof value.deviceId !== "string"
+    typeof value.orderIndex !== "number"
   ) {
     return null;
   }
 
-  const dueDate =
-    typeof value.dueDate === "string" || value.dueDate === null
-      ? value.dueDate
-      : null;
-  const dueTime =
-    typeof value.dueTime === "string" || value.dueTime === null
-      ? value.dueTime
-      : null;
+  const dueDate = isNullableString(value.dueDate) ? value.dueDate : null;
+  const dueTime = isNullableString(value.dueTime) ? value.dueTime : null;
+  const id = value.id as string;
+  const updatedAt = value.updatedAt as string;
+  const deletedAt = value.deletedAt as string | null;
+  const deviceId = value.deviceId as string;
 
   return {
-    id: value.id,
+    id,
     text: value.text,
     isDone: value.isDone,
     orderIndex: value.orderIndex,
     dueDate,
     dueTime,
-    updatedAt: value.updatedAt,
-    deletedAt: value.deletedAt,
-    deviceId: value.deviceId,
+    updatedAt,
+    deletedAt,
+    deviceId,
+  };
+}
+
+function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.date !== "string" ||
+    typeof value.category !== "string" ||
+    typeof value.exerciseName !== "string"
+  ) {
+    return null;
+  }
+
+  const id = value.id as string;
+  const updatedAt = value.updatedAt as string;
+  const deletedAt = value.deletedAt as string | null;
+  const deviceId = value.deviceId as string;
+
+  return {
+    id,
+    date: value.date,
+    category: value.category,
+    exerciseName: value.exerciseName,
+    updatedAt,
+    deletedAt,
+    deviceId,
+  };
+}
+
+function normalizeMealRecord(value: unknown): MealRecord | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.date !== "string" ||
+    typeof value.menu !== "string" ||
+    typeof value.calories !== "number" ||
+    typeof value.proteinGrams !== "number"
+  ) {
+    return null;
+  }
+
+  const id = value.id as string;
+  const updatedAt = value.updatedAt as string;
+  const deletedAt = value.deletedAt as string | null;
+  const deviceId = value.deviceId as string;
+
+  return {
+    id,
+    date: value.date,
+    menu: value.menu,
+    calories: value.calories,
+    proteinGrams: value.proteinGrams,
+    carbsGrams: typeof value.carbsGrams === "number" ? value.carbsGrams : null,
+    fatGrams: typeof value.fatGrams === "number" ? value.fatGrams : null,
+    updatedAt,
+    deletedAt,
+    deviceId,
+  };
+}
+
+function normalizeWeightRecord(value: unknown): WeightRecord | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.date !== "string" ||
+    typeof value.weightKg !== "number"
+  ) {
+    return null;
+  }
+
+  const id = value.id as string;
+  const updatedAt = value.updatedAt as string;
+  const deletedAt = value.deletedAt as string | null;
+  const deviceId = value.deviceId as string;
+
+  return {
+    id,
+    date: value.date,
+    weightKg: value.weightKg,
+    updatedAt,
+    deletedAt,
+    deviceId,
   };
 }
 
@@ -73,27 +168,50 @@ function isDevice(value: unknown): value is Device {
   );
 }
 
-// 저장된 스냅샷에서 잘못된 row는 버리고 앱이 로드 가능한 데이터만 남긴다.
+function normalizeArray<T>(
+  value: unknown,
+  normalize: (item: unknown) => T | null,
+): T[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    const normalized = normalize(item);
+    return normalized ? [normalized] : [];
+  });
+}
+
 function normalizeSnapshot(value: unknown): LocalDataSnapshot {
   if (!isRecord(value)) {
     return createEmptySnapshot();
   }
 
   const notes = Array.isArray(value.notes) ? value.notes.filter(isNote) : [];
-  const tasks = Array.isArray(value.tasks)
-    ? value.tasks.flatMap((task) => {
-        const normalizedTask = normalizeTask(task);
-        return normalizedTask ? [normalizedTask] : [];
-      })
-    : [];
+  const tasks = normalizeArray(value.tasks, normalizeTask);
+  const workoutRecords = normalizeArray(
+    value.workoutRecords,
+    normalizeWorkoutRecord,
+  );
+  const mealRecords = normalizeArray(value.mealRecords, normalizeMealRecord);
+  const weightRecords = normalizeArray(
+    value.weightRecords,
+    normalizeWeightRecord,
+  );
   const devices = Array.isArray(value.devices)
     ? value.devices.filter(isDevice)
     : [];
 
-  return { notes, tasks, devices };
+  return {
+    notes,
+    tasks,
+    workoutRecords,
+    mealRecords,
+    weightRecords,
+    devices,
+  };
 }
 
-// v1 envelope와 초기 개발 중 저장했을 수 있는 raw snapshot 형태를 모두 읽는다.
 function parseStoredValue(rawValue: string): LocalDataSnapshot {
   const parsed = JSON.parse(rawValue) as unknown;
 
@@ -104,7 +222,6 @@ function parseStoredValue(rawValue: string): LocalDataSnapshot {
   return normalizeSnapshot(parsed);
 }
 
-// 브라우저 localStorage에 앱 전체 스냅샷을 저장하는 로컬 우선 저장소다.
 export class LocalStorageAdapter implements StorageAdapter {
   async load(): Promise<LocalDataSnapshot> {
     if (typeof window === "undefined") {

@@ -12,6 +12,9 @@ export function createEmptySnapshot(): LocalDataSnapshot {
   return {
     notes: [],
     tasks: [],
+    workoutRecords: [],
+    mealRecords: [],
+    weightRecords: [],
     devices: [],
   };
 }
