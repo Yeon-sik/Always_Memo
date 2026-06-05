@@ -68,7 +68,7 @@ const markerStyles: Array<{
   {
     key: "task",
     label: "할 일",
-    className: "bg-slate-950 dark:bg-neutral-100",
+    className: "bg-sky-400",
   },
   {
     key: "workout",

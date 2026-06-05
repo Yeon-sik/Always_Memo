@@ -62,7 +62,7 @@ function groupMarkersByDate({
   }
 
   for (const task of tasks) {
-    if (task.dueDate) {
+    if (!task.isDone && task.dueDate) {
       ensure(task.dueDate).task = true;
     }
   }
@@ -87,6 +87,20 @@ function formatTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function isPendingTaskForDate(task: Task, referenceDate: string): boolean {
+  return !task.isDone && task.dueDate !== null && task.dueDate >= referenceDate;
+}
+
+function formatTaskDueLabel(task: Task): string {
+  if (!task.dueDate) {
+    return "기한 없음";
+  }
+
+  return task.dueTime
+    ? `${formatKoreanDate(task.dueDate)} ${task.dueTime} 마감`
+    : `${formatKoreanDate(task.dueDate)} 마감`;
 }
 
 export function RecordsPanel({
@@ -120,8 +134,15 @@ export function RecordsPanel({
   const selectedTasks = useMemo(
     () =>
       tasks
-        .filter((task) => task.dueDate === selectedDate)
+        .filter((task) => isPendingTaskForDate(task, selectedDate))
         .sort((first, second) => {
+          const firstDate = first.dueDate ?? "";
+          const secondDate = second.dueDate ?? "";
+
+          if (firstDate !== secondDate) {
+            return firstDate.localeCompare(secondDate);
+          }
+
           const firstTime = first.dueTime ?? "99:99";
           const secondTime = second.dueTime ?? "99:99";
 
@@ -183,7 +204,7 @@ export function RecordsPanel({
               {selectedDate === today ? "오늘 일정" : formatKoreanDate(selectedDate)}
             </h3>
             <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-              메모, 할 일, 운동 기록을 날짜 기준으로 모았습니다.
+              메모, 기한이 남은 할 일, 운동 기록을 모았습니다.
             </p>
           </div>
           <MarkerLegend />
@@ -214,22 +235,16 @@ export function RecordsPanel({
           <DailySection
             title="할 일"
             count={selectedTasks.length}
-            emptyText="이 날짜의 할 일이 없습니다."
-            icon={<CheckSquare className="h-4 w-4 text-slate-950 dark:text-neutral-100" />}
+            emptyText="기한이 남은 미해결 할 일이 없습니다."
+            icon={<CheckSquare className="h-4 w-4 text-sky-500" />}
           >
             {selectedTasks.map((task) => (
-              <DailyItem key={task.id} markerClassName="bg-slate-950 dark:bg-neutral-100">
-                <div
-                  className={
-                    task.isDone
-                      ? "truncate text-sm font-semibold text-slate-400 line-through dark:text-neutral-500"
-                      : "truncate text-sm font-semibold text-slate-900 dark:text-neutral-100"
-                  }
-                >
+              <DailyItem key={task.id} markerClassName="bg-sky-400">
+                <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {task.text}
                 </div>
                 <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-                  {task.dueTime ? `${task.dueTime} 예정` : "시간 없음"}
+                  {formatTaskDueLabel(task)}
                 </div>
               </DailyItem>
             ))}
@@ -293,7 +308,7 @@ function MarkerLegend() {
   return (
     <div className="flex shrink-0 items-center gap-1.5" aria-label="달력 표시 범례">
       <span className="h-2 w-2 rounded-full border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100" />
-      <span className="h-2 w-2 rounded-full bg-slate-950 dark:bg-neutral-100" />
+      <span className="h-2 w-2 rounded-full bg-sky-400" />
       <span className="h-2 w-2 rounded-full bg-red-500" />
       <span className="h-2 w-2 rounded-full bg-yellow-400" />
       <span className="h-2 w-2 rounded-full bg-emerald-500" />
