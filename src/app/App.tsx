@@ -17,8 +17,8 @@ export function App() {
   const [selectedDate, setSelectedDate] = useState(formatLocalDate());
 
   return (
-    <div className="flex h-screen min-h-[640px] min-w-[420px] justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
-      <div className="flex h-full w-full max-w-[520px] flex-col border-x border-slate-300 bg-slate-100 shadow-panel dark:border-neutral-800 dark:bg-black dark:shadow-none">
+    <div className="app-shell flex w-full min-w-0 justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
+      <div className="flex h-full min-h-0 w-full max-w-[520px] min-w-0 flex-col border-x border-slate-300 bg-slate-100 shadow-panel dark:border-neutral-800 dark:bg-black dark:shadow-none">
         <HeaderBar
           activeView={activeView}
           device={memo.device}
