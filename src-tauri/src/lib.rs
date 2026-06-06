@@ -1,11 +1,11 @@
 use std::{collections::HashMap, env, fs, path::PathBuf};
 
+#[cfg(desktop)]
 use tauri::{
-    AppHandle,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
 };
+use tauri::{AppHandle, Manager};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +94,10 @@ fn runtime_env_candidates(app: &AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
-fn config_from_values(values: HashMap<String, String>, source_path: Option<String>) -> RuntimeConfig {
+fn config_from_values(
+    values: HashMap<String, String>,
+    source_path: Option<String>,
+) -> RuntimeConfig {
     RuntimeConfig {
         supabase_url: first_env_value(&values, &["SUPABASE_URL", "VITE_SUPABASE_URL"]),
         supabase_anon_key: first_env_value(
@@ -126,6 +129,7 @@ fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
 }
 
 // 트레이 메뉴나 아이콘 클릭 시 숨겨진 메인 창을 다시 앞으로 가져온다.
+#[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -135,6 +139,7 @@ fn show_main_window(app: &tauri::AppHandle) {
 }
 
 // 창을 종료하지 않고 트레이에 남기기 위해 메인 창만 숨긴다.
+#[cfg(desktop)]
 fn hide_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -182,29 +187,33 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Tauri 런타임 진입점: opener/autostart 플러그인, tray, 닫기 동작을 연결한다.
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![load_runtime_config])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(desktop)]
             {
                 use tauri_plugin_autostart::MacosLauncher;
 
-                app.handle().plugin(tauri_plugin_autostart::init(
+                _app.handle().plugin(tauri_plugin_autostart::init(
                     MacosLauncher::LaunchAgent,
                     None::<Vec<&str>>,
                 ))?;
-                setup_tray(app)?;
+                setup_tray(_app)?;
             }
 
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
-            }
-        })
+        });
+
+    #[cfg(desktop)]
+    let builder = builder.on_window_event(|window, event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = window.hide();
+        }
+    });
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running Yeonsik's Note");
 }
