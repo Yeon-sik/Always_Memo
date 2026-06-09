@@ -1,34 +1,17 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Save, Scale } from "lucide-react";
-import type { WeightRecord } from "../../../types";
-import { formatMetric } from "../../fitness/stats/fitnessStats";
+import { type FormEvent, useState } from "react";
+import { Plus, Scale } from "lucide-react";
 
 interface QuickActionWeightEditorProps {
-  records: WeightRecord[];
   selectedDate: string;
   onAddWeightRecord: (date: string, weightKg: number) => void;
-  onUpdateWeightRecord: (recordId: string, weightKg: number) => void;
 }
 
 export function QuickActionWeightEditor({
-  records,
   selectedDate,
   onAddWeightRecord,
-  onUpdateWeightRecord,
 }: QuickActionWeightEditorProps) {
-  const latestRecord = useMemo(
-    () => records[records.length - 1] ?? null,
-    [records],
-  );
-  const [weightKg, setWeightKg] = useState(
-    latestRecord ? String(latestRecord.weightKg) : "",
-  );
+  const [weightKg, setWeightKg] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setWeightKg(latestRecord ? String(latestRecord.weightKg) : "");
-    setError(null);
-  }, [latestRecord]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,12 +23,8 @@ export function QuickActionWeightEditor({
       return;
     }
 
-    if (latestRecord) {
-      onUpdateWeightRecord(latestRecord.id, parsedWeight);
-    } else {
-      onAddWeightRecord(selectedDate, parsedWeight);
-    }
-
+    onAddWeightRecord(selectedDate, parsedWeight);
+    setWeightKg("");
     setError(null);
   }
 
@@ -53,21 +32,8 @@ export function QuickActionWeightEditor({
     <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
       <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
         <Scale className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-        <span>체중</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-neutral-900 dark:text-neutral-400">
-          {records.length}
-        </span>
+        <span>체중 추가</span>
       </div>
-
-      {latestRecord ? (
-        <div className="mb-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200">
-          현재 {formatMetric(latestRecord.weightKg)} kg
-        </div>
-      ) : (
-        <div className="mb-2 rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
-          이 날짜에는 아직 기록이 없습니다.
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-2">
         <input
@@ -84,8 +50,8 @@ export function QuickActionWeightEditor({
           type="submit"
           className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-emerald-700 px-3 text-sm font-semibold text-white transition hover:bg-emerald-800"
         >
-          <Save className="h-4 w-4" aria-hidden="true" />
-          {latestRecord ? "체중 수정" : "체중 추가"}
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          체중 추가
         </button>
       </form>
     </section>

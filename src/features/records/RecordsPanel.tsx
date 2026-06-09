@@ -8,12 +8,19 @@ import {
   Scale,
   StickyNote,
   Target,
+  Trash2,
   TrendingDown,
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import type { LocalDataSnapshot, Task } from "../../types";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type {
+  LocalDataSnapshot,
+  MealRecord,
+  Task,
+  WeightRecord,
+  WorkoutRecord,
+} from "../../types";
 import type { SyncStatus } from "../../lib/sync/syncTypes";
 import { QuickActionOverlay } from "../command-center/quickActions/QuickActionOverlay";
 import { useQuickActionState } from "../command-center/quickActions/useQuickActionState";
@@ -41,16 +48,23 @@ interface RecordsPanelProps {
   onAddNoteForDate: (date: string, title: string, content: string) => void;
   onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
   onAddWeightRecord: (date: string, weightKg: number) => void;
+  onDeleteNote: (noteId: string) => void;
+  onDeleteTask: (taskId: string) => void;
+  onDeleteMealRecord: (recordId: string) => void;
+  onDeleteWeightRecord: (recordId: string) => void;
+  onDeleteWorkoutRecord: (recordId: string) => void;
+  onRestoreMealRecord: (record: MealRecord) => void;
+  onRestoreWeightRecord: (record: WeightRecord) => void;
+  onRestoreWorkoutRecord: (record: WorkoutRecord) => void;
   onSelectDate: (date: string) => void;
   onToggleTask: (taskId: string) => void;
-  onUpdateNoteForDate: (
-    noteId: string,
-    date: string,
-    title: string,
-    content: string,
-  ) => void;
-  onUpdateWeightRecord: (recordId: string, weightKg: number) => void;
 }
+
+type PendingFitnessDelete =
+  | { type: "workout"; record: WorkoutRecord }
+  | { type: "meal"; record: MealRecord }
+  | { type: "weight"; record: WeightRecord }
+  | null;
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
@@ -83,11 +97,29 @@ function formatNullableMetric(
 
 function getWeightDeltaLabel(value: number | null): string {
   if (value === null) {
-    return "—";
+    return "-";
   }
 
   const sign = value > 0 ? "+" : "";
   return `${sign}${formatMetric(value)} kg`;
+}
+
+function getPendingFitnessDeleteMessage(
+  pendingDelete: PendingFitnessDelete,
+): string {
+  if (!pendingDelete) {
+    return "";
+  }
+
+  if (pendingDelete.type === "workout") {
+    return "운동 기록을 삭제했습니다.";
+  }
+
+  if (pendingDelete.type === "meal") {
+    return "식사 기록을 삭제했습니다.";
+  }
+
+  return "체중 기록을 삭제했습니다.";
 }
 
 export function RecordsPanel({
@@ -97,13 +129,22 @@ export function RecordsPanel({
   onAddNoteForDate,
   onAddTask,
   onAddWeightRecord,
+  onDeleteNote,
+  onDeleteTask,
+  onDeleteMealRecord,
+  onDeleteWeightRecord,
+  onDeleteWorkoutRecord,
+  onRestoreMealRecord,
+  onRestoreWeightRecord,
+  onRestoreWorkoutRecord,
   onSelectDate,
   onToggleTask,
-  onUpdateNoteForDate,
-  onUpdateWeightRecord,
 }: RecordsPanelProps) {
   const today = formatLocalDate();
   const [visibleMonth, setVisibleMonth] = useState(selectedDate);
+  const undoTimerRef = useRef<number | null>(null);
+  const [pendingFitnessDelete, setPendingFitnessDelete] =
+    useState<PendingFitnessDelete>(null);
   const {
     closeQuickAction,
     isQuickActionOpen,
@@ -114,10 +155,6 @@ export function RecordsPanel({
   const selectedRecords = useMemo(
     () => getRecordsForDate(snapshot, selectedDate),
     [selectedDate, snapshot],
-  );
-  const quickActionRecords = useMemo(
-    () => getRecordsForDate(snapshot, quickActionDate ?? selectedDate),
-    [quickActionDate, selectedDate, snapshot],
   );
   const todayRecords = useMemo(
     () => getRecordsForDate(snapshot, today),
@@ -162,6 +199,63 @@ export function RecordsPanel({
   useEffect(() => {
     setVisibleMonth(selectedDate);
   }, [selectedDate]);
+
+  useEffect(
+    () => () => {
+      if (undoTimerRef.current !== null) {
+        window.clearTimeout(undoTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  function scheduleFitnessDeleteUndo(nextDelete: PendingFitnessDelete) {
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+    }
+
+    setPendingFitnessDelete(nextDelete);
+    undoTimerRef.current = window.setTimeout(() => {
+      setPendingFitnessDelete(null);
+      undoTimerRef.current = null;
+    }, 5_000);
+  }
+
+  function handleUndoFitnessDelete() {
+    if (!pendingFitnessDelete) {
+      return;
+    }
+
+    if (pendingFitnessDelete.type === "workout") {
+      onRestoreWorkoutRecord(pendingFitnessDelete.record);
+    } else if (pendingFitnessDelete.type === "meal") {
+      onRestoreMealRecord(pendingFitnessDelete.record);
+    } else {
+      onRestoreWeightRecord(pendingFitnessDelete.record);
+    }
+
+    if (undoTimerRef.current !== null) {
+      window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+
+    setPendingFitnessDelete(null);
+  }
+
+  function deleteWorkout(record: WorkoutRecord) {
+    onDeleteWorkoutRecord(record.id);
+    scheduleFitnessDeleteUndo({ type: "workout", record });
+  }
+
+  function deleteMeal(record: MealRecord) {
+    onDeleteMealRecord(record.id);
+    scheduleFitnessDeleteUndo({ type: "meal", record });
+  }
+
+  function deleteWeight(record: WeightRecord) {
+    onDeleteWeightRecord(record.id);
+    scheduleFitnessDeleteUndo({ type: "weight", record });
+  }
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
@@ -312,7 +406,16 @@ export function RecordsPanel({
             icon={<StickyNote className="h-4 w-4 text-slate-500 dark:text-neutral-200" />}
           >
             {selectedRecords.notes.map((note) => (
-              <DailyItem key={note.id} markerClassName="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100">
+              <DailyItem
+                key={note.id}
+                markerClassName="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100"
+                actions={
+                  <DeleteItemButton
+                    label="메모 삭제"
+                    onDelete={() => onDeleteNote(note.id)}
+                  />
+                }
+              >
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {note.title.trim() || "제목 없음"}
                 </div>
@@ -333,9 +436,33 @@ export function RecordsPanel({
             icon={<CheckSquare className="h-4 w-4 text-sky-500" />}
           >
             {selectedRecords.tasks.map((task) => (
-              <DailyItem key={task.id} markerClassName="bg-sky-400">
-                <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  {task.text}
+              <DailyItem
+                key={task.id}
+                markerClassName="bg-sky-400"
+                actions={
+                  <DeleteItemButton
+                    label="할 일 삭제"
+                    onDelete={() => onDeleteTask(task.id)}
+                  />
+                }
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={task.isDone}
+                    onChange={() => onToggleTask(task.id)}
+                    className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-700"
+                    aria-label="할 일 완료 전환"
+                  />
+                  <div
+                    className={
+                      task.isDone
+                        ? "min-w-0 flex-1 truncate text-sm font-semibold text-slate-400 line-through dark:text-neutral-500"
+                        : "min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 dark:text-neutral-100"
+                    }
+                  >
+                    {task.text}
+                  </div>
                 </div>
                 <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
                   {task.isDone ? "완료" : formatTaskDueLabel(task)}
@@ -351,7 +478,16 @@ export function RecordsPanel({
             icon={<Dumbbell className="h-4 w-4 text-red-600" />}
           >
             {selectedRecords.workoutRecords.map((record) => (
-              <DailyItem key={record.id} markerClassName="bg-red-500">
+              <DailyItem
+                key={record.id}
+                markerClassName="bg-red-500"
+                actions={
+                  <DeleteItemButton
+                    label="운동 기록 삭제"
+                    onDelete={() => deleteWorkout(record)}
+                  />
+                }
+              >
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {getWorkoutTypeLabel(record)} - {getWorkoutSubcategoryLabel(record)}
                 </div>
@@ -366,7 +502,16 @@ export function RecordsPanel({
             icon={<Salad className="h-4 w-4 text-yellow-600" />}
           >
             {selectedRecords.mealRecords.map((record) => (
-              <DailyItem key={record.id} markerClassName="bg-yellow-400">
+              <DailyItem
+                key={record.id}
+                markerClassName="bg-yellow-400"
+                actions={
+                  <DeleteItemButton
+                    label="식사 기록 삭제"
+                    onDelete={() => deleteMeal(record)}
+                  />
+                }
+              >
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {record.menu}
                 </div>
@@ -385,7 +530,16 @@ export function RecordsPanel({
             icon={<Scale className="h-4 w-4 text-emerald-600" />}
           >
             {selectedRecords.weightRecords.map((record) => (
-              <DailyItem key={record.id} markerClassName="bg-emerald-500">
+              <DailyItem
+                key={record.id}
+                markerClassName="bg-emerald-500"
+                actions={
+                  <DeleteItemButton
+                    label="체중 기록 삭제"
+                    onDelete={() => deleteWeight(record)}
+                  />
+                }
+              >
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {formatMetric(record.weightKg)} kg
                 </div>
@@ -395,17 +549,28 @@ export function RecordsPanel({
         </div>
       </div>
 
+      {pendingFitnessDelete ? (
+        <div className="fixed inset-x-3 bottom-3 z-50 mx-auto flex max-w-[480px] items-center justify-between gap-3 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white shadow-2xl">
+          <span className="min-w-0 truncate">
+            {getPendingFitnessDeleteMessage(pendingFitnessDelete)}
+          </span>
+          <button
+            type="button"
+            onClick={handleUndoFitnessDelete}
+            className="inline-flex h-8 shrink-0 items-center rounded-md border border-white/20 px-2.5 text-xs font-semibold transition hover:bg-white/10"
+          >
+            되돌리기
+          </button>
+        </div>
+      ) : null}
+
       {isQuickActionOpen && quickActionDate ? (
         <QuickActionOverlay
-          records={quickActionRecords}
           selectedDate={quickActionDate}
           onAddNote={onAddNoteForDate}
           onAddTask={onAddTask}
           onAddWeightRecord={onAddWeightRecord}
           onClose={closeQuickAction}
-          onToggleTask={onToggleTask}
-          onUpdateNote={onUpdateNoteForDate}
-          onUpdateWeightRecord={onUpdateWeightRecord}
         />
       ) : null}
     </section>
@@ -611,9 +776,11 @@ function DailySection({
 }
 
 function DailyItem({
+  actions,
   children,
   markerClassName,
 }: {
+  actions?: ReactNode;
   children: ReactNode;
   markerClassName: string;
 }) {
@@ -623,6 +790,29 @@ function DailyItem({
         <span className={`block h-1.5 w-1.5 rounded-full ${markerClassName}`} />
       </span>
       <div className="min-w-0 flex-1">{children}</div>
+      {actions ? (
+        <div className="flex shrink-0 items-center gap-1">{actions}</div>
+      ) : null}
     </div>
+  );
+}
+
+function DeleteItemButton({
+  label,
+  onDelete,
+}: {
+  label: string;
+  onDelete: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onDelete}
+      title={label}
+      aria-label={label}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:border-neutral-800 dark:text-neutral-400 dark:hover:border-red-900 dark:hover:bg-red-950/30 dark:hover:text-red-200"
+    >
+      <Trash2 className="h-4 w-4" aria-hidden="true" />
+    </button>
   );
 }

@@ -44,14 +44,18 @@ function countBy<T>(
     });
 }
 
-export function getRecordsInRange<T extends { date: string }>(
+function isVisibleRecord(record: { deletedAt?: string | null }): boolean {
+  return record.deletedAt === undefined || record.deletedAt === null;
+}
+
+export function getRecordsInRange<T extends { date: string; deletedAt?: string | null }>(
   records: T[],
   startDate: string,
   endDate: string,
 ): T[] {
-  return records.filter((record) =>
-    isWithinDateRange(record.date, startDate, endDate),
-  );
+  return records
+    .filter(isVisibleRecord)
+    .filter((record) => isWithinDateRange(record.date, startDate, endDate));
 }
 
 export function calculateFitnessStats(

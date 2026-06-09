@@ -1,19 +1,14 @@
 import { FormEvent, useState } from "react";
 import { CheckSquare, Plus } from "lucide-react";
-import type { Task } from "../../../types";
 
 interface QuickActionTaskListProps {
   selectedDate: string;
-  tasks: Task[];
   onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
-  onToggleTask: (taskId: string) => void;
 }
 
 export function QuickActionTaskList({
   selectedDate,
-  tasks,
   onAddTask,
-  onToggleTask,
 }: QuickActionTaskListProps) {
   const [draft, setDraft] = useState("");
 
@@ -34,44 +29,10 @@ export function QuickActionTaskList({
     <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
       <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
         <CheckSquare className="h-4 w-4 text-sky-500" aria-hidden="true" />
-        <span>할 일</span>
-        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-neutral-900 dark:text-neutral-400">
-          {tasks.length}
-        </span>
+        <span>할 일 추가</span>
       </div>
 
-      {tasks.length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
-          이 날짜에는 아직 기록이 없습니다.
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {tasks.map((task) => (
-            <label
-              key={task.id}
-              className="flex min-h-10 items-center gap-2 rounded-md border border-slate-200 px-2 py-2 dark:border-neutral-800"
-            >
-              <input
-                type="checkbox"
-                checked={task.isDone}
-                onChange={() => onToggleTask(task.id)}
-                className="h-4 w-4 shrink-0 rounded border-slate-300 text-teal-700"
-              />
-              <span
-                className={
-                  task.isDone
-                    ? "min-w-0 flex-1 truncate text-sm text-slate-400 line-through dark:text-neutral-500"
-                    : "min-w-0 flex-1 truncate text-sm text-slate-900 dark:text-neutral-100"
-                }
-              >
-                {task.text}
-              </span>
-            </label>
-          ))}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="mt-2 flex gap-2">
+      <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           value={draft}
           onChange={(event) => setDraft(event.target.value)}

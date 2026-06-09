@@ -30,6 +30,10 @@ function groupByDate<T extends { date: string }>(records: T[]): Map<string, T[]>
   );
 }
 
+function isVisibleRecord(record: { deletedAt: string | null }): boolean {
+  return record.deletedAt === null;
+}
+
 function appendEmptyAwareSection<T extends { date: string }>(
   lines: string[],
   title: string,
@@ -70,15 +74,15 @@ export function createFitnessMarkdownExport({
   startDate,
   endDate,
 }: FitnessExportInput): string {
-  const rangedWorkouts = workoutRecords.filter((record) =>
-    isWithinDateRange(record.date, startDate, endDate),
-  );
-  const rangedMeals = mealRecords.filter((record) =>
-    isWithinDateRange(record.date, startDate, endDate),
-  );
-  const rangedWeights = weightRecords.filter((record) =>
-    isWithinDateRange(record.date, startDate, endDate),
-  );
+  const rangedWorkouts = workoutRecords
+    .filter(isVisibleRecord)
+    .filter((record) => isWithinDateRange(record.date, startDate, endDate));
+  const rangedMeals = mealRecords
+    .filter(isVisibleRecord)
+    .filter((record) => isWithinDateRange(record.date, startDate, endDate));
+  const rangedWeights = weightRecords
+    .filter(isVisibleRecord)
+    .filter((record) => isWithinDateRange(record.date, startDate, endDate));
   const stats = calculateFitnessStats(
     workoutRecords,
     mealRecords,

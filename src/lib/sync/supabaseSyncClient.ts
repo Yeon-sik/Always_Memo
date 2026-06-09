@@ -20,6 +20,10 @@ import type {
   SyncResult,
   SyncStatus,
 } from "./syncTypes";
+import {
+  mergeDevices as mergeSyncDevices,
+  mergeEntities as mergeSyncEntities,
+} from "./merge";
 
 const ACTIVE_DEVICE_WINDOW_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -434,21 +438,21 @@ function mergeSnapshot(
   incomingSnapshot: LocalDataSnapshot,
 ): LocalDataSnapshot {
   return {
-    notes: mergeEntities(localSnapshot.notes, incomingSnapshot.notes),
-    tasks: mergeEntities(localSnapshot.tasks, incomingSnapshot.tasks),
-    workoutRecords: mergeEntities(
+    notes: mergeSyncEntities(localSnapshot.notes, incomingSnapshot.notes),
+    tasks: mergeSyncEntities(localSnapshot.tasks, incomingSnapshot.tasks),
+    workoutRecords: mergeSyncEntities(
       localSnapshot.workoutRecords,
       incomingSnapshot.workoutRecords,
     ),
-    mealRecords: mergeEntities(
+    mealRecords: mergeSyncEntities(
       localSnapshot.mealRecords,
       incomingSnapshot.mealRecords,
     ),
-    weightRecords: mergeEntities(
+    weightRecords: mergeSyncEntities(
       localSnapshot.weightRecords,
       incomingSnapshot.weightRecords,
     ),
-    devices: mergeDevices(localSnapshot.devices, incomingSnapshot.devices),
+    devices: mergeSyncDevices(localSnapshot.devices, incomingSnapshot.devices),
   };
 }
 
@@ -459,7 +463,7 @@ function applyRemoteNote(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    notes: mergeEntities(snapshot.notes, [remoteNote]),
+    notes: mergeSyncEntities(snapshot.notes, [remoteNote]),
   };
 }
 
@@ -470,7 +474,7 @@ function applyRemoteTask(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    tasks: mergeEntities(snapshot.tasks, [remoteTask]),
+    tasks: mergeSyncEntities(snapshot.tasks, [remoteTask]),
   };
 }
 
@@ -480,7 +484,7 @@ function applyRemoteWorkoutRecord(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    workoutRecords: mergeEntities(snapshot.workoutRecords, [remoteRecord]),
+    workoutRecords: mergeSyncEntities(snapshot.workoutRecords, [remoteRecord]),
   };
 }
 
@@ -490,7 +494,7 @@ function applyRemoteMealRecord(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    mealRecords: mergeEntities(snapshot.mealRecords, [remoteRecord]),
+    mealRecords: mergeSyncEntities(snapshot.mealRecords, [remoteRecord]),
   };
 }
 
@@ -500,7 +504,7 @@ function applyRemoteWeightRecord(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    weightRecords: mergeEntities(snapshot.weightRecords, [remoteRecord]),
+    weightRecords: mergeSyncEntities(snapshot.weightRecords, [remoteRecord]),
   };
 }
 
@@ -831,7 +835,7 @@ export class SupabaseSyncClient implements SyncClient {
         changedRows,
         snapshot: {
           ...localSnapshot,
-          devices: mergeDevices(localSnapshot.devices, [currentDevice]),
+          devices: mergeSyncDevices(localSnapshot.devices, [currentDevice]),
         },
       };
     } catch (caughtError) {
