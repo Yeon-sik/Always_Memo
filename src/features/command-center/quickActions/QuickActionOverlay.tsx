@@ -1,15 +1,32 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
+import { createBackfillInput } from "../../../lib/dataTrust/backfillMetadata";
+import type { BackfillInput } from "../../../types";
 import { formatKoreanDate } from "../../fitness/fitnessDate";
 import { QuickActionMemoEditor } from "./QuickActionMemoEditor";
 import { QuickActionTaskList } from "./QuickActionTaskList";
 import { QuickActionWeightEditor } from "./QuickActionWeightEditor";
 
 interface QuickActionOverlayProps {
+  isBackfill?: boolean;
   selectedDate: string;
-  onAddNote: (date: string, title: string, content: string) => void;
-  onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
-  onAddWeightRecord: (date: string, weightKg: number) => void;
+  onAddNote: (
+    date: string,
+    title: string,
+    content: string,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddTask: (
+    text: string,
+    dueDate: string | null,
+    dueTime: string | null,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddWeightRecord: (
+    date: string,
+    weightKg: number,
+    backfillInput?: BackfillInput,
+  ) => void;
   onClose: () => void;
 }
 
@@ -17,6 +34,7 @@ const focusableSelector =
   "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
 export function QuickActionOverlay({
+  isBackfill = false,
   selectedDate,
   onAddNote,
   onAddTask,
@@ -24,6 +42,11 @@ export function QuickActionOverlay({
   onClose,
 }: QuickActionOverlayProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const backfillInput = isBackfill ? createBackfillInput() : undefined;
+  const actionTitle = isBackfill ? "누락 보강" : "Quick Action";
+  const actionDescription = isBackfill
+    ? "지난 날짜에 빠진 기록만 보강으로 추가합니다."
+    : "선택한 날짜에 새 기록을 추가합니다.";
 
   useEffect(() => {
     const focusable = panelRef.current?.querySelector<HTMLElement>(
@@ -81,20 +104,20 @@ export function QuickActionOverlay({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`${formatKoreanDate(selectedDate)} 빠른 작업`}
+        aria-label={`${formatKoreanDate(selectedDate)} ${actionTitle}`}
         onKeyDown={handleKeyDown}
         className="max-h-[92dvh] w-full overflow-y-auto rounded-t-lg border border-neutral-800 bg-white p-3 shadow-2xl dark:bg-black sm:max-w-xl sm:rounded-lg"
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[11px] font-semibold uppercase tracking-normal text-cyan-700 dark:text-cyan-300">
-              Quick Action
+              {actionTitle}
             </div>
             <h2 className="mt-1 truncate text-base font-semibold text-slate-950 dark:text-neutral-50">
               {formatKoreanDate(selectedDate)}
             </h2>
             <p className="mt-1 truncate text-xs text-slate-500 dark:text-neutral-400">
-              선택한 날짜에 새 기록만 추가합니다.
+              {actionDescription}
             </p>
           </div>
           <button
@@ -109,14 +132,17 @@ export function QuickActionOverlay({
 
         <div className="space-y-3">
           <QuickActionTaskList
+            backfillInput={backfillInput}
             selectedDate={selectedDate}
             onAddTask={onAddTask}
           />
           <QuickActionMemoEditor
+            backfillInput={backfillInput}
             selectedDate={selectedDate}
             onAddNote={onAddNote}
           />
           <QuickActionWeightEditor
+            backfillInput={backfillInput}
             selectedDate={selectedDate}
             onAddWeightRecord={onAddWeightRecord}
           />

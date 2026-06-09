@@ -1,4 +1,5 @@
-import type { Task } from "../../types";
+import type { BackfillInput, Task } from "../../types";
+import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
 
 // UI에는 soft delete 되지 않은 항목만 orderIndex 순서로 보여준다.
@@ -32,10 +33,13 @@ export function createTask(
   deviceId: string,
   dueDate: string | null = null,
   dueTime: string | null = null,
+  backfillInput?: BackfillInput,
 ): Task {
   const now = new Date().toISOString();
+  const auditFields = createEntityAuditFields(backfillInput, now);
 
   return {
+    ...auditFields,
     id: createId(),
     text,
     isDone: false,

@@ -1,12 +1,19 @@
 import { type FormEvent, useState } from "react";
 import { Plus, Scale } from "lucide-react";
+import type { BackfillInput } from "../../../types";
 
 interface QuickActionWeightEditorProps {
+  backfillInput?: BackfillInput;
   selectedDate: string;
-  onAddWeightRecord: (date: string, weightKg: number) => void;
+  onAddWeightRecord: (
+    date: string,
+    weightKg: number,
+    backfillInput?: BackfillInput,
+  ) => void;
 }
 
 export function QuickActionWeightEditor({
+  backfillInput,
   selectedDate,
   onAddWeightRecord,
 }: QuickActionWeightEditorProps) {
@@ -23,7 +30,7 @@ export function QuickActionWeightEditor({
       return;
     }
 
-    onAddWeightRecord(selectedDate, parsedWeight);
+    onAddWeightRecord(selectedDate, parsedWeight, backfillInput);
     setWeightKg("");
     setError(null);
   }

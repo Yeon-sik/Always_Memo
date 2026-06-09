@@ -1,4 +1,5 @@
 import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
+import { countBackfilledRecords } from "../../../lib/dataTrust/backfillMetadata";
 import { isWithinDateRange } from "../fitnessDate";
 import { getWorkoutStatsLabel } from "../fitnessService";
 
@@ -12,6 +13,10 @@ export interface FitnessStats {
   averageWeightKg: number | null;
   minWeightKg: number | null;
   maxWeightKg: number | null;
+  backfilledWorkoutCount: number;
+  backfilledMealCount: number;
+  backfilledWeightCount: number;
+  totalBackfilledCount: number;
 }
 
 function average(values: number[]): number | null {
@@ -86,6 +91,14 @@ export function calculateFitnessStats(
     averageWeightKg: average(weightValues),
     minWeightKg: weightValues.length > 0 ? Math.min(...weightValues) : null,
     maxWeightKg: weightValues.length > 0 ? Math.max(...weightValues) : null,
+    backfilledWorkoutCount: countBackfilledRecords(rangedWorkouts),
+    backfilledMealCount: countBackfilledRecords(rangedMeals),
+    backfilledWeightCount: countBackfilledRecords(rangedWeights),
+    totalBackfilledCount: countBackfilledRecords([
+      ...rangedWorkouts,
+      ...rangedMeals,
+      ...rangedWeights,
+    ]),
   };
 }
 

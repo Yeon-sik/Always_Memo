@@ -11,10 +11,14 @@ import {
 
 const baseWorkout: WorkoutRecord = {
   id: "workout-1",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   workoutType: "strength",
   category: "chest",
   exerciseName: "bench press",
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -22,12 +26,16 @@ const baseWorkout: WorkoutRecord = {
 
 const baseMeal: MealRecord = {
   id: "meal-1",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   menu: "salad",
   calories: 500,
   proteinGrams: 30,
   carbsGrams: null,
   fatGrams: null,
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -35,8 +43,12 @@ const baseMeal: MealRecord = {
 
 const baseWeight: WeightRecord = {
   id: "weight-1",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   weightKg: 72,
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -75,9 +87,33 @@ describe("fitnessService", () => {
 
     expect(created.carbsGrams).toBe(80);
     expect(created.fatGrams).toBe(20);
+    expect(created.createdAt).toBeTruthy();
+    expect(created.isBackfilled).toBe(false);
     expect(updated.carbsGrams).toBe(90.5);
     expect(updated.fatGrams).toBeNull();
     expect(updated.deviceId).toBe("device-c");
+  });
+
+  it("creates backfilled records with stable audit metadata", () => {
+    const created = createMealRecord(
+      "2026-06-08",
+      "late meal",
+      650,
+      42,
+      "device-b",
+      null,
+      null,
+      {
+        isBackfilled: true,
+        backfilledAt: "2026-06-09T01:00:00.000Z",
+        backfillReason: "test",
+      },
+    );
+
+    expect(created.isBackfilled).toBe(true);
+    expect(created.backfilledAt).toBe("2026-06-09T01:00:00.000Z");
+    expect(created.backfillReason).toBe("test");
+    expect(created.createdAt).toBeTruthy();
   });
 
   it("soft deletes and restores weight records without hard delete", () => {

@@ -1,12 +1,20 @@
 import { type FormEvent, type KeyboardEvent, useState } from "react";
 import { Plus, StickyNote } from "lucide-react";
+import type { BackfillInput } from "../../../types";
 
 interface QuickActionMemoEditorProps {
+  backfillInput?: BackfillInput;
   selectedDate: string;
-  onAddNote: (date: string, title: string, content: string) => void;
+  onAddNote: (
+    date: string,
+    title: string,
+    content: string,
+    backfillInput?: BackfillInput,
+  ) => void;
 }
 
 export function QuickActionMemoEditor({
+  backfillInput,
   selectedDate,
   onAddNote,
 }: QuickActionMemoEditorProps) {
@@ -27,7 +35,7 @@ export function QuickActionMemoEditor({
       return;
     }
 
-    onAddNote(selectedDate, title, content);
+    onAddNote(selectedDate, title, content, backfillInput);
     setTitle("");
     setContent("");
   }

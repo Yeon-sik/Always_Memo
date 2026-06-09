@@ -6,6 +6,10 @@ import type {
   WeightRecord,
   WorkoutRecord,
 } from "../../types";
+import {
+  countBackfilledRecords,
+  hasBackfillMetadata,
+} from "../../lib/dataTrust/backfillMetadata";
 import { formatLocalDate, isWithinDateRange, parseDateInput } from "../fitness/fitnessDate";
 
 export type LocalDateString = string;
@@ -41,6 +45,11 @@ export interface DashboardStats {
   averageProteinGrams: number | null;
   weightDeltaKg: number | null;
   latestWeightKg: number | null;
+  backfilledTaskCount: number;
+  backfilledWorkoutCount: number;
+  backfilledMealCount: number;
+  backfilledWeightCount: number;
+  totalBackfilledCount: number;
 }
 
 export interface ProductivityPoint {
@@ -204,9 +213,15 @@ export function getDashboardStats(
   snapshot: LocalDataSnapshot,
   range: DateRange,
 ): DashboardStats {
-  const rangedTasks = snapshot.tasks
+  const rangedVisibleTasks = snapshot.tasks
     .filter(isVisibleEntity)
     .filter((task) => isDateInRange(getTaskActivityDate(task), range));
+  const rangedTasks = rangedVisibleTasks.filter(
+    (task) => !hasBackfillMetadata(task),
+  );
+  const rangedWorkouts = snapshot.workoutRecords
+    .filter(isVisibleEntity)
+    .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate));
   const rangedMeals = snapshot.mealRecords
     .filter(isVisibleEntity)
     .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate));
@@ -219,6 +234,10 @@ export function getDashboardStats(
   const totalTasks = rangedTasks.length;
   const firstWeight = rangedWeights[0];
   const latestWeight = rangedWeights[rangedWeights.length - 1];
+  const backfilledTaskCount = countBackfilledRecords(rangedVisibleTasks);
+  const backfilledWorkoutCount = countBackfilledRecords(rangedWorkouts);
+  const backfilledMealCount = countBackfilledRecords(rangedMeals);
+  const backfilledWeightCount = countBackfilledRecords(rangedWeights);
 
   return {
     productivityScore:
@@ -232,6 +251,15 @@ export function getDashboardStats(
         ? latestWeight.weightKg - firstWeight.weightKg
         : null,
     latestWeightKg: latestWeight?.weightKg ?? null,
+    backfilledTaskCount,
+    backfilledWorkoutCount,
+    backfilledMealCount,
+    backfilledWeightCount,
+    totalBackfilledCount:
+      backfilledTaskCount +
+      backfilledWorkoutCount +
+      backfilledMealCount +
+      backfilledWeightCount,
   };
 }
 
@@ -281,7 +309,9 @@ export function getProductivitySeries(
   tasks: Task[],
   range: DateRange,
 ): ProductivityPoint[] {
-  const visibleTasks = tasks.filter(isVisibleEntity);
+  const visibleTasks = tasks
+    .filter(isVisibleEntity)
+    .filter((task) => !hasBackfillMetadata(task));
 
   return getDateRangeDays(range).map((date) => {
     const dateTasks = visibleTasks.filter((task) => getTaskActivityDate(task) === date);

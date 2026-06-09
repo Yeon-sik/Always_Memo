@@ -6,6 +6,7 @@ import {
   useState,
 } from "react";
 import type {
+  BackfillInput,
   Device,
   LocalDataSnapshot,
   MealRecord,
@@ -101,20 +102,32 @@ interface UseLocalSyncMemoActions {
     proteinGrams: number,
     carbsGrams?: number | null,
     fatGrams?: number | null,
+    backfillInput?: BackfillInput,
   ) => void;
   addNote: () => void;
-  addNoteForDate: (date: string, title: string, content: string) => void;
+  addNoteForDate: (
+    date: string,
+    title: string,
+    content: string,
+    backfillInput?: BackfillInput,
+  ) => void;
   addTask: (
     text: string,
     dueDate?: string | null,
     dueTime?: string | null,
+    backfillInput?: BackfillInput,
   ) => void;
-  addWeightRecord: (date: string, weightKg: number) => void;
+  addWeightRecord: (
+    date: string,
+    weightKg: number,
+    backfillInput?: BackfillInput,
+  ) => void;
   addWorkoutRecord: (
     date: string,
     workoutType: WorkoutType,
     category: string,
     exerciseName: string,
+    backfillInput?: BackfillInput,
   ) => void;
   addWorkoutRecords: (
     records: Array<{
@@ -123,6 +136,7 @@ interface UseLocalSyncMemoActions {
       category: string;
       exerciseName: string;
     }>,
+    backfillInput?: BackfillInput,
   ) => void;
   deleteMealRecord: (recordId: string) => void;
   deleteNote: (noteId: string) => void;
@@ -648,7 +662,12 @@ export function useLocalSyncMemo(
   }, [device]);
 
   const addNoteForDate = useCallback(
-    (date: string, title: string, content: string) => {
+    (
+      date: string,
+      title: string,
+      content: string,
+      backfillInput?: BackfillInput,
+    ) => {
       if (!device) {
         return;
       }
@@ -660,6 +679,7 @@ export function useLocalSyncMemo(
           title: title.trim() || "빠른 메모",
         },
         date,
+        backfillInput,
       );
 
       setNotes((currentNotes) => [note, ...currentNotes]);
@@ -752,6 +772,7 @@ export function useLocalSyncMemo(
       text: string,
       dueDate: string | null = null,
       dueTime: string | null = null,
+      backfillInput?: BackfillInput,
     ) => {
       if (!device) {
         return;
@@ -763,6 +784,7 @@ export function useLocalSyncMemo(
         device.id,
         dueDate,
         dueTime,
+        backfillInput,
       );
 
       setTasks((currentTasks) => [...currentTasks, task]);
@@ -844,6 +866,7 @@ export function useLocalSyncMemo(
       workoutType: WorkoutType,
       category: string,
       exerciseName: string,
+      backfillInput?: BackfillInput,
     ) => {
       if (!device) {
         return;
@@ -855,6 +878,7 @@ export function useLocalSyncMemo(
         category,
         exerciseName,
         device.id,
+        backfillInput,
       );
       setWorkoutRecords((currentRecords) => [...currentRecords, record]);
     },
@@ -869,6 +893,7 @@ export function useLocalSyncMemo(
         category: string;
         exerciseName: string;
       }>,
+      backfillInput?: BackfillInput,
     ) => {
       if (!device || records.length === 0) {
         return;
@@ -881,6 +906,7 @@ export function useLocalSyncMemo(
           record.category,
           record.exerciseName,
           device.id,
+          backfillInput,
         ),
       );
 
@@ -900,6 +926,7 @@ export function useLocalSyncMemo(
       proteinGrams: number,
       carbsGrams: number | null = null,
       fatGrams: number | null = null,
+      backfillInput?: BackfillInput,
     ) => {
       if (!device) {
         return;
@@ -913,6 +940,7 @@ export function useLocalSyncMemo(
         device.id,
         carbsGrams,
         fatGrams,
+        backfillInput,
       );
       setMealRecords((currentRecords) => [...currentRecords, record]);
     },
@@ -920,12 +948,12 @@ export function useLocalSyncMemo(
   );
 
   const addWeightRecord = useCallback(
-    (date: string, weightKg: number) => {
+    (date: string, weightKg: number, backfillInput?: BackfillInput) => {
       if (!device) {
         return;
       }
 
-      const record = createWeightRecord(date, weightKg, device.id);
+      const record = createWeightRecord(date, weightKg, device.id, backfillInput);
       setWeightRecords((currentRecords) => [...currentRecords, record]);
     },
     [device],

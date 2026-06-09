@@ -1,4 +1,8 @@
 import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
+import {
+  BACKFILL_LABEL,
+  hasBackfillMetadata,
+} from "../../../lib/dataTrust/backfillMetadata";
 import { formatKoreanDate, isWithinDateRange } from "../fitnessDate";
 import {
   getWorkoutSubcategoryLabel,
@@ -32,6 +36,10 @@ function groupByDate<T extends { date: string }>(records: T[]): Map<string, T[]>
 
 function isVisibleRecord(record: { deletedAt: string | null }): boolean {
   return record.deletedAt === null;
+}
+
+function formatBackfillSuffix(record: { isBackfilled?: boolean }): string {
+  return hasBackfillMetadata(record) ? ` · ${BACKFILL_LABEL}` : "";
 }
 
 function appendEmptyAwareSection<T extends { date: string }>(
@@ -105,8 +113,11 @@ export function createFitnessMarkdownExport({
     `- 평균 체중: ${formatMetric(stats.averageWeightKg)} kg`,
     `- 최저 체중: ${formatMetric(stats.minWeightKg)} kg`,
     `- 최고 체중: ${formatMetric(stats.maxWeightKg)} kg`,
+    stats.totalBackfilledCount > 0
+      ? `- ${BACKFILL_LABEL}: ${stats.totalBackfilledCount}건 포함`
+      : null,
     "",
-  ];
+  ].filter((line): line is string => line !== null);
 
   if (stats.workoutBySubcategory.length > 0) {
     lines.push("### 운동 소분류별 총합", "");
@@ -127,7 +138,7 @@ export function createFitnessMarkdownExport({
         record,
       )} - ${getWorkoutSubcategoryLabel(record)}`;
 
-      return `- ${groupLabel}`;
+      return `- ${groupLabel}${formatBackfillSuffix(record)}`;
     },
   );
   appendEmptyAwareSection(
@@ -137,13 +148,13 @@ export function createFitnessMarkdownExport({
     (record) =>
       `- ${record.menu}, ${record.calories.toLocaleString("ko-KR")} kcal, 단백질 ${formatMetric(
         record.proteinGrams,
-      )} g`,
+      )} g${formatBackfillSuffix(record)}`,
   );
   appendEmptyAwareSection(
     lines,
     "체중",
     rangedWeights,
-    (record) => `- ${formatMetric(record.weightKg)} kg`,
+    (record) => `- ${formatMetric(record.weightKg)} kg${formatBackfillSuffix(record)}`,
   );
 
   return `${lines.join("\n").trim()}\n`;
