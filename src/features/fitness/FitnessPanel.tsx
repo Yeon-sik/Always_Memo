@@ -1,11 +1,10 @@
 import {
   type FormEvent,
-  type ReactNode,
   useEffect,
   useMemo,
   useState,
 } from "react";
-import { BarChart3, Download, Dumbbell, Plus, Salad, Scale } from "lucide-react";
+import { BarChart3, Download, Dumbbell, Salad, Scale } from "lucide-react";
 import type {
   MealRecord,
   WeightRecord,
@@ -17,11 +16,19 @@ import {
   createFitnessExportFileName,
   createFitnessMarkdownExport,
 } from "./export/fitnessMarkdownExport";
+import { downloadMarkdown } from "./export/downloadMarkdown";
+import {
+  FieldLabel,
+  FormTitle,
+  MetricPanel,
+  SubmitButton,
+} from "./components/FitnessPanelPrimitives";
 import {
   cardioWorkoutOptions,
   strengthWorkoutParts,
   workoutTypeLabels,
 } from "./fitnessService";
+import { parseOptionalNumber, parseRequiredNumber } from "./fitnessInputParsing";
 import { calculateFitnessStats, formatMetric } from "./stats/fitnessStats";
 
 interface FitnessPanelProps {
@@ -56,32 +63,7 @@ interface FitnessPanelProps {
 
 type ActionPanel = "stats" | "export" | null;
 
-function downloadMarkdown(fileName: string, markdown: string): void {
-  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-function parseRequiredNumber(value: string): number | null {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
-}
-
-function parseOptionalNumber(value: string): number | null {
-  if (!value.trim()) {
-    return null;
-  }
-
-  return parseRequiredNumber(value);
-}
-
+// 운동 탭 컨테이너: 기록 추가 폼과 통계/내보내기 패널을 조립합니다.
 export function FitnessPanel({
   mealRecords,
   selectedDate,
@@ -577,74 +559,5 @@ export function FitnessPanel({
         </form>
       </div>
     </section>
-  );
-}
-
-function FormTitle({
-  icon,
-  title,
-}: {
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-neutral-50">
-      {icon}
-      <span>{title}</span>
-    </div>
-  );
-}
-
-function FieldLabel({
-  children,
-  label,
-}: {
-  children: ReactNode;
-  label: string;
-}) {
-  return (
-    <label className="mb-2 block text-xs font-semibold text-slate-600 dark:text-neutral-300">
-      {label}
-      <div className="mt-1">{children}</div>
-    </label>
-  );
-}
-
-function SubmitButton({ label }: { label: string }) {
-  return (
-    <button
-      type="submit"
-      className="mt-2 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white transition hover:bg-teal-800"
-    >
-      <Plus className="h-4 w-4" aria-hidden="true" />
-      {label}
-    </button>
-  );
-}
-
-function MetricPanel({
-  children,
-  icon,
-  primary,
-  title,
-}: {
-  children: ReactNode;
-  icon: ReactNode;
-  primary: string;
-  title: string;
-}) {
-  return (
-    <div className="rounded-md border border-slate-200 p-3 dark:border-neutral-800">
-      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-        {icon}
-        {title}
-      </div>
-      <p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-neutral-50">
-        {primary}
-      </p>
-      <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-neutral-400">
-        {children}
-      </div>
-    </div>
   );
 }
