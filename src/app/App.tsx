@@ -71,7 +71,13 @@ export function App() {
               snapshot={snapshot}
               selectedDate={selectedDate}
               syncStatus={memo.syncStatus}
+              onAddNoteForDate={memo.addNoteForDate}
+              onAddTask={memo.addTask}
+              onAddWeightRecord={memo.addWeightRecord}
               onSelectDate={setSelectedDate}
+              onToggleTask={memo.toggleTask}
+              onUpdateNoteForDate={memo.updateNoteForDate}
+              onUpdateWeightRecord={memo.updateWeightRecord}
             />
           ) : activeView === "fitness" ? (
             <FitnessPanel

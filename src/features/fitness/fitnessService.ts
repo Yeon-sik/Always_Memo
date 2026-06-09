@@ -152,6 +152,19 @@ export function createWeightRecord(
   };
 }
 
+export function updateWeightRecord(
+  record: WeightRecord,
+  weightKg: number,
+  deviceId: string,
+): WeightRecord {
+  return {
+    ...record,
+    weightKg,
+    updatedAt: createTimestamp(),
+    deviceId,
+  };
+}
+
 export function softDeleteWorkoutRecord(
   record: WorkoutRecord,
   deviceId: string,

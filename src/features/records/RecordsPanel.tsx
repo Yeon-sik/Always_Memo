@@ -15,6 +15,8 @@ import {
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { LocalDataSnapshot, Task } from "../../types";
 import type { SyncStatus } from "../../lib/sync/syncTypes";
+import { QuickActionOverlay } from "../command-center/quickActions/QuickActionOverlay";
+import { useQuickActionState } from "../command-center/quickActions/useQuickActionState";
 import { formatKoreanDate, formatLocalDate } from "../fitness/fitnessDate";
 import {
   getWorkoutSubcategoryLabel,
@@ -36,7 +38,18 @@ interface RecordsPanelProps {
   selectedDate: string;
   snapshot: LocalDataSnapshot;
   syncStatus: SyncStatus;
+  onAddNoteForDate: (date: string, title: string, content: string) => void;
+  onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
+  onAddWeightRecord: (date: string, weightKg: number) => void;
   onSelectDate: (date: string) => void;
+  onToggleTask: (taskId: string) => void;
+  onUpdateNoteForDate: (
+    noteId: string,
+    date: string,
+    title: string,
+    content: string,
+  ) => void;
+  onUpdateWeightRecord: (recordId: string, weightKg: number) => void;
 }
 
 function formatTime(value: string): string {
@@ -81,14 +94,30 @@ export function RecordsPanel({
   selectedDate,
   snapshot,
   syncStatus,
+  onAddNoteForDate,
+  onAddTask,
+  onAddWeightRecord,
   onSelectDate,
+  onToggleTask,
+  onUpdateNoteForDate,
+  onUpdateWeightRecord,
 }: RecordsPanelProps) {
   const today = formatLocalDate();
   const [visibleMonth, setVisibleMonth] = useState(selectedDate);
+  const {
+    closeQuickAction,
+    isQuickActionOpen,
+    openQuickAction,
+    quickActionDate,
+  } = useQuickActionState();
   const selectedRange = useMemo(() => getMonthRange(selectedDate), [selectedDate]);
   const selectedRecords = useMemo(
     () => getRecordsForDate(snapshot, selectedDate),
     [selectedDate, snapshot],
+  );
+  const quickActionRecords = useMemo(
+    () => getRecordsForDate(snapshot, quickActionDate ?? selectedDate),
+    [quickActionDate, selectedDate, snapshot],
   );
   const todayRecords = useMemo(
     () => getRecordsForDate(snapshot, today),
@@ -264,7 +293,16 @@ export function RecordsPanel({
           </div>
         </div>
 
-        <MarkerLegend />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <MarkerLegend />
+          <button
+            type="button"
+            onClick={(event) => openQuickAction(selectedDate, event.currentTarget)}
+            className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-700 dark:bg-neutral-100 dark:text-black dark:hover:bg-white"
+          >
+            빠른 작업
+          </button>
+        </div>
 
         <div className="mt-3 space-y-3">
           <DailySection
@@ -356,6 +394,20 @@ export function RecordsPanel({
           </DailySection>
         </div>
       </div>
+
+      {isQuickActionOpen && quickActionDate ? (
+        <QuickActionOverlay
+          records={quickActionRecords}
+          selectedDate={quickActionDate}
+          onAddNote={onAddNoteForDate}
+          onAddTask={onAddTask}
+          onAddWeightRecord={onAddWeightRecord}
+          onClose={closeQuickAction}
+          onToggleTask={onToggleTask}
+          onUpdateNote={onUpdateNoteForDate}
+          onUpdateWeightRecord={onUpdateWeightRecord}
+        />
+      ) : null}
     </section>
   );
 }

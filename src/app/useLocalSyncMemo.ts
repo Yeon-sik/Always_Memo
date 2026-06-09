@@ -58,6 +58,7 @@ import {
   softDeleteMealRecord,
   softDeleteWeightRecord,
   softDeleteWorkoutRecord,
+  updateWeightRecord as updateWeightRecordEntity,
 } from "../features/fitness/fitnessService";
 
 interface UseLocalSyncMemoState {
@@ -90,6 +91,7 @@ interface UseLocalSyncMemoActions {
     proteinGrams: number,
   ) => void;
   addNote: () => void;
+  addNoteForDate: (date: string, title: string, content: string) => void;
   addTask: (
     text: string,
     dueDate?: string | null,
@@ -127,6 +129,13 @@ interface UseLocalSyncMemoActions {
   toggleTask: (taskId: string) => void;
   updateSelectedNoteContent: (content: string) => void;
   updateSelectedNoteTitle: (title: string) => void;
+  updateNoteForDate: (
+    noteId: string,
+    date: string,
+    title: string,
+    content: string,
+  ) => void;
+  updateWeightRecord: (recordId: string, weightKg: number) => void;
   updateTaskSchedule: (
     taskId: string,
     dueDate: string | null,
@@ -621,6 +630,27 @@ export function useLocalSyncMemo(
     setSelectedNoteId(note.id);
   }, [device]);
 
+  const addNoteForDate = useCallback(
+    (date: string, title: string, content: string) => {
+      if (!device) {
+        return;
+      }
+
+      const note = createNoteEntity(
+        device.id,
+        {
+          content,
+          title: title.trim() || "빠른 메모",
+        },
+        date,
+      );
+
+      setNotes((currentNotes) => [note, ...currentNotes]);
+      setSelectedNoteId(note.id);
+    },
+    [device],
+  );
+
   const selectNote = useCallback((noteId: string) => {
     setSelectedNoteId(noteId);
   }, []);
@@ -680,6 +710,23 @@ export function useLocalSyncMemo(
       );
     },
     [device, selectedNoteId],
+  );
+
+  const updateNoteForDate = useCallback(
+    (noteId: string, date: string, title: string, content: string) => {
+      if (!device) {
+        return;
+      }
+
+      setNotes((currentNotes) =>
+        currentNotes.map((note) =>
+          note.id === noteId
+            ? updateNote(note, { content, title }, device.id, date)
+            : note,
+        ),
+      );
+    },
+    [device],
   );
 
   // 체크리스트 항목은 현재 보이는 항목의 가장 큰 orderIndex 뒤에 추가한다.
@@ -863,6 +910,23 @@ export function useLocalSyncMemo(
     [device],
   );
 
+  const updateWeightRecord = useCallback(
+    (recordId: string, weightKg: number) => {
+      if (!device) {
+        return;
+      }
+
+      setWeightRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? updateWeightRecordEntity(record, weightKg, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
   const deleteWorkoutRecord = useCallback(
     (recordId: string) => {
       if (!device) {
@@ -979,6 +1043,7 @@ export function useLocalSyncMemo(
     activeDevices,
     addMealRecord,
     addNote,
+    addNoteForDate,
     addTask,
     addWeightRecord,
     addWorkoutRecord,
@@ -1011,8 +1076,10 @@ export function useLocalSyncMemo(
     toggleTask,
     updateSelectedNoteContent,
     updateSelectedNoteTitle,
+    updateNoteForDate,
     updateTaskSchedule,
     updateTaskText,
+    updateWeightRecord,
     userId,
     weightRecords: visibleWeightRecords,
     workoutRecords: visibleWorkoutRecords,

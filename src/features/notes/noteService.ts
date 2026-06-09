@@ -1,14 +1,41 @@
 import type { Note } from "../../types";
 import { createId } from "../../lib/storage/id";
 
+function createTimestampForDate(date?: string): string {
+  if (!date) {
+    return new Date().toISOString();
+  }
+
+  const [year, month, day] = date.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return new Date().toISOString();
+  }
+
+  const now = new Date();
+  return new Date(
+    year,
+    month - 1,
+    day,
+    now.getHours(),
+    now.getMinutes(),
+    now.getSeconds(),
+    now.getMilliseconds(),
+  ).toISOString();
+}
+
 // 새 메모는 로컬에서 즉시 생성하고, 생성 기기를 deviceId로 남긴다.
-export function createNote(deviceId: string): Note {
-  const now = new Date().toISOString();
+export function createNote(
+  deviceId: string,
+  changes: Pick<Partial<Note>, "title" | "content"> = {},
+  recordDate?: string,
+): Note {
+  const now = createTimestampForDate(recordDate);
 
   return {
     id: createId(),
-    title: "새 메모",
-    content: "",
+    title: changes.title ?? "새 메모",
+    content: changes.content ?? "",
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -20,11 +47,12 @@ export function updateNote(
   note: Note,
   changes: Pick<Partial<Note>, "title" | "content">,
   deviceId: string,
+  recordDate?: string,
 ): Note {
   return {
     ...note,
     ...changes,
-    updatedAt: new Date().toISOString(),
+    updatedAt: createTimestampForDate(recordDate),
     deviceId,
   };
 }
