@@ -18,6 +18,7 @@ import type {
   MealRecord,
   WeightRecord,
   WorkoutRecord,
+  WorkoutType,
 } from "../../types";
 import {
   BACKFILL_LABEL,
@@ -85,6 +86,31 @@ interface RecordsPanelProps {
     weightKg: number,
     backfillInput?: BackfillInput,
   ) => void;
+  onAddWorkoutRecord: (
+    date: string,
+    workoutType: WorkoutType,
+    category: string,
+    exerciseName: string,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddWorkoutRecords: (
+    records: Array<{
+      date: string;
+      workoutType: WorkoutType;
+      category: string;
+      exerciseName: string;
+    }>,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddMealRecord: (
+    date: string,
+    menu: string,
+    calories: number,
+    proteinGrams: number,
+    carbsGrams?: number | null,
+    fatGrams?: number | null,
+    backfillInput?: BackfillInput,
+  ) => void;
   onDeleteNote: (noteId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onDeleteMealRecord: (recordId: string) => void;
@@ -117,6 +143,9 @@ export function RecordsPanel({
   onAddNoteForDate,
   onAddTask,
   onAddWeightRecord,
+  onAddWorkoutRecord,
+  onAddWorkoutRecords,
+  onAddMealRecord,
   onDeleteNote,
   onDeleteTask,
   onDeleteMealRecord,
@@ -609,6 +638,9 @@ export function RecordsPanel({
           onAddNote={onAddNoteForDate}
           onAddTask={onAddTask}
           onAddWeightRecord={onAddWeightRecord}
+          onAddWorkoutRecord={onAddWorkoutRecord}
+          onAddWorkoutRecords={onAddWorkoutRecords}
+          onAddMealRecord={onAddMealRecord}
           onClose={closeQuickAction}
         />
       ) : null}
