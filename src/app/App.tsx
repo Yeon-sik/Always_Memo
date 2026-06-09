@@ -91,6 +91,9 @@ export function App() {
               onAddNoteForDate={memo.addNoteForDate}
               onAddTask={memo.addTask}
               onAddWeightRecord={memo.addWeightRecord}
+              onAddWorkoutRecord={memo.addWorkoutRecord}
+              onAddWorkoutRecords={memo.addWorkoutRecords}
+              onAddMealRecord={memo.addMealRecord}
               onDeleteNote={memo.deleteNote}
               onDeleteTask={memo.deleteTask}
               onDeleteMealRecord={memo.deleteMealRecord}
