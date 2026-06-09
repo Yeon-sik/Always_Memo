@@ -1,19 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, parseDateInput } from "../fitness/fitnessDate";
-
-export interface RecordMarkerSet {
-  note?: boolean;
-  task?: boolean;
-  workout?: boolean;
-  meal?: boolean;
-  weight?: boolean;
-}
+import type { CalendarMarkerSet, CalendarMarkers } from "./recordAggregation";
 
 interface RecordCalendarProps {
-  markerByDate: Map<string, RecordMarkerSet>;
+  markerByDate: CalendarMarkers;
   selectedDate: string;
+  visibleMonth: string;
   onSelectDate: (date: string) => void;
+  onVisibleMonthChange: (date: string) => void;
 }
 
 const weekDays = ["일", "월", "화", "수", "목", "금", "토"];
@@ -55,32 +50,32 @@ function isSameMonth(first: Date, second: Date): boolean {
 }
 
 const markerStyles: Array<{
-  key: keyof RecordMarkerSet;
+  key: keyof CalendarMarkerSet;
   className: string;
   label: string;
 }> = [
   {
-    key: "note",
+    key: "notes",
     label: "메모",
     className: "border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100",
   },
   {
-    key: "task",
+    key: "tasks",
     label: "할 일",
     className: "border-transparent bg-sky-400",
   },
   {
-    key: "workout",
+    key: "workouts",
     label: "운동",
     className: "border-transparent bg-red-500",
   },
   {
-    key: "meal",
+    key: "meals",
     label: "식사",
     className: "border-transparent bg-yellow-400",
   },
   {
-    key: "weight",
+    key: "weights",
     label: "체중",
     className: "border-transparent bg-emerald-500",
   },
@@ -94,32 +89,45 @@ const calendarCellBase =
 export function RecordCalendar({
   markerByDate,
   selectedDate,
+  visibleMonth,
   onSelectDate,
+  onVisibleMonthChange,
 }: RecordCalendarProps) {
   const today = formatLocalDate();
-  const [visibleMonth, setVisibleMonth] = useState(parseDateInput(selectedDate));
-  const monthCells = useMemo(() => getMonthCells(visibleMonth), [visibleMonth]);
+  const visibleMonthDate = useMemo(
+    () => parseDateInput(visibleMonth),
+    [visibleMonth],
+  );
+  const monthCells = useMemo(() => getMonthCells(visibleMonthDate), [visibleMonthDate]);
 
   useEffect(() => {
     const selectedMonth = parseDateInput(selectedDate);
 
-    setVisibleMonth((current) =>
-      isSameMonth(selectedMonth, current)
-        ? current
-        : new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1),
-    );
-  }, [selectedDate]);
+    if (!isSameMonth(selectedMonth, visibleMonthDate)) {
+      onVisibleMonthChange(
+        formatLocalDate(
+          new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1),
+        ),
+      );
+    }
+  }, [onVisibleMonthChange, selectedDate, visibleMonthDate]);
 
   function moveMonth(offset: number) {
-    setVisibleMonth(
-      (current) => new Date(current.getFullYear(), current.getMonth() + offset, 1),
+    onVisibleMonthChange(
+      formatLocalDate(
+        new Date(
+          visibleMonthDate.getFullYear(),
+          visibleMonthDate.getMonth() + offset,
+          1,
+        ),
+      ),
     );
   }
 
   function handleTodayClick() {
     const nextToday = formatLocalDate();
     onSelectDate(nextToday);
-    setVisibleMonth(parseDateInput(nextToday));
+    onVisibleMonthChange(nextToday);
   }
 
   return (
@@ -135,7 +143,7 @@ export function RecordCalendar({
         </button>
         <div className="min-w-0 text-center">
           <div className="truncate text-sm font-semibold text-slate-950 dark:text-neutral-50">
-            {getMonthTitle(visibleMonth)}
+            {getMonthTitle(visibleMonthDate)}
           </div>
           <button
             type="button"
@@ -164,7 +172,7 @@ export function RecordCalendar({
       </div>
       <div className="mt-0.5 grid grid-cols-7 gap-0.5">
         {monthCells.map((date, index) => {
-          const markers = date ? markerByDate.get(date) : null;
+          const markers = date ? markerByDate[date] : null;
           const isSelected = date === selectedDate;
           const isToday = date === today;
 

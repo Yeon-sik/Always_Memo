@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { LocalDataSnapshot } from "../types";
 import { HeaderBar, type HeaderView } from "../components/HeaderBar";
 import { StatusBanner } from "../components/StatusBanner";
 import { SettingsPanel } from "../components/SettingsPanel";
@@ -15,6 +16,24 @@ export function App() {
   const { setThemeMode, themeMode } = useThemeMode();
   const [activeView, setActiveView] = useState<HeaderView>("records");
   const [selectedDate, setSelectedDate] = useState(formatLocalDate());
+  const snapshot: LocalDataSnapshot = useMemo(
+    () => ({
+      notes: memo.notes,
+      tasks: memo.tasks,
+      workoutRecords: memo.workoutRecords,
+      mealRecords: memo.mealRecords,
+      weightRecords: memo.weightRecords,
+      devices: memo.activeDevices,
+    }),
+    [
+      memo.activeDevices,
+      memo.mealRecords,
+      memo.notes,
+      memo.tasks,
+      memo.weightRecords,
+      memo.workoutRecords,
+    ],
+  );
 
   return (
     <div className="app-shell flex w-full min-w-0 justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
@@ -49,12 +68,9 @@ export function App() {
             />
           ) : activeView === "records" ? (
             <RecordsPanel
-              mealRecords={memo.mealRecords}
-              notes={memo.notes}
+              snapshot={snapshot}
               selectedDate={selectedDate}
-              tasks={memo.tasks}
-              weightRecords={memo.weightRecords}
-              workoutRecords={memo.workoutRecords}
+              syncStatus={memo.syncStatus}
               onSelectDate={setSelectedDate}
             />
           ) : activeView === "fitness" ? (
