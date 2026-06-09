@@ -1,8 +1,4 @@
-import {
-  disable,
-  enable,
-  isEnabled,
-} from "@tauri-apps/plugin-autostart";
+import { getPlatformCapabilities } from "../platform/capabilities";
 
 export interface AutostartResult {
   enabled: boolean;
@@ -11,16 +7,13 @@ export interface AutostartResult {
 }
 
 // 웹 개발 서버에서는 Tauri 플러그인이 없으므로 런타임을 먼저 확인한다.
-function isTauriRuntime(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    "__TAURI_INTERNALS__" in window
-  );
+async function loadAutostartPlugin() {
+  return await import("@tauri-apps/plugin-autostart");
 }
 
 // 설정 패널 초기 표시를 위해 OS 자동 실행 등록 상태를 읽는다.
 export async function getAutostartEnabled(): Promise<AutostartResult> {
-  if (!isTauriRuntime()) {
+  if (!getPlatformCapabilities().isTauriDesktop) {
     return {
       enabled: false,
       supported: false,
@@ -29,6 +22,8 @@ export async function getAutostartEnabled(): Promise<AutostartResult> {
   }
 
   try {
+    const { isEnabled } = await loadAutostartPlugin();
+
     return {
       enabled: await isEnabled(),
       supported: true,
@@ -50,7 +45,7 @@ export async function getAutostartEnabled(): Promise<AutostartResult> {
 export async function setAutostartEnabled(
   enabled: boolean,
 ): Promise<AutostartResult> {
-  if (!isTauriRuntime()) {
+  if (!getPlatformCapabilities().isTauriDesktop) {
     return {
       enabled: false,
       supported: false,
@@ -59,6 +54,8 @@ export async function setAutostartEnabled(
   }
 
   try {
+    const { disable, enable, isEnabled } = await loadAutostartPlugin();
+
     if (enabled) {
       await enable();
     } else {

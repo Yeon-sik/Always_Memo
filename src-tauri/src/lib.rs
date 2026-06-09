@@ -1,11 +1,14 @@
-use std::{collections::HashMap, env, fs, path::PathBuf};
+use std::{collections::HashMap, env, fs, path::PathBuf, sync::Mutex};
 
 #[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
+
+const DEFAULT_QUICK_CAPTURE_SHORTCUT: &str = "Alt+Space";
+const QUICK_CAPTURE_OPEN_EVENT: &str = "quick-capture:open";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +19,28 @@ struct RuntimeConfig {
     loaded: bool,
     source_path: Option<String>,
 }
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct QuickCaptureShortcutStatus {
+    registered: bool,
+    shortcut: String,
+    supported: bool,
+    error: Option<String>,
+}
+
+impl QuickCaptureShortcutStatus {
+    fn unsupported() -> Self {
+        Self {
+            registered: false,
+            shortcut: DEFAULT_QUICK_CAPTURE_SHORTCUT.to_string(),
+            supported: false,
+            error: None,
+        }
+    }
+}
+
+type QuickCaptureShortcutState = Mutex<QuickCaptureShortcutStatus>;
 
 fn normalize_env_value(value: &str) -> String {
     let trimmed = value.trim();
@@ -128,7 +153,31 @@ fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
     config_from_values(HashMap::new(), None)
 }
 
-// 트레이 메뉴나 아이콘 클릭 시 숨겨진 메인 창을 다시 앞으로 가져온다.
+#[tauri::command]
+fn quick_capture_shortcut_status(
+    status: tauri::State<'_, QuickCaptureShortcutState>,
+) -> QuickCaptureShortcutStatus {
+    status
+        .lock()
+        .map(|current_status| current_status.clone())
+        .unwrap_or_else(|_| QuickCaptureShortcutStatus::unsupported())
+}
+
+#[tauri::command]
+fn show_quick_capture(app: AppHandle) -> Result<(), String> {
+    #[cfg(desktop)]
+    {
+        show_quick_capture_panel(&app);
+        Ok(())
+    }
+
+    #[cfg(not(desktop))]
+    {
+        let _ = app;
+        Err("Quick Capture native entry is desktop-only.".to_string())
+    }
+}
+
 #[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -138,7 +187,6 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-// 창을 종료하지 않고 트레이에 남기기 위해 메인 창만 숨긴다.
 #[cfg(desktop)]
 fn hide_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -147,18 +195,101 @@ fn hide_main_window(app: &tauri::AppHandle) {
 }
 
 #[cfg(desktop)]
-// Windows 데스크톱 앱에서 사용할 트레이 메뉴와 좌클릭 동작을 구성한다.
+fn show_quick_capture_panel(app: &tauri::AppHandle) {
+    show_main_window(app);
+    let _ = app.emit(QUICK_CAPTURE_OPEN_EVENT, ());
+}
+
+#[cfg(desktop)]
+fn set_quick_capture_shortcut_status(
+    app: &tauri::AppHandle,
+    status: QuickCaptureShortcutStatus,
+) {
+    let state = app.state::<QuickCaptureShortcutState>();
+
+    match state.lock() {
+        Ok(mut current_status) => {
+            *current_status = status;
+        }
+        Err(_) => {}
+    };
+}
+
+#[cfg(desktop)]
+fn setup_global_shortcut(app: &mut tauri::App) -> tauri::Result<()> {
+    use tauri_plugin_global_shortcut::{
+        Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState,
+    };
+
+    let plugin_result = app.handle().plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|app, shortcut, event| {
+                if event.state == ShortcutState::Pressed
+                    && shortcut.matches(Modifiers::ALT, Code::Space)
+                {
+                    show_quick_capture_panel(app);
+                }
+            })
+            .build(),
+    );
+
+    if let Err(error) = plugin_result {
+        set_quick_capture_shortcut_status(
+            app.handle(),
+            QuickCaptureShortcutStatus {
+                registered: false,
+                shortcut: DEFAULT_QUICK_CAPTURE_SHORTCUT.to_string(),
+                supported: false,
+                error: Some(format!("Global shortcut plugin failed: {error}")),
+            },
+        );
+        return Ok(());
+    }
+
+    let shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+
+    match app.handle().global_shortcut().register(shortcut) {
+        Ok(()) => set_quick_capture_shortcut_status(
+            app.handle(),
+            QuickCaptureShortcutStatus {
+                registered: true,
+                shortcut: DEFAULT_QUICK_CAPTURE_SHORTCUT.to_string(),
+                supported: true,
+                error: None,
+            },
+        ),
+        Err(error) => set_quick_capture_shortcut_status(
+            app.handle(),
+            QuickCaptureShortcutStatus {
+                registered: false,
+                shortcut: DEFAULT_QUICK_CAPTURE_SHORTCUT.to_string(),
+                supported: true,
+                error: Some(format!("Alt+Space registration failed: {error}")),
+            },
+        ),
+    }
+
+    Ok(())
+}
+
+#[cfg(desktop)]
 fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
-    let show_item = MenuItem::with_id(app, "show", "열기", true, None::<&str>)?;
-    let hide_item = MenuItem::with_id(app, "hide", "숨기기", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show_item, &hide_item, &quit_item])?;
+    let quick_capture_item =
+        MenuItem::with_id(app, "quick_capture", "Quick Capture", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(app, "show", "Open", true, None::<&str>)?;
+    let hide_item = MenuItem::with_id(app, "hide", "Hide", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let menu = Menu::with_items(
+        app,
+        &[&quick_capture_item, &show_item, &hide_item, &quit_item],
+    )?;
 
     let mut tray_builder = TrayIconBuilder::new()
         .tooltip("Yeonsik's Note")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
+            "quick_capture" => show_quick_capture_panel(app),
             "show" => show_main_window(app),
             "hide" => hide_main_window(app),
             "quit" => app.exit(0),
@@ -186,20 +317,25 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Tauri 런타임 진입점: opener/autostart 플러그인, tray, 닫기 동작을 연결한다.
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![load_runtime_config])
-        .setup(|_app| {
+        .manage(Mutex::new(QuickCaptureShortcutStatus::unsupported()))
+        .invoke_handler(tauri::generate_handler![
+            load_runtime_config,
+            quick_capture_shortcut_status,
+            show_quick_capture,
+        ])
+        .setup(|app| {
             #[cfg(desktop)]
             {
                 use tauri_plugin_autostart::MacosLauncher;
 
-                _app.handle().plugin(tauri_plugin_autostart::init(
+                app.handle().plugin(tauri_plugin_autostart::init(
                     MacosLauncher::LaunchAgent,
                     None::<Vec<&str>>,
                 ))?;
-                setup_tray(_app)?;
+                setup_global_shortcut(app)?;
+                setup_tray(app)?;
             }
 
             Ok(())
