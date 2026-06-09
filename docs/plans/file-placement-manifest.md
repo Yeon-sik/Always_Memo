@@ -12,6 +12,7 @@
 | `docs/plans/file-placement-manifest.md` | 이 파일 배치표 |
 | `docs/specs/codex-command-master.md` | 전체 제품/기술 명령서 |
 | `docs/specs/life-command-center.md` | 기록 탭 대시보드 명세 |
+| `docs/specs/quick-action-expansion.md` | 빠른 작업 5개 섹션 확장 및 탭 책임 경계 명세 |
 | `docs/specs/record-aggregation-api.md` | 집계 selector API 계약 |
 | `docs/specs/fitness-full-crud-sync.md` | 운동/식사/체중 CRUD와 tombstone 명세 |
 | `docs/specs/native-quick-capture.md` | Tauri global hotkey/tray Quick Capture 명세 |
