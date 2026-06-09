@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Command } from "lucide-react";
 import type { LocalDataSnapshot } from "../types";
 import { HeaderBar, type HeaderView } from "../components/HeaderBar";
 import { StatusBanner } from "../components/StatusBanner";
@@ -6,6 +7,8 @@ import { SettingsPanel } from "../components/SettingsPanel";
 import { FitnessPanel } from "../features/fitness/FitnessPanel";
 import { formatLocalDate } from "../features/fitness/fitnessDate";
 import { MemoPanel } from "../features/notes/MemoPanel";
+import { QuickCapturePanel } from "../features/quick-capture/QuickCapturePanel";
+import { useQuickCapture } from "../features/quick-capture/useQuickCapture";
 import { RecordsPanel } from "../features/records/RecordsPanel";
 import { ChecklistPanel } from "../features/tasks/ChecklistPanel";
 import { useLocalSyncMemo } from "./useLocalSyncMemo";
@@ -16,6 +19,10 @@ export function App() {
   const { setThemeMode, themeMode } = useThemeMode();
   const [activeView, setActiveView] = useState<HeaderView>("records");
   const [selectedDate, setSelectedDate] = useState(formatLocalDate());
+  const quickCapture = useQuickCapture({
+    onAddMemo: memo.addNoteForDate,
+    onAddTask: memo.addTask,
+  });
   const snapshot: LocalDataSnapshot = useMemo(
     () => ({
       notes: memo.notes,
@@ -62,8 +69,18 @@ export function App() {
               themeMode={themeMode}
               userId={memo.userId}
               onChangeThemeMode={setThemeMode}
+              quickCaptureShortcutPreference={
+                quickCapture.shortcutPreference
+              }
+              quickCaptureShortcutStatus={quickCapture.shortcutStatus}
               onManualSync={memo.manualSync}
+              onRefreshQuickCaptureShortcutStatus={
+                quickCapture.refreshShortcutStatus
+              }
               onSaveSupabaseConfig={memo.saveSupabaseConfig}
+              onSaveQuickCaptureShortcutPreference={
+                quickCapture.setShortcutPreference
+              }
               onToggleAutostart={memo.setAutostartEnabled}
             />
           ) : activeView === "records" ? (
@@ -122,6 +139,25 @@ export function App() {
             </div>
           )}
         </main>
+
+        <button
+          type="button"
+          onClick={quickCapture.open}
+          className="fixed bottom-[calc(1rem+var(--app-safe-bottom))] right-[calc(1rem+var(--app-safe-right))] z-40 inline-flex h-12 w-12 items-center justify-center rounded-full bg-neutral-950 text-white shadow-2xl shadow-black/30 transition hover:bg-neutral-800 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+          aria-label="Quick Capture 열기"
+          title="Quick Capture"
+        >
+          <Command className="h-5 w-5" aria-hidden="true" />
+        </button>
+
+        <QuickCapturePanel
+          isOpen={quickCapture.isOpen}
+          mode={quickCapture.mode}
+          shortcutStatus={quickCapture.shortcutStatus}
+          onClose={quickCapture.close}
+          onModeChange={quickCapture.setMode}
+          onSave={quickCapture.saveDraft}
+        />
       </div>
     </div>
   );
