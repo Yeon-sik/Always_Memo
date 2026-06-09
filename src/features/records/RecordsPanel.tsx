@@ -12,7 +12,19 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LocalDataSnapshot, MealRecord, WeightRecord, WorkoutRecord } from "../../types";
+import type {
+  BackfillInput,
+  LocalDataSnapshot,
+  MealRecord,
+  WeightRecord,
+  WorkoutRecord,
+} from "../../types";
+import {
+  BACKFILL_LABEL,
+  hasBackfillMetadata,
+  isFutureLocalDate,
+  isPastLocalDate,
+} from "../../lib/dataTrust/backfillMetadata";
 import type { SyncStatus } from "../../lib/sync/syncTypes";
 import { QuickActionOverlay } from "../command-center/quickActions/QuickActionOverlay";
 import { useQuickActionState } from "../command-center/quickActions/useQuickActionState";
@@ -56,9 +68,23 @@ interface RecordsPanelProps {
   selectedDate: string;
   snapshot: LocalDataSnapshot;
   syncStatus: SyncStatus;
-  onAddNoteForDate: (date: string, title: string, content: string) => void;
-  onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
-  onAddWeightRecord: (date: string, weightKg: number) => void;
+  onAddNoteForDate: (
+    date: string,
+    title: string,
+    content: string,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddTask: (
+    text: string,
+    dueDate: string | null,
+    dueTime: string | null,
+    backfillInput?: BackfillInput,
+  ) => void;
+  onAddWeightRecord: (
+    date: string,
+    weightKg: number,
+    backfillInput?: BackfillInput,
+  ) => void;
   onDeleteNote: (noteId: string) => void;
   onDeleteTask: (taskId: string) => void;
   onDeleteMealRecord: (recordId: string) => void;
@@ -69,6 +95,18 @@ interface RecordsPanelProps {
   onRestoreWorkoutRecord: (record: WorkoutRecord) => void;
   onSelectDate: (date: string) => void;
   onToggleTask: (taskId: string) => void;
+}
+
+function BackfillBadge({ record }: { record: { isBackfilled?: boolean } }) {
+  if (!hasBackfillMetadata(record)) {
+    return null;
+  }
+
+  return (
+    <span className="mt-1 inline-flex w-fit rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+      {BACKFILL_LABEL}
+    </span>
+  );
 }
 
 // 기록 탭 컨테이너: 집계 데이터, 달력, 일별 목록, 빠른 추가 Overlay를 연결합니다.
@@ -100,6 +138,7 @@ export function RecordsPanel({
     isQuickActionOpen,
     openQuickAction,
     quickActionDate,
+    quickActionMode,
   } = useQuickActionState();
   const selectedRange = useMemo(() => getMonthRange(selectedDate), [selectedDate]);
   const selectedRecords = useMemo(
@@ -145,6 +184,20 @@ export function RecordsPanel({
   const hasNutritionData = nutritionSeries.some(
     (point) => point.averageCalories !== null,
   );
+  const selectedDateIsPast = isPastLocalDate(selectedDate, today);
+  const selectedDateIsFuture = isFutureLocalDate(selectedDate, today);
+  const productivityDetail =
+    dashboardStats.backfilledTaskCount > 0
+      ? `${dashboardStats.completedTasks}/${dashboardStats.totalTasks} 완료 · ${BACKFILL_LABEL} ${dashboardStats.backfilledTaskCount}건 제외`
+      : `${dashboardStats.completedTasks}/${dashboardStats.totalTasks} 완료`;
+  const mealStatsDetail =
+    dashboardStats.backfilledMealCount > 0
+      ? `선택 월 식사 기준 · ${BACKFILL_LABEL} ${dashboardStats.backfilledMealCount}건 포함`
+      : "선택 월 식사 기준";
+  const weightStatsDetail =
+    dashboardStats.backfilledWeightCount > 0
+      ? `${BACKFILL_LABEL} ${dashboardStats.backfilledWeightCount}건 포함`
+      : null;
 
   useEffect(() => {
     setVisibleMonth(selectedDate);
@@ -207,6 +260,16 @@ export function RecordsPanel({
     scheduleFitnessDeleteUndo({ type: "weight", record });
   }
 
+  function openBackfillAction(sourceElement: HTMLElement) {
+    const shouldOpen = window.confirm(
+      "지난 날짜에 기록을 추가합니다. 이 항목은 누락 보강으로 표시됩니다.",
+    );
+
+    if (shouldOpen) {
+      openQuickAction(selectedDate, sourceElement, "backfill");
+    }
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
       <div className="rounded-md border border-slate-300 bg-slate-950 p-3 text-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
@@ -249,21 +312,21 @@ export function RecordsPanel({
               ? "—"
               : `${dashboardStats.productivityScore}%`
           }
-          detail={`${dashboardStats.completedTasks}/${dashboardStats.totalTasks} 완료`}
+          detail={productivityDetail}
           tone="blue"
         />
         <KpiCard
           icon={Flame}
           label="평균 칼로리"
           value={formatNullableMetric(dashboardStats.averageCalories, "kcal")}
-          detail="선택 월 식사 기준"
+          detail={mealStatsDetail}
           tone="amber"
         />
         <KpiCard
           icon={Salad}
           label="평균 단백질"
           value={formatNullableMetric(dashboardStats.averageProteinGrams, "g", 1)}
-          detail="선택 월 식사 기준"
+          detail={mealStatsDetail}
           tone="emerald"
         />
         <KpiCard
@@ -273,7 +336,9 @@ export function RecordsPanel({
           detail={
             dashboardStats.latestWeightKg === null
               ? "체중 기록 없음"
-              : `최근 ${formatMetric(dashboardStats.latestWeightKg)} kg`
+              : weightStatsDetail
+                ? `최근 ${formatMetric(dashboardStats.latestWeightKg)} kg · ${weightStatsDetail}`
+                : `최근 ${formatMetric(dashboardStats.latestWeightKg)} kg`
           }
           tone="violet"
         />
@@ -328,7 +393,11 @@ export function RecordsPanel({
               {selectedDate === today ? "오늘 일정" : formatKoreanDate(selectedDate)}
             </h3>
             <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-              메모, 할 일, 운동/식사/체중 기록을 모았습니다.
+              {selectedDateIsPast
+                ? "지난 날짜의 새 기록은 누락 보강으로만 추가합니다."
+                : selectedDateIsFuture
+                  ? "미래 날짜에는 실제 수행 기록을 추가하지 않습니다."
+                  : "메모, 할 일, 운동/식사/체중 기록을 모았습니다."}
             </p>
           </div>
           <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 dark:border-neutral-800 dark:bg-black dark:text-neutral-200">
@@ -339,13 +408,27 @@ export function RecordsPanel({
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <MarkerLegend />
-          <button
-            type="button"
-            onClick={(event) => openQuickAction(selectedDate, event.currentTarget)}
-            className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-700 dark:bg-neutral-100 dark:text-black dark:hover:bg-white"
-          >
-            빠른 작업
-          </button>
+          {selectedDate === today ? (
+            <button
+              type="button"
+              onClick={(event) => openQuickAction(selectedDate, event.currentTarget)}
+              className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-700 dark:bg-neutral-100 dark:text-black dark:hover:bg-white"
+            >
+              빠른 작업
+            </button>
+          ) : selectedDateIsPast ? (
+            <button
+              type="button"
+              onClick={(event) => openBackfillAction(event.currentTarget)}
+              className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:hover:bg-amber-950/50"
+            >
+              {BACKFILL_LABEL}
+            </button>
+          ) : selectedDateIsFuture ? (
+            <span className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-400 dark:border-neutral-800 dark:text-neutral-500">
+              미래 날짜
+            </span>
+          ) : null}
         </div>
 
         <div className="mt-3 space-y-3">
@@ -375,6 +458,7 @@ export function RecordsPanel({
                 <div className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
                   {formatRecordTime(note.updatedAt)}
                 </div>
+                <BackfillBadge record={note} />
               </DailyItem>
             ))}
           </DailySection>
@@ -417,6 +501,7 @@ export function RecordsPanel({
                 <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
                   {task.isDone ? "완료" : formatTaskDueLabel(task)}
                 </div>
+                <BackfillBadge record={task} />
               </DailyItem>
             ))}
           </DailySection>
@@ -441,6 +526,7 @@ export function RecordsPanel({
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {getWorkoutTypeLabel(record)} - {getWorkoutSubcategoryLabel(record)}
                 </div>
+                <BackfillBadge record={record} />
               </DailyItem>
             ))}
           </DailySection>
@@ -469,6 +555,7 @@ export function RecordsPanel({
                   {record.calories.toLocaleString("ko-KR")} kcal / 단백질{" "}
                   {formatMetric(record.proteinGrams)} g
                 </div>
+                <BackfillBadge record={record} />
               </DailyItem>
             ))}
           </DailySection>
@@ -493,6 +580,7 @@ export function RecordsPanel({
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {formatMetric(record.weightKg)} kg
                 </div>
+                <BackfillBadge record={record} />
               </DailyItem>
             ))}
           </DailySection>
@@ -516,6 +604,7 @@ export function RecordsPanel({
 
       {isQuickActionOpen && quickActionDate ? (
         <QuickActionOverlay
+          isBackfill={quickActionMode === "backfill"}
           selectedDate={quickActionDate}
           onAddNote={onAddNoteForDate}
           onAddTask={onAddTask}

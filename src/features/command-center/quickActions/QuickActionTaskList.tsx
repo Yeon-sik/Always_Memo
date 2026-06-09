@@ -1,12 +1,20 @@
 import { FormEvent, useState } from "react";
 import { CheckSquare, Plus } from "lucide-react";
+import type { BackfillInput } from "../../../types";
 
 interface QuickActionTaskListProps {
+  backfillInput?: BackfillInput;
   selectedDate: string;
-  onAddTask: (text: string, dueDate: string | null, dueTime: string | null) => void;
+  onAddTask: (
+    text: string,
+    dueDate: string | null,
+    dueTime: string | null,
+    backfillInput?: BackfillInput,
+  ) => void;
 }
 
 export function QuickActionTaskList({
+  backfillInput,
   selectedDate,
   onAddTask,
 }: QuickActionTaskListProps) {
@@ -21,7 +29,7 @@ export function QuickActionTaskList({
       return;
     }
 
-    onAddTask(text, selectedDate, null);
+    onAddTask(text, selectedDate, null, backfillInput);
     setDraft("");
   }
 

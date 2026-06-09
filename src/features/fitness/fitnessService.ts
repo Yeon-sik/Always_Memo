@@ -1,9 +1,11 @@
 import type {
+  BackfillInput,
   MealRecord,
   WeightRecord,
   WorkoutRecord,
   WorkoutType,
 } from "../../types";
+import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
 
 export type WorkoutRecordPatch = Partial<
@@ -87,10 +89,13 @@ export function createWorkoutRecord(
   category: string,
   exerciseName: string,
   deviceId: string,
+  backfillInput?: BackfillInput,
 ): WorkoutRecord {
   const now = createTimestamp();
+  const auditFields = createEntityAuditFields(backfillInput, now);
 
   return {
+    ...auditFields,
     id: createId(),
     date,
     workoutType,
@@ -133,10 +138,13 @@ export function createMealRecord(
   deviceId: string,
   carbsGrams: number | null = null,
   fatGrams: number | null = null,
+  backfillInput?: BackfillInput,
 ): MealRecord {
   const now = createTimestamp();
+  const auditFields = createEntityAuditFields(backfillInput, now);
 
   return {
+    ...auditFields,
     id: createId(),
     date,
     menu: menu.trim(),
@@ -154,10 +162,13 @@ export function createWeightRecord(
   date: string,
   weightKg: number,
   deviceId: string,
+  backfillInput?: BackfillInput,
 ): WeightRecord {
   const now = createTimestamp();
+  const auditFields = createEntityAuditFields(backfillInput, now);
 
   return {
+    ...auditFields,
     id: createId(),
     date,
     weightKg,

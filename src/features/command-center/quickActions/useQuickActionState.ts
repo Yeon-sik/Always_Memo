@@ -2,22 +2,29 @@ import { useCallback, useState } from "react";
 
 interface QuickActionState {
   isOpen: boolean;
+  mode: "quick" | "backfill";
   selectedDate: string | null;
 }
 
 export function useQuickActionState() {
   const [state, setState] = useState<QuickActionState>({
     isOpen: false,
+    mode: "quick",
     selectedDate: null,
   });
   const [returnFocusElement, setReturnFocusElement] =
     useState<HTMLElement | null>(null);
 
   const openQuickAction = useCallback(
-    (date: string, sourceElement: HTMLElement | null = null) => {
+    (
+      date: string,
+      sourceElement: HTMLElement | null = null,
+      mode: QuickActionState["mode"] = "quick",
+    ) => {
       setReturnFocusElement(sourceElement);
       setState({
         isOpen: true,
+        mode,
         selectedDate: date,
       });
     },
@@ -40,5 +47,6 @@ export function useQuickActionState() {
     isQuickActionOpen: state.isOpen,
     openQuickAction,
     quickActionDate: state.selectedDate,
+    quickActionMode: state.mode,
   };
 }

@@ -17,6 +17,10 @@ create table if not exists public.notes (
   user_id text not null,
   title text not null,
   content text not null,
+  created_at timestamptz not null default now(),
+  is_backfilled boolean not null default false,
+  backfilled_at timestamptz,
+  backfill_reason text,
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
@@ -33,6 +37,10 @@ create table if not exists public.tasks (
   order_index integer not null default 0,
   due_date date,
   due_time time,
+  created_at timestamptz not null default now(),
+  is_backfilled boolean not null default false,
+  backfilled_at timestamptz,
+  backfill_reason text,
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
@@ -49,6 +57,10 @@ create table if not exists public.workout_records (
     check (workout_type in ('strength', 'cardio', 'other')),
   category text not null,
   exercise_name text not null,
+  created_at timestamptz not null default now(),
+  is_backfilled boolean not null default false,
+  backfilled_at timestamptz,
+  backfill_reason text,
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
@@ -66,6 +78,10 @@ create table if not exists public.meal_records (
   protein_grams double precision not null,
   carbs_grams double precision,
   fat_grams double precision,
+  created_at timestamptz not null default now(),
+  is_backfilled boolean not null default false,
+  backfilled_at timestamptz,
+  backfill_reason text,
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
@@ -79,6 +95,10 @@ create table if not exists public.weight_records (
   user_id text not null,
   date date not null,
   weight_kg double precision not null,
+  created_at timestamptz not null default now(),
+  is_backfilled boolean not null default false,
+  backfilled_at timestamptz,
+  backfill_reason text,
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
@@ -92,6 +112,36 @@ alter table public.tasks
 
 alter table public.tasks
   add column if not exists due_time time;
+
+alter table public.notes
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists is_backfilled boolean not null default false,
+  add column if not exists backfilled_at timestamptz,
+  add column if not exists backfill_reason text;
+
+alter table public.tasks
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists is_backfilled boolean not null default false,
+  add column if not exists backfilled_at timestamptz,
+  add column if not exists backfill_reason text;
+
+alter table public.workout_records
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists is_backfilled boolean not null default false,
+  add column if not exists backfilled_at timestamptz,
+  add column if not exists backfill_reason text;
+
+alter table public.meal_records
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists is_backfilled boolean not null default false,
+  add column if not exists backfilled_at timestamptz,
+  add column if not exists backfill_reason text;
+
+alter table public.weight_records
+  add column if not exists created_at timestamptz not null default now(),
+  add column if not exists is_backfilled boolean not null default false,
+  add column if not exists backfilled_at timestamptz,
+  add column if not exists backfill_reason text;
 
 -- pull sync와 활성 목록 조회가 자주 쓰는 user_id + 시간/순서 기준 인덱스다.
 create index if not exists notes_user_updated_at_idx

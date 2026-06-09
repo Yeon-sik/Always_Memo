@@ -8,6 +8,7 @@ import type {
   WorkoutRecord,
   WorkoutType,
 } from "../../types";
+import { normalizeEntityAuditFields } from "../dataTrust/backfillMetadata";
 import { createEmptySnapshot, type StorageAdapter } from "./storageAdapter";
 
 const STORAGE_KEY = "localsyncmemo:snapshot:v1";
@@ -34,13 +35,33 @@ function isSyncableEntity(value: Record<string, unknown>): boolean {
   );
 }
 
-function isNote(value: unknown): value is Note {
-  return (
-    isRecord(value) &&
-    isSyncableEntity(value) &&
-    typeof value.title === "string" &&
-    typeof value.content === "string"
-  );
+function getNormalizedSyncFields(value: Record<string, unknown>) {
+  const updatedAt = value.updatedAt as string;
+
+  return {
+    ...normalizeEntityAuditFields(value, updatedAt),
+    updatedAt,
+    deletedAt: value.deletedAt as string | null,
+    deviceId: value.deviceId as string,
+  };
+}
+
+function normalizeNote(value: unknown): Note | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.title !== "string" ||
+    typeof value.content !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    title: value.title,
+    content: value.content,
+    ...getNormalizedSyncFields(value),
+  };
 }
 
 function normalizeTask(value: unknown): Task | null {
@@ -56,21 +77,14 @@ function normalizeTask(value: unknown): Task | null {
 
   const dueDate = isNullableString(value.dueDate) ? value.dueDate : null;
   const dueTime = isNullableString(value.dueTime) ? value.dueTime : null;
-  const id = value.id as string;
-  const updatedAt = value.updatedAt as string;
-  const deletedAt = value.deletedAt as string | null;
-  const deviceId = value.deviceId as string;
-
   return {
-    id,
+    id: value.id as string,
     text: value.text,
     isDone: value.isDone,
     orderIndex: value.orderIndex,
     dueDate,
     dueTime,
-    updatedAt,
-    deletedAt,
-    deviceId,
+    ...getNormalizedSyncFields(value),
   };
 }
 
@@ -85,25 +99,18 @@ function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
     return null;
   }
 
-  const id = value.id as string;
-  const updatedAt = value.updatedAt as string;
-  const deletedAt = value.deletedAt as string | null;
-  const deviceId = value.deviceId as string;
-
   const workoutType: WorkoutType =
     value.workoutType === "cardio" || value.workoutType === "other"
       ? value.workoutType
       : "strength";
 
   return {
-    id,
+    id: value.id as string,
     date: value.date,
     workoutType,
     category: value.category,
     exerciseName: value.exerciseName,
-    updatedAt,
-    deletedAt,
-    deviceId,
+    ...getNormalizedSyncFields(value),
   };
 }
 
@@ -119,22 +126,15 @@ function normalizeMealRecord(value: unknown): MealRecord | null {
     return null;
   }
 
-  const id = value.id as string;
-  const updatedAt = value.updatedAt as string;
-  const deletedAt = value.deletedAt as string | null;
-  const deviceId = value.deviceId as string;
-
   return {
-    id,
+    id: value.id as string,
     date: value.date,
     menu: value.menu,
     calories: value.calories,
     proteinGrams: value.proteinGrams,
     carbsGrams: typeof value.carbsGrams === "number" ? value.carbsGrams : null,
     fatGrams: typeof value.fatGrams === "number" ? value.fatGrams : null,
-    updatedAt,
-    deletedAt,
-    deviceId,
+    ...getNormalizedSyncFields(value),
   };
 }
 
@@ -148,18 +148,11 @@ function normalizeWeightRecord(value: unknown): WeightRecord | null {
     return null;
   }
 
-  const id = value.id as string;
-  const updatedAt = value.updatedAt as string;
-  const deletedAt = value.deletedAt as string | null;
-  const deviceId = value.deviceId as string;
-
   return {
-    id,
+    id: value.id as string,
     date: value.date,
     weightKg: value.weightKg,
-    updatedAt,
-    deletedAt,
-    deviceId,
+    ...getNormalizedSyncFields(value),
   };
 }
 
@@ -194,7 +187,7 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     return createEmptySnapshot();
   }
 
-  const notes = Array.isArray(value.notes) ? value.notes.filter(isNote) : [];
+  const notes = normalizeArray(value.notes, normalizeNote);
   const tasks = normalizeArray(value.tasks, normalizeTask);
   const workoutRecords = normalizeArray(
     value.workoutRecords,

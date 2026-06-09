@@ -1,4 +1,5 @@
-import type { Note } from "../../types";
+import type { BackfillInput, Note } from "../../types";
+import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
 
 function createTimestampForDate(date?: string): string {
@@ -29,14 +30,17 @@ export function createNote(
   deviceId: string,
   changes: Pick<Partial<Note>, "title" | "content"> = {},
   recordDate?: string,
+  backfillInput?: BackfillInput,
 ): Note {
-  const now = createTimestampForDate(recordDate);
+  const createdAt = new Date().toISOString();
+  const auditFields = createEntityAuditFields(backfillInput, createdAt);
 
   return {
+    ...auditFields,
     id: createId(),
     title: changes.title ?? "새 메모",
     content: changes.content ?? "",
-    updatedAt: now,
+    updatedAt: createTimestampForDate(recordDate),
     deletedAt: null,
     deviceId,
   };

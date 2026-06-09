@@ -6,12 +6,19 @@ import {
 } from "react";
 import { BarChart3, Download, Dumbbell, Salad, Scale } from "lucide-react";
 import type {
+  BackfillInput,
   MealRecord,
   WeightRecord,
   WorkoutRecord,
   WorkoutType,
 } from "../../types";
-import { getCurrentMonthRange } from "./fitnessDate";
+import {
+  BACKFILL_LABEL,
+  createBackfillInput,
+  isFutureLocalDate,
+  isPastLocalDate,
+} from "../../lib/dataTrust/backfillMetadata";
+import { formatLocalDate, getCurrentMonthRange } from "./fitnessDate";
 import {
   createFitnessExportFileName,
   createFitnessMarkdownExport,
@@ -43,13 +50,19 @@ interface FitnessPanelProps {
     proteinGrams: number,
     carbsGrams?: number | null,
     fatGrams?: number | null,
+    backfillInput?: BackfillInput,
   ) => void;
-  onAddWeightRecord: (date: string, weightKg: number) => void;
+  onAddWeightRecord: (
+    date: string,
+    weightKg: number,
+    backfillInput?: BackfillInput,
+  ) => void;
   onAddWorkoutRecord: (
     date: string,
     workoutType: WorkoutType,
     category: string,
     exerciseName: string,
+    backfillInput?: BackfillInput,
   ) => void;
   onAddWorkoutRecords: (
     records: Array<{
@@ -58,6 +71,7 @@ interface FitnessPanelProps {
       category: string;
       exerciseName: string;
     }>,
+    backfillInput?: BackfillInput,
   ) => void;
 }
 
@@ -75,6 +89,7 @@ export function FitnessPanel({
   onAddWorkoutRecords,
 }: FitnessPanelProps) {
   const currentMonthRange = getCurrentMonthRange();
+  const today = formatLocalDate();
   const [actionPanel, setActionPanel] = useState<ActionPanel>(null);
   const [rangeStartDate, setRangeStartDate] = useState(
     currentMonthRange.startDate,
@@ -131,12 +146,26 @@ export function FitnessPanel({
     rangeStartDate,
     rangeEndDate,
   );
+  const workoutIsBackfill = isPastLocalDate(workoutDate, today);
+  const mealIsBackfill = isPastLocalDate(mealDate, today);
+  const weightIsBackfill = isPastLocalDate(weightDate, today);
+
+  function getBackfillInputForDate(date: string): BackfillInput | undefined {
+    return isPastLocalDate(date, today)
+      ? createBackfillInput("fitness-tab-past-date")
+      : undefined;
+  }
 
   function handleWorkoutSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!workoutDate) {
       setFormError("운동 기록에는 날짜가 필요합니다.");
+      return;
+    }
+
+    if (isFutureLocalDate(workoutDate, today)) {
+      setFormError("미래 날짜에는 실제 운동 기록을 추가할 수 없습니다.");
       return;
     }
 
@@ -149,10 +178,11 @@ export function FitnessPanel({
       onAddWorkoutRecords(
         selectedStrengthParts.map((part) => ({
           date: workoutDate,
-          workoutType,
-          category: part,
-          exerciseName: part,
-        })),
+            workoutType,
+            category: part,
+            exerciseName: part,
+          })),
+        getBackfillInputForDate(workoutDate),
       );
       setSelectedStrengthParts([]);
     } else if (workoutType === "cardio") {
@@ -166,6 +196,7 @@ export function FitnessPanel({
         workoutType,
         workoutCardioType,
         workoutCardioType,
+        getBackfillInputForDate(workoutDate),
       );
     } else {
       const exerciseName = workoutExerciseName.trim();
@@ -175,7 +206,13 @@ export function FitnessPanel({
         return;
       }
 
-      onAddWorkoutRecord(workoutDate, workoutType, "기타", exerciseName);
+      onAddWorkoutRecord(
+        workoutDate,
+        workoutType,
+        "기타",
+        exerciseName,
+        getBackfillInputForDate(workoutDate),
+      );
       setWorkoutExerciseName("");
     }
 
@@ -211,6 +248,11 @@ export function FitnessPanel({
       return;
     }
 
+    if (isFutureLocalDate(mealDate, today)) {
+      setFormError("미래 날짜에는 실제 식사 기록을 추가할 수 없습니다.");
+      return;
+    }
+
     onAddMealRecord(
       mealDate,
       mealMenu.trim(),
@@ -218,6 +260,7 @@ export function FitnessPanel({
       proteinGrams,
       carbsGrams,
       fatGrams,
+      getBackfillInputForDate(mealDate),
     );
     setMealMenu("");
     setMealCalories("");
@@ -237,7 +280,16 @@ export function FitnessPanel({
       return;
     }
 
-    onAddWeightRecord(weightDate, parsedWeightKg);
+    if (isFutureLocalDate(weightDate, today)) {
+      setFormError("미래 날짜에는 실제 체중 기록을 추가할 수 없습니다.");
+      return;
+    }
+
+    onAddWeightRecord(
+      weightDate,
+      parsedWeightKg,
+      getBackfillInputForDate(weightDate),
+    );
     setWeightKg("");
     setFormError(null);
   }
@@ -329,6 +381,11 @@ export function FitnessPanel({
                     </p>
                   ))
                 )}
+                {stats.backfilledWorkoutCount > 0 ? (
+                  <p>
+                    {BACKFILL_LABEL} {stats.backfilledWorkoutCount}건 포함
+                  </p>
+                ) : null}
               </MetricPanel>
               <MetricPanel
                 icon={<Salad className="h-4 w-4 text-yellow-600" />}
@@ -337,6 +394,11 @@ export function FitnessPanel({
               >
                 <p>칼로리 {formatMetric(stats.averageCalories, 0)} kcal</p>
                 <p>단백질 {formatMetric(stats.averageProteinGrams)} g</p>
+                {stats.backfilledMealCount > 0 ? (
+                  <p>
+                    {BACKFILL_LABEL} {stats.backfilledMealCount}건 포함
+                  </p>
+                ) : null}
               </MetricPanel>
               <MetricPanel
                 icon={<Scale className="h-4 w-4 text-emerald-600" />}
@@ -348,6 +410,11 @@ export function FitnessPanel({
                   최저 {formatMetric(stats.minWeightKg)} kg / 최고{" "}
                   {formatMetric(stats.maxWeightKg)} kg
                 </p>
+                {stats.backfilledWeightCount > 0 ? (
+                  <p>
+                    {BACKFILL_LABEL} {stats.backfilledWeightCount}건 포함
+                  </p>
+                ) : null}
               </MetricPanel>
             </div>
           ) : (
@@ -388,6 +455,11 @@ export function FitnessPanel({
               className="field-input"
             />
           </FieldLabel>
+          {workoutIsBackfill ? (
+            <p className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              {BACKFILL_LABEL}으로 저장됩니다.
+            </p>
+          ) : null}
           <FieldLabel label="종류">
             <select
               value={workoutType}
@@ -453,7 +525,9 @@ export function FitnessPanel({
               />
             </FieldLabel>
           ) : null}
-          <SubmitButton label="운동 추가" />
+          <SubmitButton
+            label={workoutIsBackfill ? `${BACKFILL_LABEL} 저장` : "운동 추가"}
+          />
         </form>
 
         <form
@@ -472,6 +546,11 @@ export function FitnessPanel({
               className="field-input"
             />
           </FieldLabel>
+          {mealIsBackfill ? (
+            <p className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              {BACKFILL_LABEL}으로 저장됩니다.
+            </p>
+          ) : null}
           <FieldLabel label="메뉴">
             <input
               value={mealMenu}
@@ -525,7 +604,9 @@ export function FitnessPanel({
               />
             </FieldLabel>
           </div>
-          <SubmitButton label="식사 추가" />
+          <SubmitButton
+            label={mealIsBackfill ? `${BACKFILL_LABEL} 저장` : "식사 추가"}
+          />
         </form>
 
         <form
@@ -544,6 +625,11 @@ export function FitnessPanel({
               className="field-input"
             />
           </FieldLabel>
+          {weightIsBackfill ? (
+            <p className="mb-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              {BACKFILL_LABEL}으로 저장됩니다.
+            </p>
+          ) : null}
           <FieldLabel label="체중 kg">
             <input
               type="number"
@@ -555,7 +641,9 @@ export function FitnessPanel({
               placeholder="72.1"
             />
           </FieldLabel>
-          <SubmitButton label="체중 추가" />
+          <SubmitButton
+            label={weightIsBackfill ? `${BACKFILL_LABEL} 저장` : "체중 추가"}
+          />
         </form>
       </div>
     </section>

@@ -28,7 +28,14 @@ import {
 const ACTIVE_DEVICE_WINDOW_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 
-interface NoteRow {
+interface EntityAuditRow {
+  created_at?: string | null;
+  is_backfilled?: boolean | null;
+  backfilled_at?: string | null;
+  backfill_reason?: string | null;
+}
+
+interface NoteRow extends EntityAuditRow {
   id: string;
   user_id: string;
   title: string;
@@ -38,7 +45,7 @@ interface NoteRow {
   device_id: string;
 }
 
-interface TaskRow {
+interface TaskRow extends EntityAuditRow {
   id: string;
   user_id: string;
   text: string;
@@ -51,7 +58,7 @@ interface TaskRow {
   device_id: string;
 }
 
-interface WorkoutRecordRow {
+interface WorkoutRecordRow extends EntityAuditRow {
   id: string;
   user_id: string;
   date: string;
@@ -63,7 +70,7 @@ interface WorkoutRecordRow {
   device_id: string;
 }
 
-interface MealRecordRow {
+interface MealRecordRow extends EntityAuditRow {
   id: string;
   user_id: string;
   date: string;
@@ -77,7 +84,7 @@ interface MealRecordRow {
   device_id: string;
 }
 
-interface WeightRecordRow {
+interface WeightRecordRow extends EntityAuditRow {
   id: string;
   user_id: string;
   date: string;
@@ -205,9 +212,39 @@ function toLocalOnlyStatus(): SyncStatus {
   };
 }
 
+function auditFieldsFromRow(
+  row: EntityAuditRow,
+  fallbackUpdatedAt: string,
+) {
+  const isBackfilled = row.is_backfilled === true;
+  const createdAt = row.created_at ?? fallbackUpdatedAt;
+
+  return {
+    createdAt,
+    isBackfilled,
+    backfilledAt: isBackfilled ? row.backfilled_at ?? createdAt : null,
+    backfillReason: isBackfilled ? row.backfill_reason ?? null : null,
+  };
+}
+
+function auditFieldsToRow(entity: {
+  createdAt: string;
+  isBackfilled: boolean;
+  backfilledAt: string | null;
+  backfillReason: string | null;
+}): Required<EntityAuditRow> {
+  return {
+    created_at: entity.createdAt,
+    is_backfilled: entity.isBackfilled,
+    backfilled_at: entity.backfilledAt,
+    backfill_reason: entity.backfillReason,
+  };
+}
+
 // DB row와 앱 엔티티는 snake_case/camelCase가 달라 변환 함수를 명시한다.
 function noteFromRow(row: NoteRow): Note {
   return {
+    ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     title: row.title,
     content: row.content,
@@ -219,6 +256,7 @@ function noteFromRow(row: NoteRow): Note {
 
 function taskFromRow(row: TaskRow): Task {
   return {
+    ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     text: row.text,
     isDone: row.is_done,
@@ -237,6 +275,7 @@ function normalizeWorkoutType(value: string): WorkoutType {
 
 function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
   return {
+    ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     date: row.date,
     workoutType: normalizeWorkoutType(row.workout_type),
@@ -250,6 +289,7 @@ function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
 
 function mealRecordFromRow(row: MealRecordRow): MealRecord {
   return {
+    ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     date: row.date,
     menu: row.menu,
@@ -265,6 +305,7 @@ function mealRecordFromRow(row: MealRecordRow): MealRecord {
 
 function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
   return {
+    ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     date: row.date,
     weightKg: row.weight_kg,
@@ -285,6 +326,7 @@ function deviceFromRow(row: DeviceRow): Device {
 
 function noteToRow(note: Note, userId: string): NoteRow {
   return {
+    ...auditFieldsToRow(note),
     id: note.id,
     user_id: userId,
     title: note.title,
@@ -297,6 +339,7 @@ function noteToRow(note: Note, userId: string): NoteRow {
 
 function taskToRow(task: Task, userId: string): TaskRow {
   return {
+    ...auditFieldsToRow(task),
     id: task.id,
     user_id: userId,
     text: task.text,
@@ -315,6 +358,7 @@ function workoutRecordToRow(
   userId: string,
 ): WorkoutRecordRow {
   return {
+    ...auditFieldsToRow(record),
     id: record.id,
     user_id: userId,
     date: record.date,
@@ -329,6 +373,7 @@ function workoutRecordToRow(
 
 function mealRecordToRow(record: MealRecord, userId: string): MealRecordRow {
   return {
+    ...auditFieldsToRow(record),
     id: record.id,
     user_id: userId,
     date: record.date,
@@ -348,6 +393,7 @@ function weightRecordToRow(
   userId: string,
 ): WeightRecordRow {
   return {
+    ...auditFieldsToRow(record),
     id: record.id,
     user_id: userId,
     date: record.date,

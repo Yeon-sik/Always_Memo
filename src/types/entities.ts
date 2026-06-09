@@ -1,8 +1,17 @@
 export type EntityId = string;
 export type ISODateString = string;
 
-export interface SyncableEntity {
+export interface BackfillMetadata {
+  isBackfilled: boolean;
+  backfilledAt: ISODateString | null;
+  backfillReason: string | null;
+}
+
+export type BackfillInput = Partial<BackfillMetadata>;
+
+export interface SyncableEntity extends BackfillMetadata {
   id: EntityId;
+  createdAt: ISODateString;
   updatedAt: ISODateString;
   deletedAt: ISODateString | null;
   deviceId: EntityId;

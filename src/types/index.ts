@@ -1,4 +1,6 @@
 export type {
+  BackfillInput,
+  BackfillMetadata,
   Device,
   EntityId,
   ISODateString,

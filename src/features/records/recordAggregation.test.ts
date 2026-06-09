@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { LocalDataSnapshot, MealRecord, WeightRecord, WorkoutRecord } from "../../types";
+import type {
+  LocalDataSnapshot,
+  MealRecord,
+  Task,
+  WeightRecord,
+  WorkoutRecord,
+} from "../../types";
 import {
   getCalendarMarkers,
   getDashboardStats,
@@ -8,10 +14,14 @@ import {
 
 const liveWorkout: WorkoutRecord = {
   id: "workout-live",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   workoutType: "strength",
   category: "chest",
   exerciseName: "bench press",
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -25,12 +35,16 @@ const deletedWorkout: WorkoutRecord = {
 
 const liveMeal: MealRecord = {
   id: "meal-live",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   menu: "salad",
   calories: 600,
   proteinGrams: 40,
   carbsGrams: 50,
   fatGrams: 20,
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -46,8 +60,12 @@ const deletedMeal: MealRecord = {
 
 const liveWeight: WeightRecord = {
   id: "weight-live",
+  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   weightKg: 72,
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
@@ -58,6 +76,31 @@ const deletedWeight: WeightRecord = {
   id: "weight-deleted",
   weightKg: 80,
   deletedAt: "2026-06-09T00:00:01.000Z",
+};
+
+const directTask: Task = {
+  id: "task-direct",
+  createdAt: "2026-06-09T00:00:00.000Z",
+  text: "direct",
+  isDone: true,
+  orderIndex: 0,
+  dueDate: "2026-06-09",
+  dueTime: null,
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
+  updatedAt: "2026-06-09T00:00:00.000Z",
+  deletedAt: null,
+  deviceId: "device-a",
+};
+
+const backfilledTask: Task = {
+  ...directTask,
+  id: "task-backfilled",
+  text: "backfilled",
+  isBackfilled: true,
+  backfilledAt: "2026-06-10T00:00:00.000Z",
+  backfillReason: "test",
 };
 
 const snapshot: LocalDataSnapshot = {
@@ -88,6 +131,38 @@ describe("recordAggregation", () => {
     expect(stats.averageCalories).toBe(600);
     expect(stats.averageProteinGrams).toBe(40);
     expect(stats.latestWeightKg).toBe(72);
+  });
+
+  it("includes backfilled behavior records but excludes backfilled tasks from productivity", () => {
+    const stats = getDashboardStats(
+      {
+        ...snapshot,
+        tasks: [directTask, backfilledTask],
+        mealRecords: [
+          liveMeal,
+          {
+            ...liveMeal,
+            id: "meal-backfilled",
+            calories: 800,
+            proteinGrams: 60,
+            isBackfilled: true,
+            backfilledAt: "2026-06-10T00:00:00.000Z",
+            backfillReason: "test",
+          },
+        ],
+      },
+      {
+        startDate: "2026-06-01",
+        endDate: "2026-06-30",
+      },
+    );
+
+    expect(stats.completedTasks).toBe(1);
+    expect(stats.totalTasks).toBe(1);
+    expect(stats.backfilledTaskCount).toBe(1);
+    expect(stats.averageCalories).toBe(700);
+    expect(stats.backfilledMealCount).toBe(1);
+    expect(stats.totalBackfilledCount).toBe(2);
   });
 
   it("does not create markers for tombstone-only dates", () => {
