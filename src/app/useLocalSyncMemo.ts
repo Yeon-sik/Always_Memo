@@ -55,10 +55,20 @@ import {
   getVisibleMealRecords,
   getVisibleWeightRecords,
   getVisibleWorkoutRecords,
+  restoreMealRecord as restoreMealRecordEntity,
+  restoreWeightRecord as restoreWeightRecordEntity,
+  restoreWorkoutRecord as restoreWorkoutRecordEntity,
   softDeleteMealRecord,
   softDeleteWeightRecord,
   softDeleteWorkoutRecord,
+  updateMealRecord as updateMealRecordEntity,
   updateWeightRecord as updateWeightRecordEntity,
+  updateWorkoutRecord as updateWorkoutRecordEntity,
+} from "../features/fitness/fitnessService";
+import type {
+  MealRecordPatch,
+  WeightRecordPatch,
+  WorkoutRecordPatch,
 } from "../features/fitness/fitnessService";
 
 interface UseLocalSyncMemoState {
@@ -89,6 +99,8 @@ interface UseLocalSyncMemoActions {
     menu: string,
     calories: number,
     proteinGrams: number,
+    carbsGrams?: number | null,
+    fatGrams?: number | null,
   ) => void;
   addNote: () => void;
   addNoteForDate: (date: string, title: string, content: string) => void;
@@ -124,6 +136,9 @@ interface UseLocalSyncMemoActions {
     placement: "before" | "after",
   ) => void;
   selectNote: (noteId: string) => void;
+  restoreMealRecord: (record: MealRecord) => void;
+  restoreWeightRecord: (record: WeightRecord) => void;
+  restoreWorkoutRecord: (record: WorkoutRecord) => void;
   saveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
   setAutostartEnabled: (enabled: boolean) => Promise<void>;
   toggleTask: (taskId: string) => void;
@@ -135,7 +150,9 @@ interface UseLocalSyncMemoActions {
     title: string,
     content: string,
   ) => void;
-  updateWeightRecord: (recordId: string, weightKg: number) => void;
+  updateMealRecord: (recordId: string, patch: MealRecordPatch) => void;
+  updateWeightRecord: (recordId: string, patch: WeightRecordPatch) => void;
+  updateWorkoutRecord: (recordId: string, patch: WorkoutRecordPatch) => void;
   updateTaskSchedule: (
     taskId: string,
     dueDate: string | null,
@@ -881,6 +898,8 @@ export function useLocalSyncMemo(
       menu: string,
       calories: number,
       proteinGrams: number,
+      carbsGrams: number | null = null,
+      fatGrams: number | null = null,
     ) => {
       if (!device) {
         return;
@@ -892,6 +911,8 @@ export function useLocalSyncMemo(
         calories,
         proteinGrams,
         device.id,
+        carbsGrams,
+        fatGrams,
       );
       setMealRecords((currentRecords) => [...currentRecords, record]);
     },
@@ -910,8 +931,42 @@ export function useLocalSyncMemo(
     [device],
   );
 
+  const updateWorkoutRecord = useCallback(
+    (recordId: string, patch: WorkoutRecordPatch) => {
+      if (!device) {
+        return;
+      }
+
+      setWorkoutRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? updateWorkoutRecordEntity(record, patch, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const updateMealRecord = useCallback(
+    (recordId: string, patch: MealRecordPatch) => {
+      if (!device) {
+        return;
+      }
+
+      setMealRecords((currentRecords) =>
+        currentRecords.map((record) =>
+          record.id === recordId
+            ? updateMealRecordEntity(record, patch, device.id)
+            : record,
+        ),
+      );
+    },
+    [device],
+  );
+
   const updateWeightRecord = useCallback(
-    (recordId: string, weightKg: number) => {
+    (recordId: string, patch: WeightRecordPatch) => {
       if (!device) {
         return;
       }
@@ -919,7 +974,7 @@ export function useLocalSyncMemo(
       setWeightRecords((currentRecords) =>
         currentRecords.map((record) =>
           record.id === recordId
-            ? updateWeightRecordEntity(record, weightKg, device.id)
+            ? updateWeightRecordEntity(record, patch, device.id)
             : record,
         ),
       );
@@ -972,6 +1027,57 @@ export function useLocalSyncMemo(
           record.id === recordId
             ? softDeleteWeightRecord(record, device.id)
             : record,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const restoreWorkoutRecord = useCallback(
+    (record: WorkoutRecord) => {
+      if (!device) {
+        return;
+      }
+
+      setWorkoutRecords((currentRecords) =>
+        currentRecords.map((currentRecord) =>
+          currentRecord.id === record.id
+            ? restoreWorkoutRecordEntity(currentRecord, device.id)
+            : currentRecord,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const restoreMealRecord = useCallback(
+    (record: MealRecord) => {
+      if (!device) {
+        return;
+      }
+
+      setMealRecords((currentRecords) =>
+        currentRecords.map((currentRecord) =>
+          currentRecord.id === record.id
+            ? restoreMealRecordEntity(currentRecord, device.id)
+            : currentRecord,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const restoreWeightRecord = useCallback(
+    (record: WeightRecord) => {
+      if (!device) {
+        return;
+      }
+
+      setWeightRecords((currentRecords) =>
+        currentRecords.map((currentRecord) =>
+          currentRecord.id === record.id
+            ? restoreWeightRecordEntity(currentRecord, device.id)
+            : currentRecord,
         ),
       );
     },
@@ -1064,6 +1170,9 @@ export function useLocalSyncMemo(
     mealRecords: visibleMealRecords,
     notes: visibleNotes,
     reorderTasks,
+    restoreMealRecord,
+    restoreWeightRecord,
+    restoreWorkoutRecord,
     saveState,
     saveSupabaseConfig,
     selectNote,
@@ -1076,10 +1185,12 @@ export function useLocalSyncMemo(
     toggleTask,
     updateSelectedNoteContent,
     updateSelectedNoteTitle,
+    updateMealRecord,
     updateNoteForDate,
     updateTaskSchedule,
     updateTaskText,
     updateWeightRecord,
+    updateWorkoutRecord,
     userId,
     weightRecords: visibleWeightRecords,
     workoutRecords: visibleWorkoutRecords,

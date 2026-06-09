@@ -74,10 +74,16 @@ export function App() {
               onAddNoteForDate={memo.addNoteForDate}
               onAddTask={memo.addTask}
               onAddWeightRecord={memo.addWeightRecord}
+              onDeleteNote={memo.deleteNote}
+              onDeleteTask={memo.deleteTask}
+              onDeleteMealRecord={memo.deleteMealRecord}
+              onDeleteWeightRecord={memo.deleteWeightRecord}
+              onDeleteWorkoutRecord={memo.deleteWorkoutRecord}
+              onRestoreMealRecord={memo.restoreMealRecord}
+              onRestoreWeightRecord={memo.restoreWeightRecord}
+              onRestoreWorkoutRecord={memo.restoreWorkoutRecord}
               onSelectDate={setSelectedDate}
               onToggleTask={memo.toggleTask}
-              onUpdateNoteForDate={memo.updateNoteForDate}
-              onUpdateWeightRecord={memo.updateWeightRecord}
             />
           ) : activeView === "fitness" ? (
             <FitnessPanel

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, parseDateInput } from "../fitness/fitnessDate";
 import type { CalendarMarkerSet, CalendarMarkers } from "./recordAggregation";
@@ -40,13 +40,6 @@ function getMonthTitle(monthDate: Date): string {
     year: "numeric",
     month: "long",
   }).format(monthDate);
-}
-
-function isSameMonth(first: Date, second: Date): boolean {
-  return (
-    first.getFullYear() === second.getFullYear() &&
-    first.getMonth() === second.getMonth()
-  );
 }
 
 const markerStyles: Array<{
@@ -99,18 +92,6 @@ export function RecordCalendar({
     [visibleMonth],
   );
   const monthCells = useMemo(() => getMonthCells(visibleMonthDate), [visibleMonthDate]);
-
-  useEffect(() => {
-    const selectedMonth = parseDateInput(selectedDate);
-
-    if (!isSameMonth(selectedMonth, visibleMonthDate)) {
-      onVisibleMonthChange(
-        formatLocalDate(
-          new Date(selectedMonth.getFullYear(), selectedMonth.getMonth(), 1),
-        ),
-      );
-    }
-  }, [onVisibleMonthChange, selectedDate, visibleMonthDate]);
 
   function moveMonth(offset: number) {
     onVisibleMonthChange(
@@ -180,7 +161,9 @@ export function RecordCalendar({
             <button
               key={date}
               type="button"
-              onClick={() => onSelectDate(date)}
+              onClick={() => {
+                onSelectDate(date);
+              }}
               className={
                 isSelected
                   ? `${calendarCellBase} border-teal-600 bg-teal-50 font-semibold text-teal-950 dark:border-teal-400 dark:bg-teal-950/50 dark:text-teal-100`

@@ -1,12 +1,11 @@
-import { FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  BarChart3,
-  Download,
-  Dumbbell,
-  Plus,
-  Salad,
-  Scale,
-} from "lucide-react";
+  type FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { BarChart3, Download, Dumbbell, Plus, Salad, Scale } from "lucide-react";
 import type {
   MealRecord,
   WeightRecord,
@@ -14,10 +13,6 @@ import type {
   WorkoutType,
 } from "../../types";
 import { getCurrentMonthRange } from "./fitnessDate";
-import {
-  calculateFitnessStats,
-  formatMetric,
-} from "./stats/fitnessStats";
 import {
   createFitnessExportFileName,
   createFitnessMarkdownExport,
@@ -27,6 +22,7 @@ import {
   strengthWorkoutParts,
   workoutTypeLabels,
 } from "./fitnessService";
+import { calculateFitnessStats, formatMetric } from "./stats/fitnessStats";
 
 interface FitnessPanelProps {
   mealRecords: MealRecord[];
@@ -38,6 +34,8 @@ interface FitnessPanelProps {
     menu: string,
     calories: number,
     proteinGrams: number,
+    carbsGrams?: number | null,
+    fatGrams?: number | null,
   ) => void;
   onAddWeightRecord: (date: string, weightKg: number) => void;
   onAddWorkoutRecord: (
@@ -58,8 +56,6 @@ interface FitnessPanelProps {
 
 type ActionPanel = "stats" | "export" | null;
 
-const workoutTypeOptions: WorkoutType[] = ["strength", "cardio", "other"];
-
 function downloadMarkdown(fileName: string, markdown: string): void {
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -71,6 +67,19 @@ function downloadMarkdown(fileName: string, markdown: string): void {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+function parseRequiredNumber(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function parseOptionalNumber(value: string): number | null {
+  if (!value.trim()) {
+    return null;
+  }
+
+  return parseRequiredNumber(value);
 }
 
 export function FitnessPanel({
@@ -102,6 +111,8 @@ export function FitnessPanel({
   const [mealMenu, setMealMenu] = useState("");
   const [mealCalories, setMealCalories] = useState("");
   const [mealProteinGrams, setMealProteinGrams] = useState("");
+  const [mealCarbsGrams, setMealCarbsGrams] = useState("");
+  const [mealFatGrams, setMealFatGrams] = useState("");
   const [weightDate, setWeightDate] = useState(selectedDate);
   const [weightKg, setWeightKg] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -111,6 +122,7 @@ export function FitnessPanel({
     setMealDate(selectedDate);
     setWeightDate(selectedDate);
   }, [selectedDate]);
+
   const stats = useMemo(
     () =>
       calculateFitnessStats(
@@ -142,13 +154,13 @@ export function FitnessPanel({
     event.preventDefault();
 
     if (!workoutDate) {
-      setFormError("운동 기록은 날짜가 필요합니다.");
+      setFormError("운동 기록에는 날짜가 필요합니다.");
       return;
     }
 
     if (workoutType === "strength") {
       if (selectedStrengthParts.length === 0) {
-        setFormError("헬스 기록은 부위를 하나 이상 선택해야 합니다.");
+        setFormError("근력 기록에는 부위를 하나 이상 선택해야 합니다.");
         return;
       }
 
@@ -160,9 +172,10 @@ export function FitnessPanel({
           exerciseName: part,
         })),
       );
+      setSelectedStrengthParts([]);
     } else if (workoutType === "cardio") {
       if (!workoutCardioType) {
-        setFormError("유산소 기록은 종류 선택이 필요합니다.");
+        setFormError("유산소 기록에는 종류가 필요합니다.");
         return;
       }
 
@@ -173,21 +186,17 @@ export function FitnessPanel({
         workoutCardioType,
       );
     } else {
-      if (!workoutExerciseName.trim()) {
-        setFormError("기타 기록은 무슨 운동인지 필요합니다.");
+      const exerciseName = workoutExerciseName.trim();
+
+      if (!exerciseName) {
+        setFormError("기타 운동 이름이 필요합니다.");
         return;
       }
 
-      onAddWorkoutRecord(
-        workoutDate,
-        workoutType,
-        "기타",
-        workoutExerciseName.trim(),
-      );
+      onAddWorkoutRecord(workoutDate, workoutType, "기타", exerciseName);
+      setWorkoutExerciseName("");
     }
 
-    setSelectedStrengthParts([]);
-    setWorkoutExerciseName("");
     setFormError(null);
   }
 
@@ -203,25 +212,36 @@ export function FitnessPanel({
   function handleMealSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const calories = Number(mealCalories);
-    const proteinGrams = Number(mealProteinGrams);
+    const calories = parseRequiredNumber(mealCalories);
+    const proteinGrams = parseRequiredNumber(mealProteinGrams);
+    const carbsGrams = parseOptionalNumber(mealCarbsGrams);
+    const fatGrams = parseOptionalNumber(mealFatGrams);
 
     if (
       !mealDate ||
       !mealMenu.trim() ||
-      !Number.isFinite(calories) ||
-      calories < 0 ||
-      !Number.isFinite(proteinGrams) ||
-      proteinGrams < 0
+      calories === null ||
+      proteinGrams === null ||
+      (mealCarbsGrams.trim() && carbsGrams === null) ||
+      (mealFatGrams.trim() && fatGrams === null)
     ) {
-      setFormError("식사 기록은 날짜, 메뉴, 0 이상의 칼로리와 단백질이 필요합니다.");
+      setFormError("식사 기록에는 날짜, 메뉴, 0 이상의 숫자가 필요합니다.");
       return;
     }
 
-    onAddMealRecord(mealDate, mealMenu.trim(), calories, proteinGrams);
+    onAddMealRecord(
+      mealDate,
+      mealMenu.trim(),
+      calories,
+      proteinGrams,
+      carbsGrams,
+      fatGrams,
+    );
     setMealMenu("");
     setMealCalories("");
     setMealProteinGrams("");
+    setMealCarbsGrams("");
+    setMealFatGrams("");
     setFormError(null);
   }
 
@@ -231,7 +251,7 @@ export function FitnessPanel({
     const parsedWeightKg = Number(weightKg);
 
     if (!weightDate || !Number.isFinite(parsedWeightKg) || parsedWeightKg <= 0) {
-      setFormError("체중 기록은 날짜와 0보다 큰 kg 값이 필요합니다.");
+      setFormError("체중 기록에는 날짜와 0보다 큰 kg 값이 필요합니다.");
       return;
     }
 
@@ -248,7 +268,7 @@ export function FitnessPanel({
             운동
           </h2>
           <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-            날짜는 각 기록 추가 폼에서 선택합니다.
+            운동, 식사, 체중 기록
           </p>
         </div>
 
@@ -283,24 +303,22 @@ export function FitnessPanel({
       {actionPanel ? (
         <div className="shrink-0 rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
           <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-            <label className="min-w-0 text-xs font-semibold text-slate-600 dark:text-neutral-300">
-              시작일
+            <FieldLabel label="시작일">
               <input
                 type="date"
                 value={rangeStartDate}
                 onChange={(event) => setRangeStartDate(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 dark:border-neutral-800 dark:bg-black dark:text-neutral-100"
+                className="field-input"
               />
-            </label>
-            <label className="min-w-0 text-xs font-semibold text-slate-600 dark:text-neutral-300">
-              종료일
+            </FieldLabel>
+            <FieldLabel label="종료일">
               <input
                 type="date"
                 value={rangeEndDate}
                 onChange={(event) => setRangeEndDate(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-800 dark:border-neutral-800 dark:bg-black dark:text-neutral-100"
+                className="field-input"
               />
-            </label>
+            </FieldLabel>
             {actionPanel === "export" ? (
               <button
                 type="button"
@@ -315,57 +333,40 @@ export function FitnessPanel({
 
           {actionPanel === "stats" ? (
             <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <div className="rounded-md border border-slate-200 p-3 dark:border-neutral-800">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  <Dumbbell className="h-4 w-4 text-red-600" aria-hidden="true" />
-                  운동 총합
-                </div>
-                <p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-neutral-50">
-                  {stats.workoutTotal}회
-                </p>
-                <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-neutral-400">
-                  {stats.workoutBySubcategory.length === 0 ? (
-                    <p>기록 없음</p>
-                  ) : (
-                    stats.workoutBySubcategory.map((item) => (
-                      <p key={item.label}>
-                        {item.label}: {item.count}회
-                      </p>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="rounded-md border border-slate-200 p-3 dark:border-neutral-800">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  <Salad className="h-4 w-4 text-yellow-600" aria-hidden="true" />
-                  식사 평균
-                </div>
-                <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
-                  기록 {stats.mealCount}개
-                </p>
-                <p className="mt-2 text-sm text-slate-800 dark:text-neutral-100">
-                  칼로리 {formatMetric(stats.averageCalories, 0)} kcal
-                </p>
-                <p className="text-sm text-slate-800 dark:text-neutral-100">
-                  단백질 {formatMetric(stats.averageProteinGrams)} g
-                </p>
-              </div>
-              <div className="rounded-md border border-slate-200 p-3 dark:border-neutral-800">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                  <Scale className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-                  체중 평균
-                </div>
-                <p className="mt-2 text-sm text-slate-500 dark:text-neutral-400">
-                  기록 {stats.weightCount}개
-                </p>
-                <p className="mt-2 text-sm text-slate-800 dark:text-neutral-100">
-                  평균 {formatMetric(stats.averageWeightKg)} kg
-                </p>
-                <p className="text-sm text-slate-800 dark:text-neutral-100">
+              <MetricPanel
+                icon={<Dumbbell className="h-4 w-4 text-red-600" />}
+                title="운동 총합"
+                primary={`${stats.workoutTotal}개`}
+              >
+                {stats.workoutBySubcategory.length === 0 ? (
+                  <p>기록 없음</p>
+                ) : (
+                  stats.workoutBySubcategory.map((item) => (
+                    <p key={item.label}>
+                      {item.label}: {item.count}개
+                    </p>
+                  ))
+                )}
+              </MetricPanel>
+              <MetricPanel
+                icon={<Salad className="h-4 w-4 text-yellow-600" />}
+                title="식사 평균"
+                primary={`${stats.mealCount}개`}
+              >
+                <p>칼로리 {formatMetric(stats.averageCalories, 0)} kcal</p>
+                <p>단백질 {formatMetric(stats.averageProteinGrams)} g</p>
+              </MetricPanel>
+              <MetricPanel
+                icon={<Scale className="h-4 w-4 text-emerald-600" />}
+                title="체중 평균"
+                primary={`${stats.weightCount}개`}
+              >
+                <p>평균 {formatMetric(stats.averageWeightKg)} kg</p>
+                <p>
                   최저 {formatMetric(stats.minWeightKg)} kg / 최고{" "}
                   {formatMetric(stats.maxWeightKg)} kg
                 </p>
-              </div>
+              </MetricPanel>
             </div>
           ) : (
             <div className="mt-3">
@@ -405,16 +406,13 @@ export function FitnessPanel({
               className="field-input"
             />
           </FieldLabel>
-          <FieldLabel label="대분류">
+          <FieldLabel label="종류">
             <select
               value={workoutType}
-              onChange={(event) => {
-                setWorkoutType(event.target.value as WorkoutType);
-                setFormError(null);
-              }}
+              onChange={(event) => setWorkoutType(event.target.value as WorkoutType)}
               className="field-input"
             >
-              {workoutTypeOptions.map((type) => (
+              {(Object.keys(workoutTypeLabels) as WorkoutType[]).map((type) => (
                 <option key={type} value={type}>
                   {workoutTypeLabels[type]}
                 </option>
@@ -424,26 +422,24 @@ export function FitnessPanel({
           {workoutType === "strength" ? (
             <div className="mb-2">
               <div className="mb-1 text-xs font-semibold text-slate-600 dark:text-neutral-300">
-                어디
+                부위
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 {strengthWorkoutParts.map((part) => {
-                  const isSelected = selectedStrengthParts.includes(part);
+                  const selected = selectedStrengthParts.includes(part);
 
                   return (
                     <button
-                      type="button"
                       key={part}
-                      aria-pressed={isSelected}
-                      title={part}
+                      type="button"
                       onClick={() => toggleStrengthPart(part)}
                       className={
-                        isSelected
-                          ? "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-teal-500 bg-teal-50 px-1 text-xs font-semibold text-teal-900 dark:border-teal-500 dark:bg-teal-950/40 dark:text-teal-100"
-                          : "inline-flex h-8 min-w-0 items-center justify-center rounded-md border border-slate-300 bg-white px-1 text-xs font-semibold text-slate-700 transition hover:border-teal-300 hover:bg-teal-50 dark:border-neutral-800 dark:bg-black dark:text-neutral-200 dark:hover:border-teal-800 dark:hover:bg-teal-950/30"
+                        selected
+                          ? "rounded-md border border-red-500 bg-red-50 px-2 py-1.5 text-xs font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200"
+                          : "rounded-md border border-slate-300 px-2 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-900"
                       }
                     >
-                      <span className="whitespace-nowrap leading-none">{part}</span>
+                      {part}
                     </button>
                   );
                 })}
@@ -466,12 +462,12 @@ export function FitnessPanel({
             </FieldLabel>
           ) : null}
           {workoutType === "other" ? (
-            <FieldLabel label="무슨 운동">
+            <FieldLabel label="운동명">
               <input
                 value={workoutExerciseName}
                 onChange={(event) => setWorkoutExerciseName(event.target.value)}
                 className="field-input"
-                placeholder="클라이밍, 스트레칭"
+                placeholder="스트레칭"
               />
             </FieldLabel>
           ) : null}
@@ -524,6 +520,28 @@ export function FitnessPanel({
                 placeholder="42"
               />
             </FieldLabel>
+            <FieldLabel label="탄수 g">
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={mealCarbsGrams}
+                onChange={(event) => setMealCarbsGrams(event.target.value)}
+                className="field-input"
+                placeholder="선택"
+              />
+            </FieldLabel>
+            <FieldLabel label="지방 g">
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                value={mealFatGrams}
+                onChange={(event) => setMealFatGrams(event.target.value)}
+                className="field-input"
+                placeholder="선택"
+              />
+            </FieldLabel>
           </div>
           <SubmitButton label="식사 추가" />
         </form>
@@ -555,9 +573,6 @@ export function FitnessPanel({
               placeholder="72.1"
             />
           </FieldLabel>
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
-            체중 단위는 V1에서 kg만 지원합니다.
-          </div>
           <SubmitButton label="체중 추가" />
         </form>
       </div>
@@ -604,5 +619,32 @@ function SubmitButton({ label }: { label: string }) {
       <Plus className="h-4 w-4" aria-hidden="true" />
       {label}
     </button>
+  );
+}
+
+function MetricPanel({
+  children,
+  icon,
+  primary,
+  title,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  primary: string;
+  title: string;
+}) {
+  return (
+    <div className="rounded-md border border-slate-200 p-3 dark:border-neutral-800">
+      <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-neutral-100">
+        {icon}
+        {title}
+      </div>
+      <p className="mt-2 text-2xl font-semibold text-slate-950 dark:text-neutral-50">
+        {primary}
+      </p>
+      <div className="mt-2 space-y-1 text-xs text-slate-500 dark:text-neutral-400">
+        {children}
+      </div>
+    </div>
   );
 }

@@ -6,6 +6,19 @@ import type {
 } from "../../types";
 import { createId } from "../../lib/storage/id";
 
+export type WorkoutRecordPatch = Partial<
+  Pick<WorkoutRecord, "date" | "workoutType" | "category" | "exerciseName">
+>;
+
+export type MealRecordPatch = Partial<
+  Pick<
+    MealRecord,
+    "date" | "menu" | "calories" | "proteinGrams" | "carbsGrams" | "fatGrams"
+  >
+>;
+
+export type WeightRecordPatch = Partial<Pick<WeightRecord, "date" | "weightKg">>;
+
 export const cardioWorkoutOptions = [
   "실내 달리기",
   "실내 걷기",
@@ -118,6 +131,8 @@ export function createMealRecord(
   calories: number,
   proteinGrams: number,
   deviceId: string,
+  carbsGrams: number | null = null,
+  fatGrams: number | null = null,
 ): MealRecord {
   const now = createTimestamp();
 
@@ -127,8 +142,8 @@ export function createMealRecord(
     menu: menu.trim(),
     calories,
     proteinGrams,
-    carbsGrams: null,
-    fatGrams: null,
+    carbsGrams,
+    fatGrams,
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -152,15 +167,80 @@ export function createWeightRecord(
   };
 }
 
+export function updateWorkoutRecord(
+  record: WorkoutRecord,
+  patch: WorkoutRecordPatch,
+  deviceId: string,
+): WorkoutRecord {
+  return {
+    ...record,
+    ...patch,
+    category: patch.category?.trim() ?? record.category,
+    exerciseName: patch.exerciseName?.trim() ?? record.exerciseName,
+    updatedAt: createTimestamp(),
+    deviceId,
+  };
+}
+
+export function updateMealRecord(
+  record: MealRecord,
+  patch: MealRecordPatch,
+  deviceId: string,
+): MealRecord {
+  return {
+    ...record,
+    ...patch,
+    menu: patch.menu?.trim() ?? record.menu,
+    updatedAt: createTimestamp(),
+    deviceId,
+  };
+}
+
 export function updateWeightRecord(
   record: WeightRecord,
-  weightKg: number,
+  patch: WeightRecordPatch,
   deviceId: string,
 ): WeightRecord {
   return {
     ...record,
-    weightKg,
+    ...patch,
     updatedAt: createTimestamp(),
+    deviceId,
+  };
+}
+
+export function restoreWorkoutRecord(
+  record: WorkoutRecord,
+  deviceId: string,
+): WorkoutRecord {
+  return {
+    ...record,
+    updatedAt: createTimestamp(),
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function restoreMealRecord(
+  record: MealRecord,
+  deviceId: string,
+): MealRecord {
+  return {
+    ...record,
+    updatedAt: createTimestamp(),
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function restoreWeightRecord(
+  record: WeightRecord,
+  deviceId: string,
+): WeightRecord {
+  return {
+    ...record,
+    updatedAt: createTimestamp(),
+    deletedAt: null,
     deviceId,
   };
 }
