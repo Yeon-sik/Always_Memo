@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MealRecord, WeightRecord, WorkoutRecord } from "../../types";
 import {
   createMealRecord,
+  createWorkoutRecord,
+  getWorkoutMetricLabels,
   restoreWeightRecord,
   softDeleteWeightRecord,
   updateMealRecord,
@@ -16,6 +18,8 @@ const baseWorkout: WorkoutRecord = {
   workoutType: "strength",
   category: "chest",
   exerciseName: "bench press",
+  durationSeconds: null,
+  averageHeartRate: null,
   isBackfilled: false,
   backfilledAt: null,
   backfillReason: null,
@@ -67,6 +71,42 @@ describe("fitnessService", () => {
     expect(updated.deviceId).toBe("device-b");
     expect(updated.updatedAt).not.toBe(baseWorkout.updatedAt);
     expect(updated.deletedAt).toBeNull();
+  });
+
+  it("stores cardio metrics only on cardio workout records", () => {
+    const cardio = createWorkoutRecord(
+      "2026-06-09",
+      "cardio",
+      "run",
+      "run",
+      "device-b",
+      undefined,
+      {
+        durationSeconds: 1800,
+        averageHeartRate: 140,
+      },
+    );
+    const strength = createWorkoutRecord(
+      "2026-06-09",
+      "strength",
+      "chest",
+      "bench press",
+      "device-b",
+      undefined,
+      {
+        durationSeconds: 1800,
+        averageHeartRate: 140,
+      },
+    );
+
+    expect(cardio.durationSeconds).toBe(1800);
+    expect(cardio.averageHeartRate).toBe(140);
+    expect(getWorkoutMetricLabels(cardio)).toEqual([
+      "00:30:00",
+      "평균 심박수 140 bpm",
+    ]);
+    expect(strength.durationSeconds).toBeNull();
+    expect(strength.averageHeartRate).toBeNull();
   });
 
   it("creates and updates meal carbs and fat values", () => {

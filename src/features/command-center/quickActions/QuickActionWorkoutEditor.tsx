@@ -1,11 +1,18 @@
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type WheelEvent, useState } from "react";
 import { Dumbbell, Plus } from "lucide-react";
 import type { BackfillInput, WorkoutType } from "../../../types";
 import {
   cardioWorkoutOptions,
   strengthWorkoutParts,
+  type WorkoutRecordMetricsInput,
   workoutTypeLabels,
 } from "../../fitness/fitnessService";
+import {
+  DEFAULT_DURATION_INPUT,
+  parseDurationSeconds,
+  parseOptionalPositiveNumber,
+  stepDurationInput,
+} from "../../fitness/fitnessInputParsing";
 
 interface QuickActionWorkoutEditorProps {
   backfillInput?: BackfillInput;
@@ -17,6 +24,7 @@ interface QuickActionWorkoutEditorProps {
     category: string,
     exerciseName: string,
     backfillInput?: BackfillInput,
+    metrics?: WorkoutRecordMetricsInput,
   ) => void;
   onAddWorkoutRecords: (
     records: Array<{
@@ -24,6 +32,8 @@ interface QuickActionWorkoutEditorProps {
       workoutType: WorkoutType;
       category: string;
       exerciseName: string;
+      durationSeconds?: number | null;
+      averageHeartRate?: number | null;
     }>,
     backfillInput?: BackfillInput,
   ) => void;
@@ -44,6 +54,10 @@ export function QuickActionWorkoutEditor({
   const [workoutCardioType, setWorkoutCardioType] = useState<string>(
     cardioWorkoutOptions[0] ?? "",
   );
+  const [workoutDurationInput, setWorkoutDurationInput] = useState(
+    DEFAULT_DURATION_INPUT,
+  );
+  const [workoutAverageHeartRate, setWorkoutAverageHeartRate] = useState("");
   const [workoutExerciseName, setWorkoutExerciseName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
@@ -60,6 +74,18 @@ export function QuickActionWorkoutEditor({
     );
     setError(null);
     setSavedMessage(null);
+  }
+
+  function handleWorkoutDurationWheel(event: WheelEvent<HTMLInputElement>) {
+    event.preventDefault();
+
+    const stepSeconds =
+      event.ctrlKey || event.metaKey ? 3600 : event.shiftKey ? 60 : 1;
+    const direction = event.deltaY < 0 ? 1 : -1;
+
+    setWorkoutDurationInput((currentValue) =>
+      stepDurationInput(currentValue, direction, stepSeconds),
+    );
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -87,8 +113,21 @@ export function QuickActionWorkoutEditor({
       );
       setSelectedStrengthParts([]);
     } else if (workoutType === "cardio") {
+      const durationSeconds = parseDurationSeconds(workoutDurationInput);
+      const averageHeartRate = parseOptionalPositiveNumber(
+        workoutAverageHeartRate,
+      );
+
       if (!workoutCardioType) {
         setError("유산소 기록에는 종류가 필요합니다.");
+        return;
+      }
+
+      if (
+        durationSeconds === null ||
+        (workoutAverageHeartRate.trim() && averageHeartRate === null)
+      ) {
+        setError("유산소 시간은 00:00:00 형식이어야 하고, 평균 심박수는 입력 시 0보다 커야 합니다.");
         return;
       }
 
@@ -98,7 +137,13 @@ export function QuickActionWorkoutEditor({
         workoutCardioType,
         workoutCardioType,
         backfillInput,
+        {
+          durationSeconds,
+          averageHeartRate,
+        },
       );
+      setWorkoutDurationInput(DEFAULT_DURATION_INPUT);
+      setWorkoutAverageHeartRate("");
     } else {
       const exerciseName = workoutExerciseName.trim();
 
@@ -185,6 +230,7 @@ export function QuickActionWorkoutEditor({
         ) : null}
 
         {workoutType === "cardio" ? (
+          <div className="space-y-2">
           <label className="block text-xs font-semibold text-slate-600 dark:text-neutral-300">
             유산소 종류
             <select
@@ -204,6 +250,42 @@ export function QuickActionWorkoutEditor({
               ))}
             </select>
           </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-neutral-300">
+                운동 시간
+                <input
+                  type="time"
+                  step="1"
+                  value={workoutDurationInput}
+                  onChange={(event) => {
+                    setWorkoutDurationInput(event.target.value);
+                    setError(null);
+                    setSavedMessage(null);
+                  }}
+                  onWheel={handleWorkoutDurationWheel}
+                  className={`${inputClassName} mt-1`}
+                  disabled={disabled}
+                />
+              </label>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-neutral-300">
+                평균 심박수
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={workoutAverageHeartRate}
+                  onChange={(event) => {
+                    setWorkoutAverageHeartRate(event.target.value);
+                    setError(null);
+                    setSavedMessage(null);
+                  }}
+                  className={`${inputClassName} mt-1`}
+                  placeholder="140"
+                  disabled={disabled}
+                />
+              </label>
+            </div>
+          </div>
         ) : null}
 
         {workoutType === "other" ? (

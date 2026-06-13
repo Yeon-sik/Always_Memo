@@ -65,6 +65,8 @@ interface WorkoutRecordRow extends EntityAuditRow {
   workout_type: WorkoutType;
   category: string;
   exercise_name: string;
+  duration_seconds: number | null;
+  average_heart_rate: number | null;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -281,6 +283,8 @@ function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
     workoutType: normalizeWorkoutType(row.workout_type),
     category: row.category,
     exerciseName: row.exercise_name,
+    durationSeconds: row.duration_seconds ?? null,
+    averageHeartRate: row.average_heart_rate ?? null,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -365,6 +369,8 @@ function workoutRecordToRow(
     workout_type: record.workoutType,
     category: record.category,
     exercise_name: record.exerciseName,
+    duration_seconds: record.durationSeconds,
+    average_heart_rate: record.averageHeartRate,
     updated_at: record.updatedAt,
     deleted_at: record.deletedAt,
     device_id: record.deviceId,

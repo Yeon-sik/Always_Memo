@@ -31,8 +31,10 @@ import { QuickActionOverlay } from "../command-center/quickActions/QuickActionOv
 import { useQuickActionState } from "../command-center/quickActions/useQuickActionState";
 import { formatKoreanDate, formatLocalDate } from "../fitness/fitnessDate";
 import {
+  getWorkoutMetricLabels,
   getWorkoutSubcategoryLabel,
   getWorkoutTypeLabel,
+  type WorkoutRecordMetricsInput,
 } from "../fitness/fitnessService";
 import { formatMetric } from "../fitness/stats/fitnessStats";
 import { RecordCalendar } from "./RecordCalendar";
@@ -92,6 +94,7 @@ interface RecordsPanelProps {
     category: string,
     exerciseName: string,
     backfillInput?: BackfillInput,
+    metrics?: WorkoutRecordMetricsInput,
   ) => void;
   onAddWorkoutRecords: (
     records: Array<{
@@ -99,6 +102,8 @@ interface RecordsPanelProps {
       workoutType: WorkoutType;
       category: string;
       exerciseName: string;
+      durationSeconds?: number | null;
+      averageHeartRate?: number | null;
     }>,
     backfillInput?: BackfillInput,
   ) => void;
@@ -132,6 +137,20 @@ function BackfillBadge({ record }: { record: { isBackfilled?: boolean } }) {
     <span className="mt-1 inline-flex w-fit rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
       {BACKFILL_LABEL}
     </span>
+  );
+}
+
+function WorkoutMetricDetail({ record }: { record: WorkoutRecord }) {
+  const metricLabels = getWorkoutMetricLabels(record);
+
+  if (metricLabels.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+      {metricLabels.join(" / ")}
+    </div>
   );
 }
 
@@ -555,6 +574,7 @@ export function RecordsPanel({
                 <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                   {getWorkoutTypeLabel(record)} - {getWorkoutSubcategoryLabel(record)}
                 </div>
+                <WorkoutMetricDetail record={record} />
                 <BackfillBadge record={record} />
               </DailyItem>
             ))}

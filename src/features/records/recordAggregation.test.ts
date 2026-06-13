@@ -9,6 +9,7 @@ import type {
 import {
   getCalendarMarkers,
   getDashboardStats,
+  getNutritionSeries,
   getRecordsForDate,
 } from "./recordAggregation";
 
@@ -19,6 +20,8 @@ const liveWorkout: WorkoutRecord = {
   workoutType: "strength",
   category: "chest",
   exerciseName: "bench press",
+  durationSeconds: null,
+  averageHeartRate: null,
   isBackfilled: false,
   backfilledAt: null,
   backfillReason: null,
@@ -163,6 +166,34 @@ describe("recordAggregation", () => {
     expect(stats.averageCalories).toBe(700);
     expect(stats.backfilledMealCount).toBe(1);
     expect(stats.totalBackfilledCount).toBe(2);
+  });
+
+  it("excludes zero meal nutrition values from averages", () => {
+    const zeroMeal: MealRecord = {
+      ...liveMeal,
+      id: "meal-zero",
+      calories: 0,
+      proteinGrams: 0,
+    };
+    const stats = getDashboardStats(
+      {
+        ...snapshot,
+        mealRecords: [liveMeal, zeroMeal],
+      },
+      {
+        startDate: "2026-06-01",
+        endDate: "2026-06-30",
+      },
+    );
+    const series = getNutritionSeries([liveMeal, zeroMeal], {
+      startDate: "2026-06-09",
+      endDate: "2026-06-09",
+    });
+
+    expect(stats.averageCalories).toBe(600);
+    expect(stats.averageProteinGrams).toBe(40);
+    expect(series[0].averageCalories).toBe(600);
+    expect(series[0].averageProteinGrams).toBe(40);
   });
 
   it("does not create markers for tombstone-only dates", () => {

@@ -1,5 +1,6 @@
 import {
   type FormEvent,
+  type WheelEvent,
   useEffect,
   useMemo,
   useState,
@@ -33,9 +34,17 @@ import {
 import {
   cardioWorkoutOptions,
   strengthWorkoutParts,
+  type WorkoutRecordMetricsInput,
   workoutTypeLabels,
 } from "./fitnessService";
-import { parseOptionalNumber, parseRequiredNumber } from "./fitnessInputParsing";
+import {
+  DEFAULT_DURATION_INPUT,
+  parseDurationSeconds,
+  parseOptionalNumber,
+  parseOptionalPositiveNumber,
+  parseRequiredNumber,
+  stepDurationInput,
+} from "./fitnessInputParsing";
 import { calculateFitnessStats, formatMetric } from "./stats/fitnessStats";
 
 interface FitnessPanelProps {
@@ -63,6 +72,7 @@ interface FitnessPanelProps {
     category: string,
     exerciseName: string,
     backfillInput?: BackfillInput,
+    metrics?: WorkoutRecordMetricsInput,
   ) => void;
   onAddWorkoutRecords: (
     records: Array<{
@@ -70,6 +80,8 @@ interface FitnessPanelProps {
       workoutType: WorkoutType;
       category: string;
       exerciseName: string;
+      durationSeconds?: number | null;
+      averageHeartRate?: number | null;
     }>,
     backfillInput?: BackfillInput,
   ) => void;
@@ -103,6 +115,10 @@ export function FitnessPanel({
   const [workoutCardioType, setWorkoutCardioType] = useState<string>(
     cardioWorkoutOptions[0],
   );
+  const [workoutDurationInput, setWorkoutDurationInput] = useState(
+    DEFAULT_DURATION_INPUT,
+  );
+  const [workoutAverageHeartRate, setWorkoutAverageHeartRate] = useState("");
   const [workoutExerciseName, setWorkoutExerciseName] = useState("");
   const [mealDate, setMealDate] = useState(selectedDate);
   const [mealMenu, setMealMenu] = useState("");
@@ -186,8 +202,21 @@ export function FitnessPanel({
       );
       setSelectedStrengthParts([]);
     } else if (workoutType === "cardio") {
+      const durationSeconds = parseDurationSeconds(workoutDurationInput);
+      const averageHeartRate = parseOptionalPositiveNumber(
+        workoutAverageHeartRate,
+      );
+
       if (!workoutCardioType) {
         setFormError("유산소 기록에는 종류가 필요합니다.");
+        return;
+      }
+
+      if (
+        durationSeconds === null ||
+        (workoutAverageHeartRate.trim() && averageHeartRate === null)
+      ) {
+        setFormError("유산소 시간은 00:00:00 형식이어야 하고, 평균 심박수는 입력 시 0보다 커야 합니다.");
         return;
       }
 
@@ -197,7 +226,13 @@ export function FitnessPanel({
         workoutCardioType,
         workoutCardioType,
         getBackfillInputForDate(workoutDate),
+        {
+          durationSeconds,
+          averageHeartRate,
+        },
       );
+      setWorkoutDurationInput(DEFAULT_DURATION_INPUT);
+      setWorkoutAverageHeartRate("");
     } else {
       const exerciseName = workoutExerciseName.trim();
 
@@ -226,6 +261,18 @@ export function FitnessPanel({
         : [...currentParts, part],
     );
     setFormError(null);
+  }
+
+  function handleWorkoutDurationWheel(event: WheelEvent<HTMLInputElement>) {
+    event.preventDefault();
+
+    const stepSeconds =
+      event.ctrlKey || event.metaKey ? 3600 : event.shiftKey ? 60 : 1;
+    const direction = event.deltaY < 0 ? 1 : -1;
+
+    setWorkoutDurationInput((currentValue) =>
+      stepDurationInput(currentValue, direction, stepSeconds),
+    );
   }
 
   function handleMealSubmit(event: FormEvent<HTMLFormElement>) {
@@ -501,6 +548,7 @@ export function FitnessPanel({
             </div>
           ) : null}
           {workoutType === "cardio" ? (
+            <div className="space-y-2">
             <FieldLabel label="유산소 종류">
               <select
                 value={workoutCardioType}
@@ -514,6 +562,34 @@ export function FitnessPanel({
                 ))}
               </select>
             </FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                <FieldLabel label="운동 시간">
+                  <input
+                    type="time"
+                    step="1"
+                    value={workoutDurationInput}
+                    onChange={(event) =>
+                      setWorkoutDurationInput(event.target.value)
+                    }
+                    onWheel={handleWorkoutDurationWheel}
+                    className="field-input"
+                  />
+                </FieldLabel>
+                <FieldLabel label="평균 심박수">
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={workoutAverageHeartRate}
+                    onChange={(event) =>
+                      setWorkoutAverageHeartRate(event.target.value)
+                    }
+                    className="field-input"
+                    placeholder="140"
+                  />
+                </FieldLabel>
+              </div>
+            </div>
           ) : null}
           {workoutType === "other" ? (
             <FieldLabel label="운동명">

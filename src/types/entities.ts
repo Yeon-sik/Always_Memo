@@ -37,6 +37,8 @@ export interface WorkoutRecord extends SyncableEntity {
   workoutType: WorkoutType;
   category: string;
   exerciseName: string;
+  durationSeconds: number | null;
+  averageHeartRate: number | null;
 }
 
 export interface MealRecord extends SyncableEntity {
