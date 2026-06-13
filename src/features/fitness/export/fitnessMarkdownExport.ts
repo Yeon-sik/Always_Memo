@@ -5,6 +5,7 @@ import {
 } from "../../../lib/dataTrust/backfillMetadata";
 import { formatKoreanDate, isWithinDateRange } from "../fitnessDate";
 import {
+  getWorkoutMetricLabels,
   getWorkoutSubcategoryLabel,
   getWorkoutTypeLabel,
 } from "../fitnessService";
@@ -137,8 +138,11 @@ export function createFitnessMarkdownExport({
       const groupLabel = `${getWorkoutTypeLabel(
         record,
       )} - ${getWorkoutSubcategoryLabel(record)}`;
+      const metricLabels = getWorkoutMetricLabels(record);
+      const metricSuffix =
+        metricLabels.length > 0 ? `, ${metricLabels.join(", ")}` : "";
 
-      return `- ${groupLabel}${formatBackfillSuffix(record)}`;
+      return `- ${groupLabel}${metricSuffix}${formatBackfillSuffix(record)}`;
     },
   );
   appendEmptyAwareSection(

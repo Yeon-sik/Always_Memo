@@ -110,6 +110,16 @@ function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
     workoutType,
     category: value.category,
     exerciseName: value.exerciseName,
+    durationSeconds:
+      workoutType === "cardio" && typeof value.durationSeconds === "number"
+        ? value.durationSeconds
+        : workoutType === "cardio" && typeof value.durationMinutes === "number"
+          ? value.durationMinutes * 60
+          : null,
+    averageHeartRate:
+      workoutType === "cardio" && typeof value.averageHeartRate === "number"
+        ? value.averageHeartRate
+        : null,
     ...getNormalizedSyncFields(value),
   };
 }

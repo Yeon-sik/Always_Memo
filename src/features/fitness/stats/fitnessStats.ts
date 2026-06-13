@@ -27,6 +27,10 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function averagePositive(values: number[]): number | null {
+  return average(values.filter((value) => value > 0));
+}
+
 function countBy<T>(
   records: T[],
   getKey: (record: T) => string,
@@ -83,8 +87,8 @@ export function calculateFitnessStats(
       count,
     })),
     mealCount: rangedMeals.length,
-    averageCalories: average(rangedMeals.map((record) => record.calories)),
-    averageProteinGrams: average(
+    averageCalories: averagePositive(rangedMeals.map((record) => record.calories)),
+    averageProteinGrams: averagePositive(
       rangedMeals.map((record) => record.proteinGrams),
     ),
     weightCount: rangedWeights.length,

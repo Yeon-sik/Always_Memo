@@ -99,6 +99,10 @@ function average(values: number[]): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function averagePositive(values: number[]): number | null {
+  return average(values.filter((value) => value > 0));
+}
+
 function sortTasksBySchedule(first: Task, second: Task): number {
   const firstDate = getTaskActivityDate(first) ?? "9999-12-31";
   const secondDate = getTaskActivityDate(second) ?? "9999-12-31";
@@ -244,8 +248,10 @@ export function getDashboardStats(
       totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : null,
     completedTasks,
     totalTasks,
-    averageCalories: average(rangedMeals.map((record) => record.calories)),
-    averageProteinGrams: average(rangedMeals.map((record) => record.proteinGrams)),
+    averageCalories: averagePositive(rangedMeals.map((record) => record.calories)),
+    averageProteinGrams: averagePositive(
+      rangedMeals.map((record) => record.proteinGrams),
+    ),
     weightDeltaKg:
       firstWeight && latestWeight
         ? latestWeight.weightKg - firstWeight.weightKg
@@ -335,8 +341,10 @@ export function getNutritionSeries(
 
     return {
       date,
-      averageCalories: average(dateMeals.map((meal) => meal.calories)),
-      averageProteinGrams: average(dateMeals.map((meal) => meal.proteinGrams)),
+      averageCalories: averagePositive(dateMeals.map((meal) => meal.calories)),
+      averageProteinGrams: averagePositive(
+        dateMeals.map((meal) => meal.proteinGrams),
+      ),
     };
   });
 }

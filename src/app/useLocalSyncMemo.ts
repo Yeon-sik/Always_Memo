@@ -69,6 +69,7 @@ import {
 import type {
   MealRecordPatch,
   WeightRecordPatch,
+  WorkoutRecordMetricsInput,
   WorkoutRecordPatch,
 } from "../features/fitness/fitnessService";
 
@@ -128,6 +129,7 @@ interface UseLocalSyncMemoActions {
     category: string,
     exerciseName: string,
     backfillInput?: BackfillInput,
+    metrics?: WorkoutRecordMetricsInput,
   ) => void;
   addWorkoutRecords: (
     records: Array<{
@@ -135,6 +137,8 @@ interface UseLocalSyncMemoActions {
       workoutType: WorkoutType;
       category: string;
       exerciseName: string;
+      durationSeconds?: number | null;
+      averageHeartRate?: number | null;
     }>,
     backfillInput?: BackfillInput,
   ) => void;
@@ -867,6 +871,7 @@ export function useLocalSyncMemo(
       category: string,
       exerciseName: string,
       backfillInput?: BackfillInput,
+      metrics?: WorkoutRecordMetricsInput,
     ) => {
       if (!device) {
         return;
@@ -879,6 +884,7 @@ export function useLocalSyncMemo(
         exerciseName,
         device.id,
         backfillInput,
+        metrics,
       );
       setWorkoutRecords((currentRecords) => [...currentRecords, record]);
     },
@@ -892,6 +898,8 @@ export function useLocalSyncMemo(
         workoutType: WorkoutType;
         category: string;
         exerciseName: string;
+        durationSeconds?: number | null;
+        averageHeartRate?: number | null;
       }>,
       backfillInput?: BackfillInput,
     ) => {
@@ -907,6 +915,10 @@ export function useLocalSyncMemo(
           record.exerciseName,
           device.id,
           backfillInput,
+          {
+            durationSeconds: record.durationSeconds,
+            averageHeartRate: record.averageHeartRate,
+          },
         ),
       );
 

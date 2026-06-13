@@ -7,6 +7,7 @@ import {
 import type { BackfillInput, WorkoutType } from "../../../types";
 import { formatKoreanDate, formatLocalDate } from "../../fitness/fitnessDate";
 import { QuickActionMealEditor } from "./QuickActionMealEditor";
+import type { WorkoutRecordMetricsInput } from "../../fitness/fitnessService";
 import {
   QuickActionModeTabs,
   type QuickActionSection,
@@ -42,6 +43,7 @@ interface QuickActionOverlayProps {
     category: string,
     exerciseName: string,
     backfillInput?: BackfillInput,
+    metrics?: WorkoutRecordMetricsInput,
   ) => void;
   onAddWorkoutRecords: (
     records: Array<{
@@ -49,6 +51,8 @@ interface QuickActionOverlayProps {
       workoutType: WorkoutType;
       category: string;
       exerciseName: string;
+      durationSeconds?: number | null;
+      averageHeartRate?: number | null;
     }>,
     backfillInput?: BackfillInput,
   ) => void;

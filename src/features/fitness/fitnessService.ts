@@ -7,9 +7,22 @@ import type {
 } from "../../types";
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
+import { formatDurationInput } from "./fitnessInputParsing";
 
 export type WorkoutRecordPatch = Partial<
-  Pick<WorkoutRecord, "date" | "workoutType" | "category" | "exerciseName">
+  Pick<
+    WorkoutRecord,
+    | "date"
+    | "workoutType"
+    | "category"
+    | "exerciseName"
+    | "durationSeconds"
+    | "averageHeartRate"
+  >
+>;
+
+export type WorkoutRecordMetricsInput = Partial<
+  Pick<WorkoutRecord, "durationSeconds" | "averageHeartRate">
 >;
 
 export type MealRecordPatch = Partial<
@@ -83,6 +96,27 @@ export function getVisibleWeightRecords(
   );
 }
 
+function normalizeWorkoutMetrics(
+  workoutType: WorkoutType,
+  metrics: WorkoutRecordMetricsInput = {},
+): Pick<WorkoutRecord, "durationSeconds" | "averageHeartRate"> {
+  if (workoutType !== "cardio") {
+    return {
+      durationSeconds: null,
+      averageHeartRate: null,
+    };
+  }
+
+  return {
+    durationSeconds: metrics.durationSeconds ?? null,
+    averageHeartRate: metrics.averageHeartRate ?? null,
+  };
+}
+
+export function formatDurationSeconds(durationSeconds: number): string {
+  return formatDurationInput(durationSeconds);
+}
+
 export function createWorkoutRecord(
   date: string,
   workoutType: WorkoutType,
@@ -90,6 +124,7 @@ export function createWorkoutRecord(
   exerciseName: string,
   deviceId: string,
   backfillInput?: BackfillInput,
+  metrics?: WorkoutRecordMetricsInput,
 ): WorkoutRecord {
   const now = createTimestamp();
   const auditFields = createEntityAuditFields(backfillInput, now);
@@ -101,6 +136,7 @@ export function createWorkoutRecord(
     workoutType,
     category: category.trim(),
     exerciseName: exerciseName.trim(),
+    ...normalizeWorkoutMetrics(workoutType, metrics),
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -128,6 +164,26 @@ export function getWorkoutStatsLabel(record: WorkoutRecord): string {
   return `${getWorkoutTypeLabel(record)} - ${getWorkoutSubcategoryLabel(
     record,
   )}`;
+}
+
+export function getWorkoutMetricLabels(record: WorkoutRecord): string[] {
+  if (record.workoutType !== "cardio") {
+    return [];
+  }
+
+  const labels: string[] = [];
+
+  if (record.durationSeconds !== null) {
+    labels.push(formatDurationSeconds(record.durationSeconds));
+  }
+
+  if (record.averageHeartRate !== null) {
+    labels.push(
+      `평균 심박수 ${record.averageHeartRate.toLocaleString("ko-KR")} bpm`,
+    );
+  }
+
+  return labels;
 }
 
 export function createMealRecord(
@@ -183,11 +239,25 @@ export function updateWorkoutRecord(
   patch: WorkoutRecordPatch,
   deviceId: string,
 ): WorkoutRecord {
+  const workoutType = patch.workoutType ?? record.workoutType;
+  const metrics = normalizeWorkoutMetrics(workoutType, {
+    durationSeconds:
+      patch.durationSeconds !== undefined
+        ? patch.durationSeconds
+        : record.durationSeconds,
+    averageHeartRate:
+      patch.averageHeartRate !== undefined
+        ? patch.averageHeartRate
+        : record.averageHeartRate,
+  });
+
   return {
     ...record,
     ...patch,
+    workoutType,
     category: patch.category?.trim() ?? record.category,
     exerciseName: patch.exerciseName?.trim() ?? record.exerciseName,
+    ...metrics,
     updatedAt: createTimestamp(),
     deviceId,
   };

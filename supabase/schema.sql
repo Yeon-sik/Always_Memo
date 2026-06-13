@@ -57,6 +57,8 @@ create table if not exists public.workout_records (
     check (workout_type in ('strength', 'cardio', 'other')),
   category text not null,
   exercise_name text not null,
+  duration_seconds integer,
+  average_heart_rate double precision,
   created_at timestamptz not null default now(),
   is_backfilled boolean not null default false,
   backfilled_at timestamptz,
@@ -129,7 +131,9 @@ alter table public.workout_records
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists is_backfilled boolean not null default false,
   add column if not exists backfilled_at timestamptz,
-  add column if not exists backfill_reason text;
+  add column if not exists backfill_reason text,
+  add column if not exists duration_seconds integer,
+  add column if not exists average_heart_rate double precision;
 
 alter table public.meal_records
   add column if not exists created_at timestamptz not null default now(),
