@@ -20,6 +20,15 @@ struct RuntimeConfig {
     source_path: Option<String>,
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PersistedDevice {
+    id: String,
+    name: String,
+    last_seen_at: String,
+    app_version: Option<String>,
+}
+
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 struct QuickCaptureShortcutStatus {
@@ -153,6 +162,35 @@ fn load_runtime_config(app: AppHandle) -> RuntimeConfig {
     config_from_values(HashMap::new(), None)
 }
 
+fn persisted_device_path(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_config_dir()
+        .map(|config_dir| config_dir.join("device.json"))
+        .map_err(|error| format!("App config directory is unavailable: {error}"))
+}
+
+#[tauri::command]
+fn load_persisted_device(app: AppHandle) -> Option<PersistedDevice> {
+    let path = persisted_device_path(&app).ok()?;
+    let contents = fs::read_to_string(path).ok()?;
+
+    serde_json::from_str::<PersistedDevice>(&contents).ok()
+}
+
+#[tauri::command]
+fn save_persisted_device(app: AppHandle, device: PersistedDevice) -> Result<(), String> {
+    let path = persisted_device_path(&app)?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Device storage path has no parent directory.".to_string())?;
+    let contents = serde_json::to_string_pretty(&device)
+        .map_err(|error| format!("Device serialization failed: {error}"))?;
+
+    fs::create_dir_all(parent)
+        .map_err(|error| format!("Device storage directory creation failed: {error}"))?;
+    fs::write(path, contents).map_err(|error| format!("Device storage write failed: {error}"))
+}
+
 #[tauri::command]
 fn quick_capture_shortcut_status(
     status: tauri::State<'_, QuickCaptureShortcutState>,
@@ -201,10 +239,7 @@ fn show_quick_capture_panel(app: &tauri::AppHandle) {
 }
 
 #[cfg(desktop)]
-fn set_quick_capture_shortcut_status(
-    app: &tauri::AppHandle,
-    status: QuickCaptureShortcutStatus,
-) {
+fn set_quick_capture_shortcut_status(app: &tauri::AppHandle, status: QuickCaptureShortcutStatus) {
     let state = app.state::<QuickCaptureShortcutState>();
 
     match state.lock() {
@@ -322,6 +357,8 @@ pub fn run() {
         .manage(Mutex::new(QuickCaptureShortcutStatus::unsupported()))
         .invoke_handler(tauri::generate_handler![
             load_runtime_config,
+            load_persisted_device,
+            save_persisted_device,
             quick_capture_shortcut_status,
             show_quick_capture,
         ])

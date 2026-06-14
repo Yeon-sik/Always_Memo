@@ -1,0 +1,5 @@
+-- No-op placeholder.
+--
+-- This migration timestamp was marked as applied after manual Supabase SQL
+-- changes were made directly in the dashboard. The exact SQL was not captured
+-- at the time, so future schema changes should be recorded migration-first.
