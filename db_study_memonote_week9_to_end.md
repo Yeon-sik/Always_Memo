@@ -63,250 +63,242 @@
 
 ---
 
-## 2. 강의 9주차: NULL, 중첩 질의, VIEW
+## 2. 강의 9주차: 데이터베이스 설계, ERD, 논리적 설계
 
 ### 2.1 9주차 핵심
 
-9주차 강의의 중심은 다음 세 가지다.
+9주차 강의자료 6장의 중심은 `NULL`, 중첩 질의, `VIEW`가 아니다.
+이번 주차의 중심은 "현실의 요구사항을 데이터베이스 구조로 바꾸는 과정"이다.
 
-1. `NULL`
-2. 중첩 질의
-3. `VIEW`
+큰 흐름은 다음과 같다.
 
-MemoNote에서 가장 직접 연결되는 것은 `NULL`이다.  
-중첩 질의와 `VIEW`는 현재 앱 코드에서 핵심 기능으로 쓰이지는 않지만, 앱이 커질 때 왜 필요한지 이해하기 좋다.
+1. 요구사항 분석
+2. 개념적 설계
+3. 개체관계 다이어그램, 즉 ERD 작성
+4. 논리적 설계
+5. 물리적 설계로 이어지는 준비
+
+초보자가 여기서 잡아야 할 핵심은 이것이다.
+
+> 데이터베이스 설계는 처음부터 `create table`을 쓰는 작업이 아니라, 앱이 다루는 현실 세계를 개체, 속성, 관계로 정리한 뒤 테이블 구조로 옮기는 작업이다.
+
+MemoNote도 같은 순서로 볼 수 있다.
+"메모 앱을 만든다"에서 바로 `notes` 테이블로 가는 것이 아니라, 먼저 어떤 대상이 있고 어떤 관계가 있는지 생각해야 한다.
 
 ---
 
-### 2.2 NULL이란 무엇인가
+### 2.2 요구사항 분석: MemoNote가 관리해야 하는 현실
 
-초보자가 자주 헷갈리는 부분부터 정리한다.
+강의에서 데이터베이스 설계는 사용자의 요구사항에서 출발한다.
+MemoNote의 요구사항을 DB 관점으로 다시 쓰면 다음과 같다.
 
-`NULL`은 0이 아니다.  
-빈 문자열 `""`도 아니다.  
-`false`도 아니다.
+| 요구사항 | DB 설계에서 읽는 의미 |
+| --- | --- |
+| 메모를 작성, 수정, 삭제한다. | 메모라는 개체가 있고 제목, 본문, 수정시각 같은 속성이 필요하다. |
+| 할 일을 작성하고 완료 처리한다. | 할 일이라는 개체가 있고 완료 여부, 순서, 마감 날짜/시간이 필요하다. |
+| 운동, 식사, 체중 기록을 남긴다. | 날짜별 기록 개체들이 필요하다. |
+| 여러 기기에서 같은 데이터를 동기화한다. | 데이터를 만든 기기와 사용자를 구분해야 한다. |
+| 삭제를 다른 기기에도 전파한다. | 삭제도 하나의 상태로 기록해야 한다. |
+| 앱이 실행 중인 기기를 표시한다. | 기기 개체에 마지막 접속 시각이 필요하다. |
 
-`NULL`은 "값이 없음", "아직 모름", "해당 없음"을 의미한다.
+이 단계에서는 아직 SQL을 쓰지 않는다.
+먼저 "무엇을 저장해야 하는가"를 말로 정리한다.
 
-예를 들어 체크리스트에 마감 시간이 있을 수도 있고 없을 수도 있다.
+---
 
-```text
-Task
-- text: "DB 공부하기"
-- dueDate: "2026-06-14"
-- dueTime: null
-```
+### 2.3 개념적 설계: 개체와 속성 찾기
 
-이 경우 `dueTime`이 `null`이라는 뜻은 "마감 시간이 00:00이다"가 아니다.  
-"마감 날짜는 있지만, 시간은 지정하지 않았다"는 뜻이다.
+개념적 설계는 컴퓨터 구현 방식보다 한 단계 추상적으로 생각하는 단계다.
+강의에서는 이때 개체관계 모델을 사용하고, 결과를 ERD로 표현한다.
 
-MemoNote에서 `NULL`과 직접 연결되는 필드는 많다.
+MemoNote에서 뽑을 수 있는 주요 개체집합은 다음과 같다.
 
-| 필드 | 예시 | 의미 |
+| 개체집합 | 앱에서의 의미 | 대표 속성 |
 | --- | --- | --- |
-| `deleted_at` | `null` | 아직 삭제되지 않았다. |
-| `deleted_at` | `"2026-06-14T10:30:00Z"` | 이 시각에 삭제됐다. |
-| `due_time` | `null` | 체크리스트에 특정 시간이 없다. |
-| `duration_seconds` | `null` | 운동 시간이 입력되지 않았다. |
-| `average_heart_rate` | `null` | 평균 심박수가 입력되지 않았다. |
-| `carbs_grams` | `null` | 탄수화물이 입력되지 않았다. |
-| `fat_grams` | `null` | 지방이 입력되지 않았다. |
+| User | 같은 데이터를 공유하는 사용자 또는 계정 | `user_id` |
+| Device | 앱을 실행하는 노트북, 데스크톱 같은 기기 | `id`, `name`, `last_seen_at` |
+| Note | 메모 하나 | `title`, `content`, `updated_at`, `deleted_at` |
+| Task | 체크리스트 항목 하나 | `text`, `is_done`, `due_date`, `due_time` |
+| WorkoutRecord | 운동 기록 하나 | `date`, `workout_type`, `duration_seconds` |
+| MealRecord | 식사 기록 하나 | `date`, `menu`, `calories`, `protein_grams` |
+| WeightRecord | 체중 기록 하나 | `date`, `weight_kg` |
 
-여기서 가장 중요한 것은 `deleted_at`이다.
-
----
-
-### 2.3 `deleted_at IS NULL`은 "보이는 데이터"의 기준이다
-
-MemoNote는 삭제할 때 row를 실제로 없애지 않는다.
-
-일반적인 초보자 사고는 다음과 같다.
-
-```sql
-delete from notes where id = '...';
-```
-
-하지만 MemoNote는 이런 방식이 아니라 다음에 가깝게 작동한다.
-
-```sql
-update notes
-set deleted_at = now(),
-    updated_at = now()
-where id = '...';
-```
-
-왜 이렇게 할까?
-
-메모 앱이 한 기기에서만 동작한다면 실제 삭제도 가능하다.  
-하지만 MemoNote는 여러 기기 동기화를 고려한다.
-
-예를 들어 다음 상황을 생각해 보자.
-
-1. 노트북과 데스크톱에 같은 메모가 있다.
-2. 노트북에서 메모를 삭제했다.
-3. 데스크톱은 그 순간 꺼져 있었다.
-4. 나중에 데스크톱이 켜졌다.
-
-만약 노트북에서 row를 완전히 삭제했다면, 데스크톱은 "삭제 사실"을 알기 어렵다.  
-데스크톱에는 아직 오래된 메모가 남아 있기 때문에, 동기화 과정에서 오히려 삭제된 메모를 다시 살려버릴 수 있다.
-
-그래서 삭제 자체를 하나의 상태로 저장한다.
+여기서 "개체"와 "속성"을 구분하는 감각이 중요하다.
 
 ```text
-삭제 전
-id = A
-title = "DB 공부"
-deleted_at = null
+개체: Note
+속성: title, content, updated_at
 
-삭제 후
-id = A
-title = "DB 공부"
-deleted_at = "2026-06-14T10:30:00Z"
+개체: Device
+속성: name, last_seen_at, app_version
 ```
 
-이제 다른 기기는 row가 없어진 것이 아니라 "삭제된 row"를 받는다.  
-그래서 화면에는 숨기고, 동기화에서는 삭제 상태를 전파할 수 있다.
-
-앱 화면에서 보이는 데이터는 결국 이런 조건을 만족해야 한다.
-
-```sql
-select *
-from notes
-where user_id = ?
-  and deleted_at is null;
-```
-
-TypeScript 코드에서는 비슷한 사고가 다음처럼 나타난다.
-
-```ts
-notes.filter((note) => note.deletedAt === null)
-```
-
-즉, `NULL`은 단순한 빈값이 아니다.  
-MemoNote에서는 "아직 살아 있는 row"와 "삭제된 row"를 구분하는 핵심 신호다.
+속성은 나중에 관계형 모델로 옮겨가면 대체로 테이블의 필드가 된다.
+다만 개체관계 모델에서는 다중값 속성이나 복합 속성도 생각할 수 있고, 관계형 테이블에서는 이런 값을 더 원자적인 컬럼이나 별도 테이블로 풀어야 한다.
 
 ---
 
-### 2.4 `= NULL`이 아니라 `IS NULL`
+### 2.4 관계와 대응수: 어떤 개체가 어떤 개체와 연결되는가
 
-SQL에서 초보자가 자주 하는 실수가 있다.
+개체만 나열하면 설계가 끝나지 않는다.
+개체 사이의 관계도 정해야 한다.
 
-```sql
-where deleted_at = null
+MemoNote의 핵심 관계는 다음처럼 볼 수 있다.
+
+| 관계 | 대응수 | 의미 |
+| --- | --- | --- |
+| User - Device | 1:N | 한 사용자는 여러 기기를 사용할 수 있다. |
+| Device - Note | 1:N | 한 기기는 여러 메모 변경을 만들 수 있다. |
+| Device - Task | 1:N | 한 기기는 여러 할 일 변경을 만들 수 있다. |
+| Device - WorkoutRecord | 1:N | 한 기기는 여러 운동 기록을 만들 수 있다. |
+| Device - MealRecord | 1:N | 한 기기는 여러 식사 기록을 만들 수 있다. |
+| Device - WeightRecord | 1:N | 한 기기는 여러 체중 기록을 만들 수 있다. |
+
+강의의 대응수 관점으로 보면 대부분 일대다 관계다.
+
+```text
+Device 1 ── N Notes
+Device 1 ── N Tasks
+Device 1 ── N WorkoutRecords
+Device 1 ── N MealRecords
+Device 1 ── N WeightRecords
 ```
 
-이 방식은 올바른 NULL 비교가 아니다.  
-SQL에서는 `NULL`이 "알 수 없음"이기 때문에 일반적인 `=` 비교로 판단하지 않는다.
+현재 MemoNote에는 태그 기능이 없지만, 만약 태그를 추가하면 관계가 달라진다.
 
-올바른 표현은 다음이다.
-
-```sql
-where deleted_at is null
+```text
+Note N ── M Tag
 ```
 
-반대로 삭제된 row만 찾고 싶다면 다음처럼 쓴다.
+이런 다대다 관계는 논리적 설계 단계에서 보통 중간 테이블로 바꾼다.
 
-```sql
-where deleted_at is not null
+---
+
+### 2.5 ERD로 표현하면 무엇이 보이는가
+
+ERD는 개체, 속성, 관계를 그림으로 정리하는 도구다.
+여기서는 텍스트로 간단히 표현하면 다음과 같다.
+
+```text
+User
+  └─< Device
+        ├─< Note
+        ├─< Task
+        ├─< WorkoutRecord
+        ├─< MealRecord
+        └─< WeightRecord
 ```
 
-MemoNote로 이해하면 쉽다.
+읽는 방법은 단순하다.
 
-| 원하는 데이터 | SQL 조건 |
+1. `User`는 여러 `Device`를 가진다.
+2. 각 `Device`는 여러 종류의 기록을 만든다.
+3. 각 기록 row에는 "어느 사용자/기기에서 온 데이터인가"를 추적할 키가 필요하다.
+
+이렇게 보면 `device_id`가 단순한 부가 정보가 아니라 관계를 표현하는 필드라는 점이 보인다.
+Realtime 동기화에서 자기 기기 변경을 다시 반영하지 않기 위해서도 이 관계가 필요하다.
+
+---
+
+### 2.6 강성 개체와 약성 개체로 보기
+
+강의자료에서는 강성 개체집합과 약성 개체집합을 구분한다.
+
+강성 개체집합은 자기 기본키를 만들 수 있는 개체집합이다.
+약성 개체집합은 혼자서는 충분히 식별되기 어렵고, 다른 강성 개체의 키와 결합해야 식별되는 개체집합이다.
+
+현재 MemoNote의 주요 테이블은 대부분 `id`를 가진 강성 개체처럼 설계되어 있다.
+
+| 개체집합 | 현재 식별 방식 | 해석 |
+| --- | --- | --- |
+| `notes` | `id` | 메모 하나를 독립적으로 식별한다. |
+| `tasks` | `id` | 할 일 하나를 독립적으로 식별한다. |
+| `workout_records` | `id` | 운동 기록 하나를 독립적으로 식별한다. |
+| `meal_records` | `id` | 식사 기록 하나를 독립적으로 식별한다. |
+| `weight_records` | `id` | 체중 기록 하나를 독립적으로 식별한다. |
+| `devices` | `(user_id, id)` | 사용자 안에서 기기를 식별한다. |
+
+개념적으로는 기록들이 사용자와 기기에 종속되어 있지만, 동기화가 쉬워지도록 각 기록에 UUID `id`를 둔다.
+그래서 앱 구현에서는 약성 개체처럼 복합키만으로 식별하기보다, 독립 `id`와 외래키를 함께 쓰는 쪽에 가깝다.
+
+이 선택은 local-first 동기화 앱에서는 꽤 실용적이다.
+각 기기가 오프라인 상태에서도 새 row의 `id`를 만들 수 있어야 하기 때문이다.
+
+---
+
+### 2.7 논리적 설계: ERD를 테이블 구조로 바꾸기
+
+논리적 설계는 개념적 설계의 결과를 관계형 데이터 모델에 맞게 바꾸는 단계다.
+즉, ERD에서 생각한 개체와 관계를 테이블, 컬럼, 기본키, 외래키로 옮긴다.
+
+MemoNote에서는 다음처럼 변환된다.
+
+| 개념적 설계 | 논리적 설계 |
 | --- | --- |
-| 화면에 보여줄 메모 | `deleted_at is null` |
-| 휴지통에 보여줄 메모 | `deleted_at is not null` |
-| 최근 수정된 메모 | `deleted_at is null order by updated_at desc` |
+| Device 개체집합 | `devices` 테이블 |
+| Note 개체집합 | `notes` 테이블 |
+| Task 개체집합 | `tasks` 테이블 |
+| WorkoutRecord 개체집합 | `workout_records` 테이블 |
+| Device 1:N Note 관계 | `notes.device_id` 외래키 |
+| Device 1:N Task 관계 | `tasks.device_id` 외래키 |
 
----
-
-### 2.5 중첩 질의는 언제 필요할까
-
-중첩 질의는 SQL 안에 SQL을 넣는 것이다.
+예를 들어 `devices`와 `notes`의 관계는 논리적 스키마에서 다음 감각으로 나타난다.
 
 ```sql
-select *
-from notes
-where device_id in (
-  select id
-  from devices
-  where user_id = 'user-1'
+create table devices (
+  id text not null,
+  user_id text not null,
+  name text not null,
+  last_seen_at timestamptz not null,
+  primary key (user_id, id)
+);
+
+create table notes (
+  id uuid primary key,
+  user_id text not null,
+  title text not null,
+  content text not null,
+  device_id text not null,
+  foreign key (user_id, device_id)
+    references devices(user_id, id)
 );
 ```
 
-현재 MemoNote의 동기화 코드는 Supabase 클라이언트에서 테이블별로 `.select("*").eq("user_id", context.userId)`처럼 읽는 방식이 중심이다.  
-따라서 복잡한 중첩 질의가 앱의 핵심 구현으로 많이 드러나지는 않는다.
-
-하지만 앱이 커지면 중첩 질의가 유용해진다.
-
-예를 들어 다음 질문을 DB에 하고 싶다고 하자.
-
-> 최근 7일 동안 실제로 활동한 기기에서 만든 메모만 가져와라.
-
-이 경우 `devices`에서 최근 활동 기기를 먼저 찾고, 그 기기들이 만든 `notes`를 가져올 수 있다.
-
-```sql
-select *
-from notes
-where device_id in (
-  select id
-  from devices
-  where last_seen_at >= now() - interval '7 days'
-);
-```
-
-초보자 관점에서는 이렇게 이해하면 된다.
-
-> 중첩 질의는 "먼저 조건에 맞는 목록을 구하고, 그 결과를 바탕으로 다시 조회"할 때 쓴다.
+이 구조에서 `notes.device_id`는 그냥 문자열 하나가 아니다.
+ERD에서 보았던 "기기가 메모를 만든다"는 관계가 테이블 안으로 들어온 결과다.
 
 ---
 
-### 2.6 VIEW는 왜 필요할까
+### 2.8 물리적 설계와 MemoNote의 현재 범위
 
-`VIEW`는 실제 테이블을 새로 복사하는 것이 아니라, 자주 쓰는 조회식을 이름 붙여 놓은 가상 테이블이다.
+강의자료의 흐름에서는 논리적 설계 다음에 물리적 설계가 이어진다.
+물리적 설계는 실제 DBMS에서 어떤 타입, 인덱스, 저장 구조를 쓸지 결정하는 단계다.
 
-MemoNote에서 자주 필요한 조회는 "삭제되지 않은 내 메모"일 가능성이 높다.
+MemoNote의 Supabase/Postgres 스키마에서는 다음이 물리적 설계에 가까운 선택이다.
 
-매번 이렇게 쓰면 길다.
-
-```sql
-select *
-from notes
-where user_id = 'user-1'
-  and deleted_at is null;
-```
-
-이를 View로 만들면 다음처럼 표현할 수 있다.
-
-```sql
-create view active_notes as
-select *
-from notes
-where deleted_at is null;
-```
-
-그 다음에는 이렇게 쓸 수 있다.
-
-```sql
-select *
-from active_notes
-where user_id = 'user-1';
-```
-
-현재 MemoNote의 `schema.sql`에는 이런 View가 핵심 구현으로 들어가 있지는 않다.  
-하지만 앱이 커지면 다음과 같은 View를 고려할 수 있다.
-
-| View 이름 | 의미 |
+| 물리적 설계 요소 | MemoNote 예시 |
 | --- | --- |
-| `active_notes` | 삭제되지 않은 메모 |
-| `active_tasks` | 삭제되지 않은 체크리스트 |
-| `daily_records` | 날짜별 메모, 운동, 식사, 체중 기록 통합 조회 |
-| `recent_activity` | 최근 수정된 모든 활동 |
+| 데이터 타입 | `uuid`, `text`, `boolean`, `integer`, `timestamptz` |
+| 인덱스 | `user_id`, `updated_at`, `deleted_at`, `date` 기준 인덱스 |
+| 제약조건 | primary key, foreign key, check, not null |
+| 마이그레이션 | `supabase/migrations`의 SQL 파일 |
 
-주의할 점도 있다.
+초보자에게 중요한 구분은 다음이다.
 
-View는 편리하지만, 초보 프로젝트에서 무조건 먼저 만들 필요는 없다.  
-현재 MemoNote처럼 앱 코드에서 필터링과 동기화 흐름이 명확하다면, View는 나중에 조회가 복잡해졌을 때 추가해도 된다.
+> ERD는 "무엇이 있고 어떻게 연결되는가"를 보여주고, 논리적 스키마는 "그것을 어떤 테이블과 컬럼으로 만들 것인가"를 보여준다. 물리적 설계는 "Postgres에서 실제로 어떻게 효율적이고 안전하게 저장할 것인가"에 가깝다.
+
+---
+
+### 2.9 9주차 결론
+
+9주차 내용으로 MemoNote를 보면 다음이 보인다.
+
+1. 앱 요구사항은 데이터베이스 설계의 출발점이다.
+2. 메모, 할 일, 기기, 운동/식사/체중 기록은 개체집합으로 볼 수 있다.
+3. 제목, 본문, 완료 여부, 날짜, 기기 ID는 속성으로 볼 수 있다.
+4. 사용자-기기, 기기-기록은 주로 일대다 관계다.
+5. ERD에서 잡은 관계는 논리적 설계에서 외래키로 나타난다.
+6. 현재 `schema.sql`과 migration 파일은 논리적 설계를 Postgres에 구현한 결과다.
 
 ---
 
@@ -1541,9 +1533,10 @@ DB 강의의 Non-Repeatable Read와 완전히 같지는 않지만, 사용자 경
 
 | 강의 주차 | 강의 개념 | MemoNote 대응 | 현재 구현 상태 |
 | --- | --- | --- | --- |
-| 9주차 | NULL | `deleted_at`, `due_time`, 선택 입력 필드 | 구현됨 |
-| 9주차 | 중첩 질의 | 기기 기준 기록 조회, 최근 활동 기기 조회 등에 활용 가능 | 핵심 구현은 아님 |
-| 9주차 | VIEW | `active_notes`, `daily_records` 같은 가상 조회로 확장 가능 | 미구현 |
+| 9주차 | 요구사항 분석 | 메모, 할 일, 기록, 기기 동기화 요구사항을 데이터 요구사항으로 정리 | 설계 근거 |
+| 9주차 | 개념적 설계 | User, Device, Note, Task, 운동/식사/체중 기록을 개체집합으로 해석 | 구현에 반영됨 |
+| 9주차 | ERD와 대응수 | 사용자-기기, 기기-기록의 1:N 관계 | 구현됨 |
+| 9주차 | 논리적 설계 | 개체와 관계를 Supabase 테이블, 기본키, 외래키로 변환 | 구현됨 |
 | 10주차 | 기본키 | 대부분 테이블의 `id uuid primary key` | 구현됨 |
 | 10주차 | 복합키 | `devices`의 `(user_id, id)` | 구현됨 |
 | 10주차 | 외래키 | 기록 테이블의 `(user_id, device_id)`가 `devices` 참조 | 구현됨 |
@@ -1566,25 +1559,20 @@ DB 강의의 Non-Repeatable Read와 완전히 같지는 않지만, 사용자 경
 
 다음 질문에 직접 답해 보면 강의 개념과 앱 구조가 연결된다.
 
-### 11.1 NULL 실습
+### 11.1 개념적 설계 실습
 
 질문:
 
-> MemoNote에서 삭제되지 않은 메모만 가져오려면 어떤 조건이 필요할까?
+> MemoNote의 요구사항에서 개체집합 3개와 관계 1개를 직접 뽑아보면 무엇이 있을까?
 
 답:
 
-```sql
-where deleted_at is null
-```
-
-추가 질문:
-
-> `deleted_at = null`이라고 쓰면 왜 안 될까?
-
-답:
-
-`NULL`은 일반 값이 아니라 "값이 없음/알 수 없음"이므로 SQL에서는 `IS NULL`로 비교해야 한다.
+| 구분 | 예시 |
+| --- | --- |
+| 개체집합 | `Device`, `Note`, `Task` |
+| 속성 | `Note.title`, `Note.content`, `Task.is_done` |
+| 관계 | `Device 1 : N Note` |
+| 논리적 설계 결과 | `notes` 테이블에 `device_id`를 둔다. |
 
 ---
 
@@ -1661,18 +1649,20 @@ MemoNote는 좋은 실습 예제지만, 강의 전체를 모두 담고 있지는
 
 포함되는 것:
 
-1. 테이블 설계
-2. 기본키
-3. 외래키
-4. `NULL`
-5. `CHECK`
-6. `DEFAULT`
-7. soft delete
-8. 인덱스
-9. 사용자별 데이터 분리
-10. Realtime 동기화
-11. 충돌 병합
-12. local-first 사고
+1. 요구사항에서 개체와 관계를 도출하는 과정
+2. ERD로 표현할 수 있는 일대다 관계
+3. 테이블 설계
+4. 기본키
+5. 외래키
+6. `NULL`
+7. `CHECK`
+8. `DEFAULT`
+9. soft delete
+10. 인덱스
+11. 사용자별 데이터 분리
+12. Realtime 동기화
+13. 충돌 병합
+14. local-first 사고
 
 직접 포함되지 않거나 약한 것:
 
@@ -1694,16 +1684,18 @@ MemoNote는 좋은 실습 예제지만, 강의 전체를 모두 담고 있지는
 
 초보자는 다음 순서로 보면 된다.
 
-1. `notes` 테이블을 본다.
-2. `id`, `title`, `content`, `updated_at`, `deleted_at`, `device_id`의 의미를 설명해 본다.
-3. 삭제가 왜 `delete from notes`가 아니라 `deleted_at` 갱신인지 이해한다.
-4. `devices` 테이블과 외래키 관계를 본다.
-5. `tasks`, `workout_records`, `meal_records`, `weight_records`가 같은 패턴을 반복하는지 확인한다.
-6. 인덱스가 어떤 조회를 빠르게 하려는지 추측해 본다.
-7. Supabase sync 코드에서 `.select("*")`, `.upsert(...)`, Realtime 구독을 찾아본다.
-8. 두 기기 충돌 시 `updatedAt`이 왜 필요한지 설명해 본다.
-9. RLS가 왜 아직 완성 보안이 아닌지 확인한다.
-10. 마지막으로 강의자료 9주차부터 16주차 개념표와 다시 연결한다.
+1. MemoNote 요구사항을 개체, 속성, 관계로 나눠 본다.
+2. User, Device, Note, Task, 기록 테이블 사이의 ERD를 직접 그려 본다.
+3. `notes` 테이블을 본다.
+4. `id`, `title`, `content`, `updated_at`, `deleted_at`, `device_id`의 의미를 설명해 본다.
+5. `devices` 테이블과 외래키 관계를 본다.
+6. 삭제가 왜 `delete from notes`가 아니라 `deleted_at` 갱신인지 이해한다.
+7. `tasks`, `workout_records`, `meal_records`, `weight_records`가 같은 패턴을 반복하는지 확인한다.
+8. 인덱스가 어떤 조회를 빠르게 하려는지 추측해 본다.
+9. Supabase sync 코드에서 `.select("*")`, `.upsert(...)`, Realtime 구독을 찾아본다.
+10. 두 기기 충돌 시 `updatedAt`이 왜 필요한지 설명해 본다.
+11. RLS가 왜 아직 완성 보안이 아닌지 확인한다.
+12. 마지막으로 강의자료 9주차부터 16주차 개념표와 다시 연결한다.
 
 ---
 
@@ -1714,14 +1706,14 @@ MemoNote는 좋은 실습 예제지만, 강의 전체를 모두 담고 있지는
 가장 직접적인 연결은 다음이다.
 
 ```text
-NULL
--> deleted_at, due_time, 선택 입력 필드
+개념적 설계/ERD
+-> MemoNote 요구사항을 User, Device, Note, Task, 기록 개체와 1:N 관계로 표현
+
+논리적 설계
+-> 개체와 관계를 devices, notes, tasks, workout_records 같은 테이블로 변환
 
 무결성
 -> primary key, foreign key, check, not null
-
-ERD 변환
--> 메모/할 일/운동/식사/체중/기기를 테이블로 분리
 
 정규화
 -> 기기 정보를 devices로 분리하고 기록 테이블은 device_id만 참조
@@ -1752,5 +1744,5 @@ CRDT 수준의 동시 편집
 
 현재 앱의 정확한 상태는 다음 한 문장이 가장 안전하다.
 
-> MemoNote는 로컬에서는 `localStorage`를 사용하고, 원격 동기화에는 Supabase Postgres를 사용하는 local-first 메모/기록 앱이며, 강의 9주차 이후의 NULL, 무결성, ERD 변환, 정규화, 인덱스, 동시성, 복구 개념을 실습적으로 설명하기에 적합하다.
+> MemoNote는 로컬에서는 `localStorage`를 사용하고, 원격 동기화에는 Supabase Postgres를 사용하는 local-first 메모/기록 앱이며, 강의 9주차 이후의 데이터베이스 설계, ERD, 논리적 설계, 무결성, 정규화, 인덱스, 동시성, 복구 개념을 실습적으로 설명하기에 적합하다.
 

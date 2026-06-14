@@ -127,7 +127,7 @@ export function QuickActionWorkoutEditor({
         durationSeconds === null ||
         (workoutAverageHeartRate.trim() && averageHeartRate === null)
       ) {
-        setError("유산소 시간은 00:00:00 형식이어야 하고, 평균 심박수는 입력 시 0보다 커야 합니다.");
+        setError("유산소는 운동한 시간을 00:00:00 형식으로 입력해야 하고, 평균 심박수는 입력 시 0보다 커야 합니다.");
         return;
       }
 
@@ -252,10 +252,11 @@ export function QuickActionWorkoutEditor({
           </label>
             <div className="grid grid-cols-2 gap-2">
               <label className="block text-xs font-semibold text-slate-600 dark:text-neutral-300">
-                운동 시간
+                운동한 시간
                 <input
-                  type="time"
-                  step="1"
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="00:30:00"
                   value={workoutDurationInput}
                   onChange={(event) => {
                     setWorkoutDurationInput(event.target.value);

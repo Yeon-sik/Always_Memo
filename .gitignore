@@ -7,6 +7,7 @@ dist-ssr
 .env.local
 .DS_Store
 .understand-anything/
+supabase/.temp/
 *.log
 *.lnk
 *.exe

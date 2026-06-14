@@ -314,7 +314,7 @@ export function useLocalSyncMemo(
     let isMounted = true;
 
     async function hydrate() {
-      const currentDevice = getOrCreateDevice();
+      const currentDevice = await getOrCreateDevice();
 
       try {
         const context: SyncContext = { device: currentDevice, userId };
