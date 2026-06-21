@@ -46,7 +46,8 @@ import {
   ChartCard,
   KpiCard,
   WeightLine,
-} from "./components/RecordsMetrics";
+  type ChartInteractionHandlers,
+} from "./components/InteractiveRecordsMetrics";
 import {
   formatNullableMetric,
   formatRecordTime,
@@ -133,6 +134,71 @@ function BackfillBadge({ record }: { record: { isBackfilled?: boolean } }) {
     return null;
   }
 
+/*
+  const productivityChartDetail = activeProductivityPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeProductivityPoint.date)} · 완료{" "}
+        {activeProductivityPoint.completedTasks}/{activeProductivityPoint.totalTasks}
+      </p>
+      <p>
+        {summarizeItems(
+          (productivityDetailRecords?.tasks ?? []).map((task) =>
+            task.isDone ? `완료 ${task.text}` : `진행 ${task.text}`,
+          ),
+          "이 날 등록된 할 일이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 할 일 기록을 보여줍니다.</p>
+  );
+
+  const nutritionChartDetail = activeNutritionPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeNutritionPoint.date)} · 평균{" "}
+        {activeNutritionPoint.averageCalories === null
+          ? "-"
+          : `${formatMetric(activeNutritionPoint.averageCalories, 0)} kcal`} / 단백질{" "}
+        {activeNutritionPoint.averageProteinGrams === null
+          ? "-"
+          : `${formatMetric(activeNutritionPoint.averageProteinGrams)} g`}
+      </p>
+      <p>
+        {summarizeItems(
+          (nutritionDetailRecords?.mealRecords ?? []).map(
+            (record) =>
+              `${record.menu} ${record.calories.toLocaleString("ko-KR")} kcal / ${formatMetric(record.proteinGrams)} g`,
+          ),
+          "이 날 등록된 식사 기록이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 식사 기록을 보여줍니다.</p>
+  );
+
+  const weightChartDetail = activeWeightPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeWeightPoint.date)} · 체중{" "}
+        {formatMetric(activeWeightPoint.weightKg)} kg
+      </p>
+      <p>
+        {summarizeItems(
+          (weightDetailRecords?.weightRecords ?? []).map(
+            (record) => `${formatMetric(record.weightKg)} kg`,
+          ),
+          "이 날 등록된 체중 기록이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>선 위에 마우스를 올리거나 클릭한 뒤 좌우로 움직이면 날짜별 체중 기록을 계속 볼 수 있습니다.</p>
+  );
+
+*/
   return (
     <span className="mt-1 inline-flex w-fit rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
       {BACKFILL_LABEL}
@@ -154,7 +220,123 @@ function WorkoutMetricDetail({ record }: { record: WorkoutRecord }) {
   );
 }
 
+function clampIndex(index: number, length: number): number {
+  if (length <= 0) {
+    return -1;
+  }
+
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+function useChartInteraction(length: number): ChartInteractionHandlers {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  useEffect(() => {
+    if (length === 0) {
+      setActiveIndex(null);
+      setIsLocked(false);
+      setIsDragging(false);
+      return;
+    }
+
+    setActiveIndex((current) => {
+      if (current === null) {
+        return current;
+      }
+
+      return clampIndex(current, length);
+    });
+  }, [length]);
+
+  useEffect(() => {
+    if (!isDragging) {
+      return;
+    }
+
+    function stopDragging() {
+      setIsDragging(false);
+    }
+
+    window.addEventListener("pointerup", stopDragging);
+    return () => window.removeEventListener("pointerup", stopDragging);
+  }, [isDragging]);
+
+  function showIndex(index: number) {
+    if (length === 0) {
+      return;
+    }
+
+    setActiveIndex(clampIndex(index, length));
+  }
+
+  return {
+    activeIndex,
+    onBlur: () => {
+      if (!isLocked && !isDragging) {
+        setActiveIndex(null);
+      }
+    },
+    onHover: (index) => {
+      showIndex(index);
+    },
+    onLeave: () => {
+      if (!isLocked && !isDragging) {
+        setActiveIndex(null);
+      }
+    },
+    onPointerDown: (index) => {
+      showIndex(index);
+      setIsLocked(true);
+      setIsDragging(true);
+    },
+    onPointerMove: (index) => {
+      if (isLocked || isDragging) {
+        showIndex(index);
+      }
+    },
+    onToggleLock: (index) => {
+      if (isLocked && activeIndex === index) {
+        setActiveIndex(null);
+        setIsLocked(false);
+        setIsDragging(false);
+        return;
+      }
+
+      showIndex(index);
+      setIsLocked(true);
+      setIsDragging(false);
+    },
+  };
+}
+
+/* function summarizeItems(items: string[], emptyText: string): string {
+  if (items.length === 0) {
+    return emptyText;
+  }
+
+  if (items.length <= 2) {
+    return items.join(" · ");
+  }
+
+  return `${items.slice(0, 2).join(" · ")} 외 ${items.length - 2}건`;
+}
+
 // 기록 탭 컨테이너: 집계 데이터, 달력, 일별 목록, 빠른 추가 Overlay를 연결합니다.
+*/
+function summarizeItems(items: string[], emptyText: string): string {
+  if (items.length === 0) {
+    return emptyText;
+  }
+
+  if (items.length <= 2) {
+    return items.join(" · ");
+  }
+
+  return `${items.slice(0, 2).join(" · ")} 외 ${items.length - 2}건`;
+}
+
 export function RecordsPanel({
   selectedDate,
   snapshot,
@@ -217,6 +399,9 @@ export function RecordsPanel({
     () => getWeightSeries(snapshot.weightRecords, selectedRange),
     [selectedRange, snapshot.weightRecords],
   );
+  const productivityInteraction = useChartInteraction(productivitySeries.length);
+  const nutritionInteraction = useChartInteraction(nutritionSeries.length);
+  const weightInteraction = useChartInteraction(weightSeries.length);
   const todayLeftTasks = todayRecords.tasks.filter((task) => !task.isDone).length;
   const todayDoneTasks = todayRecords.tasks.filter((task) => task.isDone).length;
   const hasTodayWorkout = todayRecords.workoutRecords.length > 0;
@@ -246,6 +431,27 @@ export function RecordsPanel({
     dashboardStats.backfilledWeightCount > 0
       ? `${BACKFILL_LABEL} ${dashboardStats.backfilledWeightCount}건 포함`
       : null;
+  const activeProductivityPoint =
+    productivityInteraction.activeIndex === null
+      ? null
+      : productivitySeries[productivityInteraction.activeIndex] ?? null;
+  const activeNutritionPoint =
+    nutritionInteraction.activeIndex === null
+      ? null
+      : nutritionSeries[nutritionInteraction.activeIndex] ?? null;
+  const activeWeightPoint =
+    weightInteraction.activeIndex === null
+      ? null
+      : weightSeries[weightInteraction.activeIndex] ?? null;
+  const productivityDetailRecords = activeProductivityPoint
+    ? getRecordsForDate(snapshot, activeProductivityPoint.date)
+    : null;
+  const nutritionDetailRecords = activeNutritionPoint
+    ? getRecordsForDate(snapshot, activeNutritionPoint.date)
+    : null;
+  const weightDetailRecords = activeWeightPoint
+    ? getRecordsForDate(snapshot, activeWeightPoint.date)
+    : null;
 
   useEffect(() => {
     setVisibleMonth(selectedDate);
@@ -317,6 +523,69 @@ export function RecordsPanel({
       openQuickAction(selectedDate, sourceElement, "backfill");
     }
   }
+
+  const productivityChartDetail = activeProductivityPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeProductivityPoint.date)} · 완료{" "}
+        {activeProductivityPoint.completedTasks}/{activeProductivityPoint.totalTasks}
+      </p>
+      <p>
+        {summarizeItems(
+          (productivityDetailRecords?.tasks ?? []).map((task) =>
+            task.isDone ? `완료 ${task.text}` : `진행 ${task.text}`,
+          ),
+          "이 날 등록된 할 일이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 할 일 기록을 보여줍니다.</p>
+  );
+
+  const nutritionChartDetail = activeNutritionPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeNutritionPoint.date)} · 평균{" "}
+        {activeNutritionPoint.averageCalories === null
+          ? "-"
+          : `${formatMetric(activeNutritionPoint.averageCalories, 0)} kcal`} / 단백질{" "}
+        {activeNutritionPoint.averageProteinGrams === null
+          ? "-"
+          : `${formatMetric(activeNutritionPoint.averageProteinGrams)} g`}
+      </p>
+      <p>
+        {summarizeItems(
+          (nutritionDetailRecords?.mealRecords ?? []).map(
+            (record) =>
+              `${record.menu} ${record.calories.toLocaleString("ko-KR")} kcal / ${formatMetric(record.proteinGrams)} g`,
+          ),
+          "이 날 등록된 식사 기록이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 식사 기록을 보여줍니다.</p>
+  );
+
+  const weightChartDetail = activeWeightPoint ? (
+    <div className="space-y-1">
+      <p className="font-semibold text-slate-700 dark:text-neutral-100">
+        {formatKoreanDate(activeWeightPoint.date)} · 체중{" "}
+        {formatMetric(activeWeightPoint.weightKg)} kg
+      </p>
+      <p>
+        {summarizeItems(
+          (weightDetailRecords?.weightRecords ?? []).map(
+            (record) => `${formatMetric(record.weightKg)} kg`,
+          ),
+          "이 날 등록된 체중 기록이 없습니다.",
+        )}
+      </p>
+    </div>
+  ) : (
+    <p>선 위에 마우스를 올리거나 클릭한 뒤 좌우로 움직이면 날짜별 체중 기록을 계속 볼 수 있습니다.</p>
+  );
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
@@ -396,9 +665,15 @@ export function RecordsPanel({
         <ChartCard
           title="생산성 흐름"
           icon={Activity}
+          detail={productivityChartDetail}
           caption={hasProductivityData ? "선택 월 완료율" : "선택 월에 할 일이 없습니다."}
         >
           <BarSeries
+            interaction={productivityInteraction}
+            pointLabels={productivitySeries.map(
+              (point) =>
+                `${formatKoreanDate(point.date)} 완료 ${point.completedTasks}/${point.totalTasks}`,
+            )}
             values={productivitySeries.map((point) =>
               point.totalTasks === 0
                 ? 0
@@ -413,16 +688,31 @@ export function RecordsPanel({
           caption={hasNutritionData ? "일별 평균 칼로리" : "선택 월에 식사 기록이 없습니다."}
         >
           <BarSeries
+            interaction={nutritionInteraction}
+            pointLabels={nutritionSeries.map(
+              (point) =>
+                `${formatKoreanDate(point.date)} 평균 ${point.averageCalories === null ? 0 : Math.round(point.averageCalories)} kcal`,
+            )}
             values={nutritionSeries.map((point) => point.averageCalories ?? 0)}
             toneClassName="bg-amber-500"
           />
+          <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+            {nutritionChartDetail}
+          </div>
         </ChartCard>
         <ChartCard
           title="체중 추세"
           icon={dashboardStats.weightDeltaKg && dashboardStats.weightDeltaKg < 0 ? TrendingDown : TrendingUp}
+          detail={weightChartDetail}
           caption={weightSeries.length > 1 ? "월간 체중 변화" : "선택 월에 체중 기록이 부족합니다."}
         >
-          <WeightLine values={weightSeries.map((point) => point.weightKg)} />
+          <WeightLine
+            interaction={weightInteraction}
+            pointLabels={weightSeries.map(
+              (point) => `${formatKoreanDate(point.date)} 체중 ${formatMetric(point.weightKg)} kg`,
+            )}
+            values={weightSeries.map((point) => point.weightKg)}
+          />
         </ChartCard>
       </div>
 
