@@ -74,10 +74,10 @@ const markerStyles: Array<{
   },
 ];
 
-const calendarCellSize = "h-[clamp(2.5rem,9vw,3.25rem)] min-w-0";
+const calendarCellSize = "h-[clamp(4.25rem,13vw,5.25rem)] min-w-0";
 const calendarCellBase =
-  `${calendarCellSize} flex flex-col items-center justify-center gap-0.5 ` +
-  "rounded-md border px-0.5 py-1 text-xs";
+  `${calendarCellSize} flex flex-col justify-between gap-1 ` +
+  "rounded-md border-2 px-1 py-1 text-xs";
 
 export function RecordCalendar({
   markerByDate,
@@ -173,30 +173,31 @@ export function RecordCalendar({
               <span
                 className={
                   isToday
-                    ? "inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1 text-[11px] font-semibold text-white dark:bg-neutral-100 dark:text-black"
-                    : "inline-flex h-5 min-w-5 items-center justify-center px-1 text-[11px] font-semibold"
+                    ? "inline-flex h-5 min-w-5 items-center justify-center self-center rounded-full bg-slate-900 px-1 text-[11px] font-semibold text-white dark:bg-neutral-100 dark:text-black"
+                    : "inline-flex h-5 min-w-5 items-center justify-center self-center px-1 text-[11px] font-semibold"
                 }
               >
                 {Number(date.slice(-2))}
               </span>
-              <span className="flex h-2 max-w-full items-center justify-center gap-px overflow-hidden">
-                {markerStyles.map((marker) =>
-                  markers?.[marker.key] ? (
-                    <span
-                      key={marker.key}
-                      title={marker.label}
-                      className="inline-flex h-1.5 w-1.5 shrink-0 items-center justify-center leading-none"
-                    >
-                      <span className={`block box-border h-1.5 w-1.5 rounded-full border ${marker.className}`} />
-                    </span>
-                  ) : null,
-                )}
+              <span className="flex min-h-0 flex-1 w-full flex-col-reverse justify-start gap-0.5 overflow-hidden">
+                {markerStyles.map((marker) => (
+                  <span
+                    key={marker.key}
+                    title={markers?.[marker.key] ? marker.label : undefined}
+                    className={
+                      markers?.[marker.key]
+                        ? `block h-4 w-full rounded-sm border-2 ${marker.className}`
+                        : "block h-4 w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
+                    }
+                    aria-hidden={!markers?.[marker.key]}
+                  />
+                ))}
               </span>
             </button>
           ) : (
             <div
               key={`blank-${index}`}
-              className={`${calendarCellSize} rounded-md border border-transparent`}
+              className={`${calendarCellSize} rounded-md border-2 border-transparent`}
             />
           );
         })}

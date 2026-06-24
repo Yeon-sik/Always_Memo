@@ -21,8 +21,8 @@ function MarkerLegendItem({
 }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1">
-      <span className="inline-flex h-2 w-2 shrink-0 items-center justify-center">
-        <span className={`block h-1.5 w-1.5 rounded-full ${className}`} />
+      <span className="inline-flex h-2 w-4 shrink-0 items-center justify-center">
+        <span className={`block h-1.5 w-4 rounded-sm ${className}`} />
       </span>
       <span>{label}</span>
     </span>
