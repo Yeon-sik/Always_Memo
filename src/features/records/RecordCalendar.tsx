@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, parseDateInput } from "../fitness/fitnessDate";
-import type { CalendarMarkerSet, CalendarMarkers } from "./recordAggregation";
+import type {
+  CalendarMarkers,
+  CalendarTaskMarker,
+} from "./recordAggregation";
 
 interface RecordCalendarProps {
   markerByDate: CalendarMarkers;
@@ -43,7 +46,7 @@ function getMonthTitle(monthDate: Date): string {
 }
 
 const markerStyles: Array<{
-  key: keyof CalendarMarkerSet;
+  key: "notes" | "workouts" | "meals" | "weights";
   className: string;
   label: string;
 }> = [
@@ -53,18 +56,13 @@ const markerStyles: Array<{
     className: "border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100",
   },
   {
-    key: "tasks",
-    label: "할 일",
-    className: "border-transparent bg-sky-400",
-  },
-  {
     key: "workouts",
     label: "운동",
     className: "border-transparent bg-red-500",
   },
   {
     key: "meals",
-    label: "식사",
+    label: "식단",
     className: "border-transparent bg-yellow-400",
   },
   {
@@ -74,10 +72,44 @@ const markerStyles: Array<{
   },
 ];
 
+const emptyTaskMarker: CalendarTaskMarker = {
+  dueCount: 0,
+  activeCount: 0,
+};
+
 const calendarCellSize = "h-[clamp(4.25rem,13vw,5.25rem)] min-w-0";
 const calendarCellBase =
   `${calendarCellSize} flex flex-col justify-between gap-1 ` +
   "rounded-md border-2 px-1 py-1 text-xs";
+
+function renderTaskMarker(taskMarker: CalendarTaskMarker) {
+  if (taskMarker.dueCount > 0) {
+    return (
+      <span
+        title={`할 일 ${taskMarker.dueCount}개 마감`}
+        className="block h-full w-full rounded-sm border-2 border-transparent bg-sky-400"
+      />
+    );
+  }
+
+  if (taskMarker.activeCount > 0) {
+    return (
+      <span
+        title={`진행 중인 할 일 ${taskMarker.activeCount}개`}
+        className="flex h-full w-full min-w-0 items-center justify-center gap-1 rounded-sm border-2 border-slate-200 bg-transparent px-1 dark:border-neutral-700"
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
+        <span className="text-[10px] font-semibold leading-none text-sky-500 dark:text-sky-300">
+          x{taskMarker.activeCount}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700" />
+  );
+}
 
 export function RecordCalendar({
   markerByDate,
@@ -156,6 +188,7 @@ export function RecordCalendar({
           const markers = date ? markerByDate[date] : null;
           const isSelected = date === selectedDate;
           const isToday = date === today;
+          const taskMarker = markers?.tasks ?? emptyTaskMarker;
 
           return date ? (
             <button
@@ -179,19 +212,44 @@ export function RecordCalendar({
               >
                 {Number(date.slice(-2))}
               </span>
-              <span className="flex min-h-0 flex-1 w-full flex-col-reverse justify-start gap-0.5 overflow-hidden">
-                {markerStyles.map((marker) => (
-                  <span
-                    key={marker.key}
-                    title={markers?.[marker.key] ? marker.label : undefined}
-                    className={
-                      markers?.[marker.key]
-                        ? `block h-4 w-full rounded-sm border-2 ${marker.className}`
-                        : "block h-4 w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
-                    }
-                    aria-hidden={!markers?.[marker.key]}
-                  />
-                ))}
+              <span className="grid min-h-0 flex-1 w-full grid-rows-5 gap-0.5 overflow-hidden">
+                <span
+                  title={markers?.weights ? "체중" : undefined}
+                  className={
+                    markers?.weights
+                      ? `block h-full w-full rounded-sm border-2 ${markerStyles[3].className}`
+                      : "block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
+                  }
+                  aria-hidden={!markers?.weights}
+                />
+                <span
+                  title={markers?.meals ? "식단" : undefined}
+                  className={
+                    markers?.meals
+                      ? `block h-full w-full rounded-sm border-2 ${markerStyles[2].className}`
+                      : "block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
+                  }
+                  aria-hidden={!markers?.meals}
+                />
+                <span
+                  title={markers?.workouts ? "운동" : undefined}
+                  className={
+                    markers?.workouts
+                      ? `block h-full w-full rounded-sm border-2 ${markerStyles[1].className}`
+                      : "block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
+                  }
+                  aria-hidden={!markers?.workouts}
+                />
+                {renderTaskMarker(taskMarker)}
+                <span
+                  title={markers?.notes ? "메모" : undefined}
+                  className={
+                    markers?.notes
+                      ? `block h-full w-full rounded-sm border-2 ${markerStyles[0].className}`
+                      : "block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700"
+                  }
+                  aria-hidden={!markers?.notes}
+                />
               </span>
             </button>
           ) : (

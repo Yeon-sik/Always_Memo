@@ -19,9 +19,14 @@ export interface DateRange {
   endDate: LocalDateString;
 }
 
+export interface CalendarTaskMarker {
+  dueCount: number;
+  activeCount: number;
+}
+
 export interface CalendarMarkerSet {
   notes: boolean;
-  tasks: boolean;
+  tasks: CalendarTaskMarker;
   workouts: boolean;
   meals: boolean;
   weights: boolean;
@@ -85,6 +90,39 @@ function toLocalDateFromTimestamp(value: string): LocalDateString | null {
 
 function getTaskActivityDate(task: Task): LocalDateString | null {
   return task.dueDate ?? toLocalDateFromTimestamp(task.updatedAt);
+}
+
+function getTaskVisibleRange(
+  task: Task,
+): { startDate: LocalDateString; endDate: LocalDateString } | null {
+  const createdDate = toLocalDateFromTimestamp(task.createdAt);
+  const dueDate = task.dueDate;
+
+  if (!createdDate) {
+    return dueDate ? { startDate: dueDate, endDate: dueDate } : null;
+  }
+
+  if (!dueDate) {
+    return { startDate: createdDate, endDate: createdDate };
+  }
+
+  const updatedDate = toLocalDateFromTimestamp(task.updatedAt);
+  const endDate =
+    task.isDone && updatedDate && updatedDate.localeCompare(dueDate) < 0
+      ? updatedDate
+      : dueDate;
+
+  return createdDate.localeCompare(endDate) <= 0
+    ? { startDate: createdDate, endDate }
+    : { startDate: endDate, endDate };
+}
+
+function isTaskVisibleOnDate(task: Task, date: LocalDateString): boolean {
+  const visibleRange = getTaskVisibleRange(task);
+
+  return visibleRange
+    ? isWithinDateRange(date, visibleRange.startDate, visibleRange.endDate)
+    : false;
 }
 
 function isDateInRange(date: string | null, range: DateRange): boolean {
@@ -155,7 +193,10 @@ function getDateRangeDays(range: DateRange): LocalDateString[] {
 function emptyMarkerSet(): CalendarMarkerSet {
   return {
     notes: false,
-    tasks: false,
+    tasks: {
+      dueCount: 0,
+      activeCount: 0,
+    },
     workouts: false,
     meals: false,
     weights: false,
@@ -193,7 +234,7 @@ export function getRecordsForDate(
       .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt)),
     tasks: snapshot.tasks
       .filter(isVisibleEntity)
-      .filter((task) => task.dueDate === date)
+      .filter((task) => isTaskVisibleOnDate(task, date))
       .sort(sortTasksBySchedule),
     workoutRecords: sortByDateThenUpdatedAt(
       snapshot.workoutRecords
@@ -285,8 +326,32 @@ export function getCalendarMarkers(
   }
 
   for (const task of snapshot.tasks.filter(isVisibleEntity)) {
-    if (isDateInRange(task.dueDate, range)) {
-      ensureMarker(markers, task.dueDate as LocalDateString).tasks = true;
+    const visibleRange = getTaskVisibleRange(task);
+
+    if (!visibleRange) {
+      continue;
+    }
+
+    const startDate =
+      visibleRange.startDate.localeCompare(range.startDate) < 0
+        ? range.startDate
+        : visibleRange.startDate;
+    const endDate =
+      visibleRange.endDate.localeCompare(range.endDate) > 0
+        ? range.endDate
+        : visibleRange.endDate;
+
+    if (startDate.localeCompare(endDate) > 0) {
+      continue;
+    }
+
+    for (const date of getDateRangeDays({ startDate, endDate })) {
+      const taskMarker = ensureMarker(markers, date).tasks;
+      taskMarker.activeCount += 1;
+
+      if (task.dueDate === date) {
+        taskMarker.dueCount += 1;
+      }
     }
   }
 
