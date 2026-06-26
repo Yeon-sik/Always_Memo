@@ -209,4 +209,83 @@ describe("recordAggregation", () => {
 
     expect(markers["2026-06-09"]).toBeUndefined();
   });
+
+  it("shows scheduled tasks across dates before the due date", () => {
+    const scheduledTask: Task = {
+      ...directTask,
+      id: "task-scheduled",
+      text: "scheduled",
+      isDone: false,
+      createdAt: "2026-06-07T00:00:00.000Z",
+      updatedAt: "2026-06-07T00:00:00.000Z",
+      dueDate: "2026-06-09",
+    };
+    const markers = getCalendarMarkers(
+      {
+        ...snapshot,
+        tasks: [scheduledTask],
+      },
+      "2026-06-09",
+    );
+
+    expect(markers["2026-06-07"]?.tasks.activeCount).toBe(1);
+    expect(markers["2026-06-07"]?.tasks.dueCount).toBe(0);
+    expect(markers["2026-06-08"]?.tasks.activeCount).toBe(1);
+    expect(markers["2026-06-08"]?.tasks.dueCount).toBe(0);
+    expect(markers["2026-06-09"]?.tasks.activeCount).toBe(1);
+    expect(markers["2026-06-09"]?.tasks.dueCount).toBe(1);
+  });
+
+  it("includes still-active scheduled tasks in earlier date records", () => {
+    const scheduledTask: Task = {
+      ...directTask,
+      id: "task-scheduled",
+      text: "scheduled",
+      isDone: false,
+      createdAt: "2026-06-07T00:00:00.000Z",
+      updatedAt: "2026-06-07T00:00:00.000Z",
+      dueDate: "2026-06-09",
+    };
+    const records = getRecordsForDate(
+      {
+        ...snapshot,
+        tasks: [scheduledTask],
+      },
+      "2026-06-08",
+    );
+
+    expect(records.tasks).toHaveLength(1);
+    expect(records.tasks[0].id).toBe("task-scheduled");
+  });
+
+  it("counts multiple active tasks as multiple calendar dots before the due date", () => {
+    const firstTask: Task = {
+      ...directTask,
+      id: "task-scheduled-1",
+      isDone: false,
+      createdAt: "2026-06-07T00:00:00.000Z",
+      updatedAt: "2026-06-07T00:00:00.000Z",
+      dueDate: "2026-06-09",
+    };
+    const secondTask: Task = {
+      ...directTask,
+      id: "task-scheduled-2",
+      isDone: false,
+      createdAt: "2026-06-08T00:00:00.000Z",
+      updatedAt: "2026-06-08T00:00:00.000Z",
+      dueDate: "2026-06-10",
+    };
+    const markers = getCalendarMarkers(
+      {
+        ...snapshot,
+        tasks: [firstTask, secondTask],
+      },
+      "2026-06-09",
+    );
+
+    expect(markers["2026-06-08"]?.tasks.activeCount).toBe(2);
+    expect(markers["2026-06-08"]?.tasks.dueCount).toBe(0);
+    expect(markers["2026-06-09"]?.tasks.activeCount).toBe(2);
+    expect(markers["2026-06-09"]?.tasks.dueCount).toBe(1);
+  });
 });
