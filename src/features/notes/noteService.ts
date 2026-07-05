@@ -25,7 +25,61 @@ function createTimestampForDate(date?: string): string {
   ).toISOString();
 }
 
-// 새 메모는 로컬에서 즉시 생성하고, 생성 기기를 deviceId로 남긴다.
+function normalizeNoteContent(content: string): string {
+  return content
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h1|h2|h3|blockquote)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n\s+/g, "\n")
+    .replace(/[ \t]+/g, " ")
+    .trim();
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function serializeInlineNodes(nodes: NodeListOf<ChildNode> | ChildNode[]): string {
+  return Array.from(nodes)
+    .map((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        return node.textContent ?? "";
+      }
+
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        return "";
+      }
+
+      const element = node as HTMLElement;
+      const tagName = element.tagName.toLowerCase();
+      const inner = serializeInlineNodes(Array.from(element.childNodes));
+
+      if (tagName === "br") {
+        return "\n";
+      }
+
+      if (tagName === "strong" || tagName === "b") {
+        return `**${inner}**`;
+      }
+
+      if (tagName === "em" || tagName === "i") {
+        return `*${inner}*`;
+      }
+
+      return inner;
+    })
+    .join("");
+}
+
 export function createNote(
   deviceId: string,
   changes: Pick<Partial<Note>, "title" | "content"> = {},
@@ -46,7 +100,6 @@ export function createNote(
   };
 }
 
-// 제목/본문 변경 시 updatedAt과 deviceId를 갱신해 LWW 동기화 기준을 만든다.
 export function updateNote(
   note: Note,
   changes: Pick<Partial<Note>, "title" | "content">,
@@ -61,7 +114,6 @@ export function updateNote(
   };
 }
 
-// 삭제는 hard delete 대신 deletedAt을 남겨 다른 기기에도 삭제를 전파한다.
 export function softDeleteNote(note: Note, deviceId: string): Note {
   const now = new Date().toISOString();
 
@@ -73,14 +125,76 @@ export function softDeleteNote(note: Note, deviceId: string): Note {
   };
 }
 
-// UI에는 삭제되지 않은 메모만 최신 수정 순서로 보여준다.
 export function getVisibleNotes(notes: Note[]): Note[] {
   return notes
     .filter((note) => note.deletedAt === null)
     .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
 }
 
-// 제목이 비어 있으면 본문 앞부분을 목록 표시 제목으로 대체한다.
+export function getPlainTextFromNoteContent(content: string): string {
+  return normalizeNoteContent(content)
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1");
+}
+
+export function renderNoteContentHtml(content: string): string {
+  const normalized = normalizeNoteContent(content);
+
+  if (!normalized) {
+    return "";
+  }
+
+  const withInlineFormatting = escapeHtml(normalized)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+  return withInlineFormatting
+    .split("\n")
+    .map((line) => (line ? `<div>${line}</div>` : "<div><br /></div>"))
+    .join("");
+}
+
+export function serializeNoteEditorHtmlToMarkdown(html: string): string {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+
+  const lines: string[] = [];
+
+  for (const child of Array.from(container.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      lines.push(child.textContent ?? "");
+      continue;
+    }
+
+    if (child.nodeType !== Node.ELEMENT_NODE) {
+      continue;
+    }
+
+    const element = child as HTMLElement;
+    const tagName = element.tagName.toLowerCase();
+
+    if (tagName === "div" || tagName === "p") {
+      lines.push(serializeInlineNodes(Array.from(element.childNodes)));
+      continue;
+    }
+
+    if (tagName === "br") {
+      lines.push("");
+      continue;
+    }
+
+    lines.push(serializeInlineNodes([element]));
+  }
+
+  return lines
+    .join("\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function getNoteDisplayTitle(note: Note): string {
   const trimmedTitle = note.title.trim();
 
@@ -88,6 +202,10 @@ export function getNoteDisplayTitle(note: Note): string {
     return trimmedTitle;
   }
 
-  const contentPreview = note.content.trim().split(/\s+/).slice(0, 5).join(" ");
+  const contentPreview = getPlainTextFromNoteContent(note.content)
+    .split(/\s+/)
+    .slice(0, 5)
+    .join(" ");
+
   return contentPreview || "제목 없는 메모";
 }
