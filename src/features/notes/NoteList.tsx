@@ -1,6 +1,9 @@
 import { Plus, StickyNote, Trash2 } from "lucide-react";
 import type { Note } from "../../types";
-import { getNoteDisplayTitle } from "./noteService";
+import {
+  getNoteDisplayTitle,
+  getPlainTextFromNoteContent,
+} from "./noteService";
 
 interface NoteListProps {
   notes: Note[];
@@ -11,7 +14,6 @@ interface NoteListProps {
   onSelect: (noteId: string) => void;
 }
 
-// 메모 목록의 수정 시각을 좁은 사이드바에 맞는 짧은 형식으로 표시한다.
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat("ko-KR", {
     month: "short",
@@ -21,7 +23,6 @@ function formatDate(value: string): string {
   }).format(new Date(value));
 }
 
-// 메모 목록, 선택 상태, 생성/삭제 진입점을 담당하는 좌측 패널이다.
 export function NoteList({
   notes,
   selectedNoteId,
@@ -83,7 +84,7 @@ export function NoteList({
                       {getNoteDisplayTitle(note)}
                     </div>
                     <div className="mt-1 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500">
-                      {note.content.trim() || "내용 없음"}
+                      {getPlainTextFromNoteContent(note.content) || "내용 없음"}
                     </div>
                     <div className="mt-2 text-xs text-slate-400">
                       {formatDate(note.updatedAt)}

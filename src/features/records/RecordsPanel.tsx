@@ -40,6 +40,7 @@ import { formatMetric } from "../fitness/stats/fitnessStats";
 import { RecordCalendar } from "./RecordCalendar";
 import { DailyItem, DailySection, DeleteItemButton } from "./components/DailyRecordSection";
 import { MarkerLegend } from "./components/RecordMarkerLegend";
+import { getPlainTextFromNoteContent } from "../notes/noteService";
 import {
   BarSeries,
   BriefMetric,
@@ -791,7 +792,7 @@ export function RecordsPanel({
                   {note.title.trim() || "제목 없음"}
                 </div>
                 <div className="mt-0.5 line-clamp-2 text-xs text-slate-500 dark:text-neutral-400">
-                  {note.content.trim() || "내용 없음"}
+                  {getPlainTextFromNoteContent(note.content) || "내용 없음"}
                 </div>
                 <div className="mt-1 text-[11px] text-slate-400 dark:text-neutral-500">
                   {formatRecordTime(note.updatedAt)}
