@@ -37,6 +37,7 @@ create table if not exists public.tasks (
   order_index integer not null default 0,
   due_date date,
   due_time time,
+  planned_date date,
   created_at timestamptz not null default now(),
   is_backfilled boolean not null default false,
   backfilled_at timestamptz,
@@ -115,6 +116,9 @@ alter table public.tasks
 alter table public.tasks
   add column if not exists due_time time;
 
+alter table public.tasks
+  add column if not exists planned_date date;
+
 alter table public.notes
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists is_backfilled boolean not null default false,
@@ -165,6 +169,9 @@ create index if not exists tasks_user_order_index_idx
 
 create index if not exists tasks_user_due_date_idx
   on public.tasks(user_id, due_date);
+
+create index if not exists tasks_user_planned_date_idx
+  on public.tasks(user_id, planned_date);
 
 create index if not exists workout_records_user_updated_at_idx
   on public.workout_records(user_id, updated_at desc);

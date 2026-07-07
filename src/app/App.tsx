@@ -136,6 +136,7 @@ export function App() {
                 onDelete={memo.deleteTask}
                 onReorder={memo.reorderTasks}
                 onToggle={memo.toggleTask}
+                onUpdatePlannedDate={memo.updateTaskPlannedDate}
                 onUpdateSchedule={memo.updateTaskSchedule}
                 onUpdateText={memo.updateTaskText}
               />

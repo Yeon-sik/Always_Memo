@@ -53,6 +53,7 @@ interface TaskRow extends EntityAuditRow {
   order_index: number;
   due_date: string | null;
   due_time: string | null;
+  planned_date: string | null;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -265,6 +266,7 @@ function taskFromRow(row: TaskRow): Task {
     orderIndex: row.order_index,
     dueDate: row.due_date,
     dueTime: row.due_time ? row.due_time.slice(0, 5) : null,
+    plannedDate: row.planned_date ?? null,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -351,6 +353,7 @@ function taskToRow(task: Task, userId: string): TaskRow {
     order_index: task.orderIndex,
     due_date: task.dueDate,
     due_time: task.dueTime,
+    planned_date: task.plannedDate,
     updated_at: task.updatedAt,
     deleted_at: task.deletedAt,
     device_id: task.deviceId,

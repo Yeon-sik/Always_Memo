@@ -33,6 +33,7 @@ export function createTask(
   deviceId: string,
   dueDate: string | null = null,
   dueTime: string | null = null,
+  plannedDate: string | null = null,
   backfillInput?: BackfillInput,
 ): Task {
   const now = new Date().toISOString();
@@ -46,6 +47,7 @@ export function createTask(
     orderIndex,
     dueDate,
     dueTime: dueDate ? dueTime : null,
+    plannedDate,
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -57,7 +59,7 @@ export function updateTask(
   task: Task,
   changes: Pick<
     Partial<Task>,
-    "text" | "isDone" | "orderIndex" | "dueDate" | "dueTime"
+    "text" | "isDone" | "orderIndex" | "dueDate" | "dueTime" | "plannedDate"
   >,
   deviceId: string,
 ): Task {
