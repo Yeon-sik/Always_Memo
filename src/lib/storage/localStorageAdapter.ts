@@ -77,6 +77,9 @@ function normalizeTask(value: unknown): Task | null {
 
   const dueDate = isNullableString(value.dueDate) ? value.dueDate : null;
   const dueTime = isNullableString(value.dueTime) ? value.dueTime : null;
+  const plannedDate = isNullableString(value.plannedDate)
+    ? value.plannedDate
+    : null;
   return {
     id: value.id as string,
     text: value.text,
@@ -84,6 +87,7 @@ function normalizeTask(value: unknown): Task | null {
     orderIndex: value.orderIndex,
     dueDate,
     dueTime,
+    plannedDate,
     ...getNormalizedSyncFields(value),
   };
 }

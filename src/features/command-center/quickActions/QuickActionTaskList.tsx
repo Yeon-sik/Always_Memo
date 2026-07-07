@@ -9,6 +9,7 @@ interface QuickActionTaskListProps {
     text: string,
     dueDate: string | null,
     dueTime: string | null,
+    plannedDate?: string | null,
     backfillInput?: BackfillInput,
   ) => void;
 }
@@ -29,7 +30,7 @@ export function QuickActionTaskList({
       return;
     }
 
-    onAddTask(text, selectedDate, null, backfillInput);
+    onAddTask(text, null, null, selectedDate, backfillInput);
     setDraft("");
   }
 

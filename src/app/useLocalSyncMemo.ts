@@ -116,6 +116,7 @@ interface UseLocalSyncMemoActions {
     text: string,
     dueDate?: string | null,
     dueTime?: string | null,
+    plannedDate?: string | null,
     backfillInput?: BackfillInput,
   ) => void;
   addWeightRecord: (
@@ -176,6 +177,7 @@ interface UseLocalSyncMemoActions {
     dueDate: string | null,
     dueTime: string | null,
   ) => void;
+  updateTaskPlannedDate: (taskId: string, plannedDate: string | null) => void;
   updateTaskText: (taskId: string, text: string) => void;
 }
 
@@ -776,6 +778,7 @@ export function useLocalSyncMemo(
       text: string,
       dueDate: string | null = null,
       dueTime: string | null = null,
+      plannedDate: string | null = null,
       backfillInput?: BackfillInput,
     ) => {
       if (!device) {
@@ -788,6 +791,7 @@ export function useLocalSyncMemo(
         device.id,
         dueDate,
         dueTime,
+        plannedDate,
         backfillInput,
       );
 
@@ -841,6 +845,23 @@ export function useLocalSyncMemo(
         currentTasks.map((task) =>
           task.id === taskId
             ? updateTask(task, { dueDate, dueTime }, device.id)
+            : task,
+        ),
+      );
+    },
+    [device],
+  );
+
+  const updateTaskPlannedDate = useCallback(
+    (taskId: string, plannedDate: string | null) => {
+      if (!device) {
+        return;
+      }
+
+      setTasks((currentTasks) =>
+        currentTasks.map((task) =>
+          task.id === taskId
+            ? updateTask(task, { plannedDate }, device.id)
             : task,
         ),
       );
@@ -1227,6 +1248,7 @@ export function useLocalSyncMemo(
     updateSelectedNoteTitle,
     updateMealRecord,
     updateNoteForDate,
+    updateTaskPlannedDate,
     updateTaskSchedule,
     updateTaskText,
     updateWeightRecord,

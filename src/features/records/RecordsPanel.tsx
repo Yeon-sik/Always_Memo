@@ -83,6 +83,7 @@ interface RecordsPanelProps {
     text: string,
     dueDate: string | null,
     dueTime: string | null,
+    plannedDate?: string | null,
     backfillInput?: BackfillInput,
   ) => void;
   onAddWeightRecord: (
@@ -144,7 +145,7 @@ function BackfillBadge({ record }: { record: { isBackfilled?: boolean } }) {
       </p>
       <p>
         {summarizeItems(
-          (productivityDetailRecords?.tasks ?? []).map((task) =>
+          productivityDetailTasks.map((task) =>
             task.isDone ? `완료 ${task.text}` : `진행 ${task.text}`,
           ),
           "이 날 등록된 할 일이 없습니다.",
@@ -403,8 +404,11 @@ export function RecordsPanel({
   const productivityInteraction = useChartInteraction(productivitySeries.length);
   const nutritionInteraction = useChartInteraction(nutritionSeries.length);
   const weightInteraction = useChartInteraction(weightSeries.length);
-  const todayLeftTasks = todayRecords.tasks.filter((task) => !task.isDone).length;
-  const todayDoneTasks = todayRecords.tasks.filter((task) => task.isDone).length;
+  const todayPlannedTasks = snapshot.tasks.filter(
+    (task) => task.deletedAt === null && task.plannedDate === today,
+  );
+  const todayLeftTasks = todayPlannedTasks.filter((task) => !task.isDone).length;
+  const todayDoneTasks = todayPlannedTasks.filter((task) => task.isDone).length;
   const hasTodayWorkout = todayRecords.workoutRecords.length > 0;
   const totalSelectedRecords =
     selectedRecords.notes.length +
@@ -444,9 +448,14 @@ export function RecordsPanel({
     weightInteraction.activeIndex === null
       ? null
       : weightSeries[weightInteraction.activeIndex] ?? null;
-  const productivityDetailRecords = activeProductivityPoint
-    ? getRecordsForDate(snapshot, activeProductivityPoint.date)
-    : null;
+  const productivityDetailTasks = activeProductivityPoint
+    ? snapshot.tasks.filter(
+        (task) =>
+          task.deletedAt === null &&
+          task.plannedDate === activeProductivityPoint.date &&
+          !hasBackfillMetadata(task),
+      )
+    : [];
   const nutritionDetailRecords = activeNutritionPoint
     ? getRecordsForDate(snapshot, activeNutritionPoint.date)
     : null;
@@ -533,7 +542,7 @@ export function RecordsPanel({
       </p>
       <p>
         {summarizeItems(
-          (productivityDetailRecords?.tasks ?? []).map((task) =>
+          productivityDetailTasks.map((task) =>
             task.isDone ? `완료 ${task.text}` : `진행 ${task.text}`,
           ),
           "이 날 등록된 할 일이 없습니다.",

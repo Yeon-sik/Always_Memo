@@ -28,6 +28,7 @@ export interface Task extends SyncableEntity {
   orderIndex: number;
   dueDate: string | null;
   dueTime: string | null;
+  plannedDate: string | null;
 }
 
 export type WorkoutType = "strength" | "cardio" | "other";

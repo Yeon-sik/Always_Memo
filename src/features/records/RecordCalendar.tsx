@@ -75,6 +75,9 @@ const markerStyles: Array<{
 const emptyTaskMarker: CalendarTaskMarker = {
   dueCount: 0,
   activeCount: 0,
+  plannedCount: 0,
+  completedPlannedCount: 0,
+  allPlannedDone: false,
 };
 
 const calendarCellSize = "h-[clamp(4.25rem,13vw,5.25rem)] min-w-0";
@@ -108,6 +111,21 @@ function renderTaskMarker(taskMarker: CalendarTaskMarker) {
 
   return (
     <span className="block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700" />
+  );
+}
+
+function renderPlannedDoneMarker(taskMarker: CalendarTaskMarker) {
+  if (!taskMarker.allPlannedDone) {
+    return (
+      <span className="block h-full w-full rounded-sm border-2 border-slate-200 bg-transparent dark:border-neutral-700" />
+    );
+  }
+
+  return (
+    <span
+      title={`오늘 할 일 ${taskMarker.completedPlannedCount}/${taskMarker.plannedCount} 완료`}
+      className="block h-full w-full rounded-sm border-2 border-transparent bg-[#FF00FF]"
+    />
   );
 }
 
@@ -212,7 +230,7 @@ export function RecordCalendar({
               >
                 {Number(date.slice(-2))}
               </span>
-              <span className="grid min-h-0 flex-1 w-full grid-rows-5 gap-0.5 overflow-hidden">
+              <span className="grid min-h-0 flex-1 w-full grid-rows-6 gap-0.5 overflow-hidden">
                 <span
                   title={markers?.weights ? "체중" : undefined}
                   className={
@@ -241,6 +259,7 @@ export function RecordCalendar({
                   aria-hidden={!markers?.workouts}
                 />
                 {renderTaskMarker(taskMarker)}
+                {renderPlannedDoneMarker(taskMarker)}
                 <span
                   title={markers?.notes ? "메모" : undefined}
                   className={

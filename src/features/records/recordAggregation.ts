@@ -22,6 +22,9 @@ export interface DateRange {
 export interface CalendarTaskMarker {
   dueCount: number;
   activeCount: number;
+  plannedCount: number;
+  completedPlannedCount: number;
+  allPlannedDone: boolean;
 }
 
 export interface CalendarMarkerSet {
@@ -92,6 +95,10 @@ function getTaskActivityDate(task: Task): LocalDateString | null {
   return task.dueDate ?? toLocalDateFromTimestamp(task.updatedAt);
 }
 
+function getTaskProductivityDate(task: Task): LocalDateString | null {
+  return task.plannedDate;
+}
+
 function getTaskVisibleRange(
   task: Task,
 ): { startDate: LocalDateString; endDate: LocalDateString } | null {
@@ -120,9 +127,12 @@ function getTaskVisibleRange(
 function isTaskVisibleOnDate(task: Task, date: LocalDateString): boolean {
   const visibleRange = getTaskVisibleRange(task);
 
-  return visibleRange
-    ? isWithinDateRange(date, visibleRange.startDate, visibleRange.endDate)
-    : false;
+  return (
+    task.plannedDate === date ||
+    (visibleRange
+      ? isWithinDateRange(date, visibleRange.startDate, visibleRange.endDate)
+      : false)
+  );
 }
 
 function isDateInRange(date: string | null, range: DateRange): boolean {
@@ -196,6 +206,9 @@ function emptyMarkerSet(): CalendarMarkerSet {
     tasks: {
       dueCount: 0,
       activeCount: 0,
+      plannedCount: 0,
+      completedPlannedCount: 0,
+      allPlannedDone: false,
     },
     workouts: false,
     meals: false,
@@ -260,7 +273,7 @@ export function getDashboardStats(
 ): DashboardStats {
   const rangedVisibleTasks = snapshot.tasks
     .filter(isVisibleEntity)
-    .filter((task) => isDateInRange(getTaskActivityDate(task), range));
+    .filter((task) => isDateInRange(getTaskProductivityDate(task), range));
   const rangedTasks = rangedVisibleTasks.filter(
     (task) => !hasBackfillMetadata(task),
   );
@@ -326,6 +339,15 @@ export function getCalendarMarkers(
   }
 
   for (const task of snapshot.tasks.filter(isVisibleEntity)) {
+    if (isDateInRange(task.plannedDate, range)) {
+      const taskMarker = ensureMarker(markers, task.plannedDate as LocalDateString).tasks;
+      taskMarker.plannedCount += 1;
+
+      if (task.isDone) {
+        taskMarker.completedPlannedCount += 1;
+      }
+    }
+
     const visibleRange = getTaskVisibleRange(task);
 
     if (!visibleRange) {
@@ -355,6 +377,12 @@ export function getCalendarMarkers(
     }
   }
 
+  for (const marker of Object.values(markers)) {
+    marker.tasks.allPlannedDone =
+      marker.tasks.plannedCount > 0 &&
+      marker.tasks.completedPlannedCount === marker.tasks.plannedCount;
+  }
+
   for (const record of snapshot.workoutRecords.filter(isVisibleEntity)) {
     if (isWithinDateRange(record.date, range.startDate, range.endDate)) {
       ensureMarker(markers, record.date).workouts = true;
@@ -382,16 +410,21 @@ export function getProductivitySeries(
 ): ProductivityPoint[] {
   const visibleTasks = tasks
     .filter(isVisibleEntity)
-    .filter((task) => !hasBackfillMetadata(task));
+    .filter((task) => !hasBackfillMetadata(task))
+    .filter((task) => isDateInRange(getTaskProductivityDate(task), range));
 
-  return getDateRangeDays(range).map((date) => {
-    const dateTasks = visibleTasks.filter((task) => getTaskActivityDate(task) === date);
+  return getDateRangeDays(range).flatMap((date) => {
+    const dateTasks = visibleTasks.filter((task) => task.plannedDate === date);
 
-    return {
+    if (dateTasks.length === 0) {
+      return [];
+    }
+
+    return [{
       date,
       completedTasks: dateTasks.filter((task) => task.isDone).length,
       totalTasks: dateTasks.length,
-    };
+    }];
   });
 }
 

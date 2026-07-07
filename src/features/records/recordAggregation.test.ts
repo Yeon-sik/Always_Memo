@@ -10,6 +10,7 @@ import {
   getCalendarMarkers,
   getDashboardStats,
   getNutritionSeries,
+  getProductivitySeries,
   getRecordsForDate,
 } from "./recordAggregation";
 
@@ -89,6 +90,7 @@ const directTask: Task = {
   orderIndex: 0,
   dueDate: "2026-06-09",
   dueTime: null,
+  plannedDate: "2026-06-09",
   isBackfilled: false,
   backfilledAt: null,
   backfillReason: null,
@@ -287,5 +289,52 @@ describe("recordAggregation", () => {
     expect(markers["2026-06-08"]?.tasks.dueCount).toBe(0);
     expect(markers["2026-06-09"]?.tasks.activeCount).toBe(2);
     expect(markers["2026-06-09"]?.tasks.dueCount).toBe(1);
+  });
+
+  it("uses planned dates for productivity and marks fully completed planned days", () => {
+    const plannedDone: Task = {
+      ...directTask,
+      id: "task-planned-done",
+      dueDate: "2026-06-20",
+      plannedDate: "2026-06-11",
+      isDone: true,
+    };
+    const plannedOpen: Task = {
+      ...directTask,
+      id: "task-planned-open",
+      dueDate: "2026-06-11",
+      plannedDate: "2026-06-12",
+      isDone: false,
+    };
+    const unplannedDue: Task = {
+      ...directTask,
+      id: "task-unplanned-due",
+      dueDate: "2026-06-11",
+      plannedDate: null,
+      isDone: true,
+    };
+    const taskSnapshot = {
+      ...snapshot,
+      tasks: [plannedDone, plannedOpen, unplannedDue],
+    };
+    const stats = getDashboardStats(taskSnapshot, {
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    });
+    const series = getProductivitySeries(taskSnapshot.tasks, {
+      startDate: "2026-06-01",
+      endDate: "2026-06-30",
+    });
+    const markers = getCalendarMarkers(taskSnapshot, "2026-06-01");
+
+    expect(stats.completedTasks).toBe(1);
+    expect(stats.totalTasks).toBe(2);
+    expect(stats.productivityScore).toBe(50);
+    expect(series.map((point) => point.date)).toEqual([
+      "2026-06-11",
+      "2026-06-12",
+    ]);
+    expect(markers["2026-06-11"]?.tasks.allPlannedDone).toBe(true);
+    expect(markers["2026-06-12"]?.tasks.allPlannedDone).toBe(false);
   });
 });

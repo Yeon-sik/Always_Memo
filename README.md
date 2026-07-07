@@ -172,8 +172,14 @@ alter table public.tasks
 alter table public.tasks
   add column if not exists due_time time;
 
+alter table public.tasks
+  add column if not exists planned_date date;
+
 create index if not exists tasks_user_due_date_idx
   on public.tasks(user_id, due_date);
+
+create index if not exists tasks_user_planned_date_idx
+  on public.tasks(user_id, planned_date);
 ```
 
 ## 실행 방법

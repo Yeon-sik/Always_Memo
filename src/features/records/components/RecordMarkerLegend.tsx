@@ -1,9 +1,15 @@
-// 달력과 일별 목록에서 사용하는 기록 종류별 색상 의미를 안내합니다.
 export function MarkerLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-neutral-400" aria-label="달력 표시 범례">
-      <MarkerLegendItem label="메모" className="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100" />
+    <div
+      className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-neutral-400"
+      aria-label="달력 표시 범례"
+    >
+      <MarkerLegendItem
+        label="메모"
+        className="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100"
+      />
       <MarkerLegendItem label="할 일" className="bg-sky-400" />
+      <MarkerLegendItem label="오늘 완료" className="bg-[#FF00FF]" />
       <MarkerLegendItem label="운동" className="bg-red-500" />
       <MarkerLegendItem label="식사" className="bg-yellow-400" />
       <MarkerLegendItem label="체중" className="bg-emerald-500" />
@@ -11,7 +17,6 @@ export function MarkerLegend() {
   );
 }
 
-// 하나의 기록 종류와 점 색상을 한 줄 범례로 표시합니다.
 function MarkerLegendItem({
   className,
   label,

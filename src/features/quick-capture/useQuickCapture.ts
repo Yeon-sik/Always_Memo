@@ -22,6 +22,7 @@ interface UseQuickCaptureOptions {
     text: string,
     dueDate: string | null,
     dueTime: string | null,
+    plannedDate?: string | null,
   ) => void;
 }
 
@@ -105,7 +106,7 @@ export function useQuickCapture({
       if (parsedDraft.mode === "memo") {
         onAddMemo(today, parsedDraft.title, parsedDraft.content);
       } else {
-        onAddTask(parsedDraft.content, today, null);
+        onAddTask(parsedDraft.content, null, null, today);
       }
 
       setIsOpen(false);

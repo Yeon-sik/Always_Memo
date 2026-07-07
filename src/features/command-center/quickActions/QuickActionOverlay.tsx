@@ -30,6 +30,7 @@ interface QuickActionOverlayProps {
     text: string,
     dueDate: string | null,
     dueTime: string | null,
+    plannedDate?: string | null,
     backfillInput?: BackfillInput,
   ) => void;
   onAddWeightRecord: (
