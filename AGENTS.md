@@ -116,3 +116,22 @@
 - 부팅 시 자동 실행 옵션 존재
 - 트레이에서 열기/종료 가능
 - README에 설치/실행/환경변수/Supabase 설정법 포함
+
+## 프로젝트 문서와 Notion
+
+- 프로젝트 소개·상세 문서의 생성, 감사, 갱신 요청에는 저장소 스킬
+  `.agents/skills/maintain-project-docs/SKILL.md`를 먼저 사용한다.
+- Git의 `docs/Project_Intro.md`와 `docs/Project_Detail.md`가 진실 원천이며
+  Notion 페이지는 생성된 읽기 전용 미러다.
+- 문서 변경 전후에 다음 검증을 실행한다.
+
+```powershell
+node .github/project-docs/validate-project-docs.mjs --config project-docs.config.json --require-tracked
+node .github/project-docs/sync-project-docs-to-notion.mjs --config project-docs.config.json
+```
+
+- 로컬에서는 Notion 쓰기 옵션을 사용하지 않는다.
+- GitHub Environment는 `notion-production`, secret은 `NOTION_TOKEN`,
+  `NOTION_PAGE_IDS_JSON`이다.
+- 검토된 문서 변경이 `main`에 반영되면 자동 발행한다.
+- 수동 `PUBLISH` dispatch는 첫 발행과 장애 복구에만 사용한다.
