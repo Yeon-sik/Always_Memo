@@ -8,6 +8,13 @@ import type {
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
 import { formatDurationInput } from "./fitnessInputParsing";
+import {
+  FITNESS_RECORD_CONTRACT_VERSION,
+  categoryLabelsFromCodes,
+  normalizeCategoryCodes,
+  withFitnessContractMetadata,
+  workoutCategoryCodes,
+} from "./fitnessRecordContract";
 
 export type WorkoutRecordPatch = Partial<
   Pick<
@@ -74,17 +81,21 @@ function sortByDateThenUpdatedAt<T extends { date: string; updatedAt: string }>(
   });
 }
 
+function isVisibleInOs(record: { scope?: string }): boolean {
+  return record.scope !== "fitness";
+}
+
 export function getVisibleWorkoutRecords(
   records: WorkoutRecord[],
 ): WorkoutRecord[] {
   return sortByDateThenUpdatedAt(
-    records.filter((record) => record.deletedAt === null),
+    records.filter((record) => record.deletedAt === null && isVisibleInOs(record)),
   );
 }
 
 export function getVisibleMealRecords(records: MealRecord[]): MealRecord[] {
   return sortByDateThenUpdatedAt(
-    records.filter((record) => record.deletedAt === null),
+    records.filter((record) => record.deletedAt === null && isVisibleInOs(record)),
   );
 }
 
@@ -92,7 +103,7 @@ export function getVisibleWeightRecords(
   records: WeightRecord[],
 ): WeightRecord[] {
   return sortByDateThenUpdatedAt(
-    records.filter((record) => record.deletedAt === null),
+    records.filter((record) => record.deletedAt === null && isVisibleInOs(record)),
   );
 }
 
@@ -137,6 +148,17 @@ export function createWorkoutRecord(
     category: category.trim(),
     exerciseName: exerciseName.trim(),
     ...normalizeWorkoutMetrics(workoutType, metrics),
+    sourceApp: "os",
+    scope: "both",
+    contractVersion: FITNESS_RECORD_CONTRACT_VERSION,
+    metadata: withFitnessContractMetadata(
+      {},
+      workoutType === "cardio"
+        ? ["cardio"]
+        : workoutType === "other"
+          ? ["other"]
+          : normalizeCategoryCodes([category]),
+    ),
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -147,10 +169,44 @@ export function getWorkoutTypeLabel(record: WorkoutRecord): string {
   return workoutTypeLabels[record.workoutType];
 }
 
+export function getWorkoutCategoryLabels(record: WorkoutRecord): string[] {
+  const codedLabels = categoryLabelsFromCodes(
+    normalizeCategoryCodes(record.metadata?.category_codes),
+  );
+  if (codedLabels.length > 0) {
+    return codedLabels;
+  }
+
+  const sharedCategories = record.metadata?.os_categories;
+  if (Array.isArray(sharedCategories)) {
+    const normalized = sharedCategories
+      .filter((category): category is string => typeof category === "string")
+      .map((category) => category.trim())
+      .filter(Boolean);
+
+    if (normalized.length > 0) {
+      return [...new Set(normalized)];
+    }
+  }
+
+  const legacyCodedLabels = categoryLabelsFromCodes(workoutCategoryCodes(record));
+  if (legacyCodedLabels.length > 0) {
+    return legacyCodedLabels;
+  }
+
+  const category = record.category.trim();
+  return category ? [category] : [];
+}
+
 export function getWorkoutSubcategoryLabel(record: WorkoutRecord): string {
   if (record.workoutType === "strength") {
-    const category = record.category.trim() || "미분류";
-    return category.endsWith("운동") ? category : `${category}운동`;
+    const categories = getWorkoutCategoryLabels(record);
+    if (categories.length === 0) {
+      return "미분류";
+    }
+    return categories
+      .map((category) => (category.endsWith("운동") ? category : `${category}운동`))
+      .join(" · ");
   }
 
   if (record.workoutType === "cardio") {
@@ -208,6 +264,10 @@ export function createMealRecord(
     proteinGrams,
     carbsGrams,
     fatGrams,
+    sourceApp: "os",
+    scope: "both",
+    contractVersion: FITNESS_RECORD_CONTRACT_VERSION,
+    metadata: withFitnessContractMetadata(),
     updatedAt: now,
     deletedAt: null,
     deviceId,
@@ -228,6 +288,10 @@ export function createWeightRecord(
     id: createId(),
     date,
     weightKg,
+    sourceApp: "os",
+    scope: "both",
+    contractVersion: FITNESS_RECORD_CONTRACT_VERSION,
+    metadata: withFitnessContractMetadata(),
     updatedAt: now,
     deletedAt: null,
     deviceId,

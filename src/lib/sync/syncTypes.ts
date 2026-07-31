@@ -23,6 +23,19 @@ export interface SyncContext {
   userId: string;
 }
 
+export interface AuthState {
+  userId: string | null;
+  email: string | null;
+}
+
+export interface FinanceDailySummary {
+  date: string;
+  incomeKrw: number;
+  expenseKrw: number;
+  netKrw: number;
+  entryCount: number;
+}
+
 // Realtime/heartbeat 구현체가 정리 함수를 동일한 모양으로 반환하게 한다.
 export interface RealtimeSubscription {
   unsubscribe(): Promise<void> | void;
@@ -39,6 +52,14 @@ export interface RealtimeOptions {
 export interface SyncClient {
   getStatus(): SyncStatus;
   isConfigured(): boolean;
+  getAuthState(): Promise<AuthState>;
+  signIn(email: string, password: string): Promise<AuthState>;
+  signOut(): Promise<void>;
+  getFinanceDailySummaries(
+    userId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<FinanceDailySummary[]>;
   pull(localSnapshot: LocalDataSnapshot, context: SyncContext): Promise<LocalDataSnapshot>;
   push(localSnapshot: LocalDataSnapshot, context: SyncContext): Promise<SyncResult>;
   subscribeRealtime(options: RealtimeOptions): RealtimeSubscription;

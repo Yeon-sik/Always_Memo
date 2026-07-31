@@ -15,6 +15,8 @@ import type {
 import type {
   RealtimeOptions,
   RealtimeSubscription,
+  AuthState,
+  FinanceDailySummary,
   SyncClient,
   SyncContext,
   SyncResult,
@@ -68,6 +70,10 @@ interface WorkoutRecordRow extends EntityAuditRow {
   exercise_name: string;
   duration_seconds: number | null;
   average_heart_rate: number | null;
+  source_app?: "os" | "fitness" | null;
+  scope?: "os" | "fitness" | "both" | null;
+  metadata?: Record<string, unknown> | null;
+  contract_version?: number | null;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -82,6 +88,10 @@ interface MealRecordRow extends EntityAuditRow {
   protein_grams: number;
   carbs_grams: number | null;
   fat_grams: number | null;
+  source_app?: "os" | "fitness" | null;
+  scope?: "os" | "fitness" | "both" | null;
+  metadata?: Record<string, unknown> | null;
+  contract_version?: number | null;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -92,6 +102,10 @@ interface WeightRecordRow extends EntityAuditRow {
   user_id: string;
   date: string;
   weight_kg: number;
+  source_app?: "os" | "fitness" | null;
+  scope?: "os" | "fitness" | "both" | null;
+  metadata?: Record<string, unknown> | null;
+  contract_version?: number | null;
   updated_at: string;
   deleted_at: string | null;
   device_id: string;
@@ -104,6 +118,20 @@ interface DeviceRow {
   last_seen_at: string;
   app_version: string | null;
 }
+
+interface FinanceDailySummaryRow {
+  user_id: string;
+  date: string;
+  income_krw: number;
+  expense_krw: number;
+  net_krw: number;
+  entry_count: number;
+}
+
+type FinanceDailySummarySelectedRow = Pick<
+  FinanceDailySummaryRow,
+  "date" | "income_krw" | "expense_krw" | "net_krw" | "entry_count"
+>;
 
 interface PostgresChangePayload<Row> {
   eventType: "INSERT" | "UPDATE" | "DELETE";
@@ -158,7 +186,12 @@ interface Database {
         Relationships: [];
       };
     };
-    Views: Record<string, never>;
+    Views: {
+      finance_summary_daily: {
+        Row: FinanceDailySummaryRow;
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
   };
 }
@@ -277,6 +310,25 @@ function normalizeWorkoutType(value: string): WorkoutType {
   return value === "cardio" || value === "other" ? value : "strength";
 }
 
+function normalizeSourceApp(value?: string | null): "os" | "fitness" {
+  return value === "fitness" ? "fitness" : "os";
+}
+
+function normalizeScope(value?: string | null): "os" | "fitness" | "both" {
+  if (value === "os" || value === "fitness" || value === "both") {
+    return value;
+  }
+  return "both";
+}
+
+function normalizeMetadata(value?: Record<string, unknown> | null): Record<string, unknown> {
+  return value ?? {};
+}
+
+function normalizeContractVersion(value?: number | null): 1 {
+  return value === 1 ? value : 1;
+}
+
 function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
   return {
     ...auditFieldsFromRow(row, row.updated_at),
@@ -287,6 +339,10 @@ function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
     exerciseName: row.exercise_name,
     durationSeconds: row.duration_seconds ?? null,
     averageHeartRate: row.average_heart_rate ?? null,
+    sourceApp: normalizeSourceApp(row.source_app),
+    scope: normalizeScope(row.scope),
+    metadata: normalizeMetadata(row.metadata),
+    contractVersion: normalizeContractVersion(row.contract_version),
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -303,6 +359,10 @@ function mealRecordFromRow(row: MealRecordRow): MealRecord {
     proteinGrams: row.protein_grams,
     carbsGrams: row.carbs_grams,
     fatGrams: row.fat_grams,
+    sourceApp: normalizeSourceApp(row.source_app),
+    scope: normalizeScope(row.scope),
+    metadata: normalizeMetadata(row.metadata),
+    contractVersion: normalizeContractVersion(row.contract_version),
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -315,6 +375,10 @@ function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
     id: row.id,
     date: row.date,
     weightKg: row.weight_kg,
+    sourceApp: normalizeSourceApp(row.source_app),
+    scope: normalizeScope(row.scope),
+    metadata: normalizeMetadata(row.metadata),
+    contractVersion: normalizeContractVersion(row.contract_version),
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -374,6 +438,10 @@ function workoutRecordToRow(
     exercise_name: record.exerciseName,
     duration_seconds: record.durationSeconds,
     average_heart_rate: record.averageHeartRate,
+    source_app: record.sourceApp ?? "os",
+    scope: record.scope ?? "both",
+    metadata: record.metadata ?? {},
+    contract_version: record.contractVersion ?? 1,
     updated_at: record.updatedAt,
     deleted_at: record.deletedAt,
     device_id: record.deviceId,
@@ -391,6 +459,10 @@ function mealRecordToRow(record: MealRecord, userId: string): MealRecordRow {
     protein_grams: record.proteinGrams,
     carbs_grams: record.carbsGrams,
     fat_grams: record.fatGrams,
+    source_app: record.sourceApp ?? "os",
+    scope: record.scope ?? "both",
+    metadata: record.metadata ?? {},
+    contract_version: record.contractVersion ?? 1,
     updated_at: record.updatedAt,
     deleted_at: record.deletedAt,
     device_id: record.deviceId,
@@ -407,6 +479,10 @@ function weightRecordToRow(
     user_id: userId,
     date: record.date,
     weight_kg: record.weightKg,
+    source_app: record.sourceApp ?? "os",
+    scope: record.scope ?? "both",
+    metadata: record.metadata ?? {},
+    contract_version: record.contractVersion ?? 1,
     updated_at: record.updatedAt,
     deleted_at: record.deletedAt,
     device_id: record.deviceId,
@@ -589,6 +665,7 @@ function upsertTable<Row>(
 // Supabase Postgres, Realtime, heartbeat를 담당하는 실제 원격 동기화 클라이언트다.
 export class SupabaseSyncClient implements SyncClient {
   private readonly supabase: SupabaseClient | null;
+  private authenticatedUserId: string | null = null;
   private status: SyncStatus;
 
   constructor({ supabaseUrl, supabaseAnonKey }: SupabaseSyncClientOptions = {}) {
@@ -601,11 +678,15 @@ export class SupabaseSyncClient implements SyncClient {
         normalizedSupabaseAnonKey,
         {
           auth: {
-            persistSession: false,
-            autoRefreshToken: false,
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: false,
           },
         },
       ) as SupabaseClient;
+      this.supabase.auth.onAuthStateChange((_event, session) => {
+        this.authenticatedUserId = session?.user.id ?? null;
+      });
     } else {
       this.supabase = null;
     }
@@ -635,6 +716,121 @@ export class SupabaseSyncClient implements SyncClient {
     return Boolean(this.supabase);
   }
 
+  async getAuthState(): Promise<AuthState> {
+    if (!this.supabase) {
+      return { userId: null, email: null };
+    }
+
+    const { data, error } = await this.supabase.auth.getSession();
+    if (error) {
+      throw error;
+    }
+
+    this.authenticatedUserId = data.session?.user.id ?? null;
+    if (!this.authenticatedUserId) {
+      this.status = toConfiguredStatus(
+        "offline",
+        "원격 동기화를 사용하려면 로그인하세요.",
+        this.status.lastSyncedAt,
+      );
+    }
+
+    return {
+      userId: data.session?.user.id ?? null,
+      email: data.session?.user.email ?? null,
+    };
+  }
+
+  async signIn(email: string, password: string): Promise<AuthState> {
+    if (!this.supabase) {
+      throw new Error("Supabase 연결 설정을 먼저 저장하세요.");
+    }
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !password) {
+      throw new Error("이메일과 비밀번호를 입력하세요.");
+    }
+
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
+    });
+    if (error) {
+      throw error;
+    }
+    if (!data.user || !data.session) {
+      throw new Error("인증 세션을 만들지 못했습니다.");
+    }
+
+    this.authenticatedUserId = data.user.id;
+    return {
+      userId: data.user.id,
+      email: data.user.email ?? normalizedEmail,
+    };
+  }
+
+  async signOut(): Promise<void> {
+    if (!this.supabase) {
+      return;
+    }
+    const { error } = await this.supabase.auth.signOut({ scope: "local" });
+    if (error) {
+      throw error;
+    }
+    this.authenticatedUserId = null;
+    this.status = toConfiguredStatus(
+      "offline",
+      "원격 동기화를 사용하려면 로그인하세요.",
+      this.status.lastSyncedAt,
+    );
+  }
+
+  async getFinanceDailySummaries(
+    userId: string,
+    fromDate: string,
+    toDate: string,
+  ): Promise<FinanceDailySummary[]> {
+    if (!this.supabase) {
+      return [];
+    }
+    if (!(await this.isAuthenticatedFor(userId))) {
+      throw new Error("금융 기록을 보려면 같은 Supabase 계정으로 로그인해야 합니다.");
+    }
+
+    const { data, error } = await this.supabase
+      .from("finance_summary_daily")
+      .select("date,income_krw,expense_krw,net_krw,entry_count")
+      .eq("user_id", userId)
+      .gte("date", fromDate)
+      .lte("date", toDate)
+      .order("date", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as unknown as FinanceDailySummarySelectedRow[];
+
+    return rows.map((row) => ({
+      date: row.date,
+      incomeKrw: Number(row.income_krw),
+      expenseKrw: Number(row.expense_krw),
+      netKrw: Number(row.net_krw),
+      entryCount: Number(row.entry_count),
+    }));
+  }
+
+  private async isAuthenticatedFor(userId: string): Promise<boolean> {
+    if (!this.supabase) {
+      return false;
+    }
+    if (this.authenticatedUserId === userId) {
+      return true;
+    }
+    const authState = await this.getAuthState();
+    return authState.userId === userId;
+  }
+
   async pull(
     localSnapshot: LocalDataSnapshot,
     context: SyncContext,
@@ -656,6 +852,15 @@ export class SupabaseSyncClient implements SyncClient {
     // pull은 원격 전체 row를 가져와 로컬 스냅샷과 병합한다.
     if (!this.supabase) {
       this.status = toLocalOnlyStatus();
+      return localSnapshot;
+    }
+
+    if (!(await this.isAuthenticatedFor(context.userId))) {
+      this.status = toConfiguredStatus(
+        "offline",
+        "원격 동기화를 사용하려면 로그인하세요.",
+        this.status.lastSyncedAt,
+      );
       return localSnapshot;
     }
 
@@ -764,6 +969,15 @@ export class SupabaseSyncClient implements SyncClient {
     // push는 이 기기에서 수정한 row와 현재 device heartbeat만 업서트한다.
     if (!this.supabase) {
       this.status = toLocalOnlyStatus();
+      return { status: this.status, changedRows: 0 };
+    }
+
+    if (!(await this.isAuthenticatedFor(context.userId))) {
+      this.status = toConfiguredStatus(
+        "offline",
+        "원격 동기화를 사용하려면 로그인하세요.",
+        this.status.lastSyncedAt,
+      );
       return { status: this.status, changedRows: 0 };
     }
 
@@ -900,7 +1114,10 @@ export class SupabaseSyncClient implements SyncClient {
   }
 
   subscribeRealtime(options: RealtimeOptions): RealtimeSubscription {
-    if (!this.supabase) {
+    if (
+      !this.supabase ||
+      this.authenticatedUserId !== options.context.userId
+    ) {
       return { unsubscribe: () => undefined };
     }
 
@@ -1066,7 +1283,7 @@ export class SupabaseSyncClient implements SyncClient {
   }
 
   startHeartbeat(context: SyncContext): RealtimeSubscription {
-    if (!this.supabase) {
+    if (!this.supabase || this.authenticatedUserId !== context.userId) {
       return { unsubscribe: () => undefined };
     }
 
@@ -1112,7 +1329,11 @@ export class SupabaseSyncClient implements SyncClient {
     // 최근 heartbeat가 있는 기기만 활성으로 간주한다.
     const cutoff = new Date(Date.now() - ACTIVE_DEVICE_WINDOW_MS).toISOString();
 
-    if (!this.supabase || !getOnlineState()) {
+    if (
+      !this.supabase ||
+      !getOnlineState() ||
+      !(await this.isAuthenticatedFor(context.userId))
+    ) {
       return fallbackDevices
         .filter((device) => device.lastSeenAt >= cutoff)
         .sort((first, second) =>

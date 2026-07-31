@@ -5,6 +5,7 @@ import {
   Keyboard,
   Laptop,
   Link as LinkIcon,
+  LogOut,
   Monitor,
   Moon,
   Power,
@@ -27,11 +28,13 @@ import type { DesktopQuickCaptureShortcutStatus } from "../lib/desktop/quickCapt
 
 interface SettingsPanelProps {
   activeDevices: Device[];
+  authEmail: string | null;
   autostartEnabled: boolean;
   autostartSupported: boolean;
   currentDeviceId: string | null;
   isManualSyncing: boolean;
   isSupabaseConfigured: boolean;
+  isAuthenticated: boolean;
   supabaseConfig: RuntimeConfig;
   syncStatus: SyncStatus;
   themeMode: ThemeMode;
@@ -42,6 +45,8 @@ interface SettingsPanelProps {
   onManualSync: () => Promise<void>;
   onRefreshQuickCaptureShortcutStatus: () => Promise<void>;
   onSaveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
+  onSignIn: (email: string, password: string) => Promise<void>;
+  onSignOut: () => Promise<void>;
   onSaveQuickCaptureShortcutPreference: (shortcut: string) => void;
   onToggleAutostart: (enabled: boolean) => Promise<void>;
 }
@@ -67,11 +72,13 @@ const THEME_OPTIONS = [
 
 export function SettingsPanel({
   activeDevices,
+  authEmail,
   autostartEnabled,
   autostartSupported,
   currentDeviceId,
   isManualSyncing,
   isSupabaseConfigured,
+  isAuthenticated,
   supabaseConfig,
   syncStatus,
   themeMode,
@@ -82,6 +89,8 @@ export function SettingsPanel({
   onManualSync,
   onRefreshQuickCaptureShortcutStatus,
   onSaveSupabaseConfig,
+  onSignIn,
+  onSignOut,
   onSaveQuickCaptureShortcutPreference,
   onToggleAutostart,
 }: SettingsPanelProps) {
@@ -89,9 +98,11 @@ export function SettingsPanel({
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(
     supabaseConfig.supabaseAnonKey,
   );
-  const [configuredUserId, setConfiguredUserId] = useState(
-    supabaseConfig.userId,
-  );
+  const [authEmailInput, setAuthEmailInput] = useState(authEmail ?? "");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authStatus, setAuthStatus] = useState<
+    "idle" | "signing-in" | "signed-in" | "error"
+  >("idle");
   const [supabaseSaveStatus, setSupabaseSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -107,12 +118,14 @@ export function SettingsPanel({
   useEffect(() => {
     setSupabaseUrl(supabaseConfig.supabaseUrl);
     setSupabaseAnonKey(supabaseConfig.supabaseAnonKey);
-    setConfiguredUserId(supabaseConfig.userId);
   }, [
     supabaseConfig.supabaseAnonKey,
     supabaseConfig.supabaseUrl,
-    supabaseConfig.userId,
   ]);
+
+  useEffect(() => {
+    setAuthEmailInput(authEmail ?? "");
+  }, [authEmail]);
 
   useEffect(() => {
     setQuickCaptureShortcutDraft(quickCaptureShortcutPreference);
@@ -128,11 +141,22 @@ export function SettingsPanel({
       await onSaveSupabaseConfig({
         supabaseUrl,
         supabaseAnonKey,
-        userId: configuredUserId,
       });
       setSupabaseSaveStatus("saved");
     } catch {
       setSupabaseSaveStatus("error");
+    }
+  }
+
+  async function handleSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAuthStatus("signing-in");
+    try {
+      await onSignIn(authEmailInput, authPassword);
+      setAuthPassword("");
+      setAuthStatus("signed-in");
+    } catch {
+      setAuthStatus("error");
     }
   }
 
@@ -277,24 +301,6 @@ export function SettingsPanel({
               />
             </label>
 
-            <label className="block space-y-1.5">
-              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
-                <User className="h-3.5 w-3.5" aria-hidden="true" />
-                User ID
-              </span>
-              <input
-                type="text"
-                value={configuredUserId}
-                onChange={(event) => {
-                  setConfiguredUserId(event.target.value);
-                  setSupabaseSaveStatus("idle");
-                }}
-                autoComplete="off"
-                spellCheck={false}
-                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
-              />
-            </label>
-
             <div className="flex items-center gap-2">
               <button
                 type="submit"
@@ -319,6 +325,65 @@ export function SettingsPanel({
               ) : null}
             </div>
           </form>
+        </section>
+
+        <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
+          {isAuthenticated ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                  <User className="h-4 w-4" aria-hidden="true" />
+                  <span>{authEmail ?? userId}</span>
+                </div>
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                  authenticated
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void onSignOut()}
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-3 text-sm font-medium dark:border-neutral-700"
+              >
+                <LogOut className="h-4 w-4" aria-hidden="true" />
+                로그아웃
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSignIn} className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                <User className="h-4 w-4" aria-hidden="true" />
+                <span>Supabase 계정 로그인</span>
+              </div>
+              <input
+                type="email"
+                value={authEmailInput}
+                onChange={(event) => setAuthEmailInput(event.target.value)}
+                placeholder="email@example.com"
+                autoComplete="username"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-neutral-800 dark:bg-black"
+              />
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                placeholder="비밀번호"
+                autoComplete="current-password"
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm dark:border-neutral-800 dark:bg-black"
+              />
+              <button
+                type="submit"
+                disabled={!isSupabaseConfigured || authStatus === "signing-in"}
+                className="h-9 w-full rounded-md bg-cyan-700 px-3 text-sm font-medium text-white disabled:bg-slate-400"
+              >
+                {authStatus === "signing-in" ? "로그인 중" : "로그인"}
+              </button>
+              {authStatus === "error" ? (
+                <p className="text-xs text-red-700 dark:text-red-300">
+                  로그인에 실패했습니다. 계정과 Supabase 설정을 확인하세요.
+                </p>
+              ) : null}
+            </form>
+          )}
         </section>
 
         <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">

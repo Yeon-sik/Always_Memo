@@ -3,6 +3,7 @@ export type {
   BackfillMetadata,
   Device,
   EntityId,
+  FitnessRecordContractVersion,
   ISODateString,
   LocalDataSnapshot,
   MealRecord,

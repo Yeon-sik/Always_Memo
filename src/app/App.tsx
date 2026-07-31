@@ -59,11 +59,13 @@ export function App() {
           {activeView === "settings" ? (
             <SettingsPanel
               activeDevices={memo.activeDevices}
+              authEmail={memo.authEmail}
               autostartEnabled={memo.autostartEnabled}
               autostartSupported={memo.autostartSupported}
               currentDeviceId={memo.device?.id ?? null}
               isManualSyncing={memo.isManualSyncing}
               isSupabaseConfigured={memo.isSupabaseConfigured}
+              isAuthenticated={memo.isAuthenticated}
               supabaseConfig={memo.supabaseConfig}
               syncStatus={memo.syncStatus}
               themeMode={themeMode}
@@ -78,6 +80,8 @@ export function App() {
                 quickCapture.refreshShortcutStatus
               }
               onSaveSupabaseConfig={memo.saveSupabaseConfig}
+              onSignIn={memo.signIn}
+              onSignOut={memo.signOut}
               onSaveQuickCaptureShortcutPreference={
                 quickCapture.setShortcutPreference
               }
@@ -88,6 +92,10 @@ export function App() {
               snapshot={snapshot}
               selectedDate={selectedDate}
               syncStatus={memo.syncStatus}
+              financeEnabled={
+                memo.isSupabaseConfigured && memo.isAuthenticated
+              }
+              loadFinanceDailySummaries={memo.loadFinanceDailySummaries}
               onAddNoteForDate={memo.addNoteForDate}
               onAddTask={memo.addTask}
               onAddWeightRecord={memo.addWeightRecord}

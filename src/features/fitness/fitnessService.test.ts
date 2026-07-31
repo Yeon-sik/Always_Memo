@@ -3,6 +3,7 @@ import type { MealRecord, WeightRecord, WorkoutRecord } from "../../types";
 import {
   createMealRecord,
   createWorkoutRecord,
+  getWorkoutSubcategoryLabel,
   getWorkoutMetricLabels,
   restoreWeightRecord,
   softDeleteWeightRecord,
@@ -107,6 +108,49 @@ describe("fitnessService", () => {
     ]);
     expect(strength.durationSeconds).toBeNull();
     expect(strength.averageHeartRate).toBeNull();
+  });
+
+  it("writes the frozen v1 contract and stable category codes", () => {
+    const strength = createWorkoutRecord(
+      "2026-07-24",
+      "strength",
+      "가슴",
+      "벤치 프레스",
+      "device-b",
+    );
+    const cardio = createWorkoutRecord(
+      "2026-07-24",
+      "cardio",
+      "실내 달리기",
+      "러닝",
+      "device-b",
+    );
+
+    expect(strength.contractVersion).toBe(1);
+    expect(strength.metadata).toMatchObject({
+      contract_version: 1,
+      category_codes: ["chest"],
+      os_categories: ["가슴"],
+    });
+    expect(cardio.metadata).toMatchObject({
+      contract_version: 1,
+      category_codes: ["cardio"],
+      os_categories: ["유산소"],
+    });
+  });
+
+  it("renders FitnessApp body-part summaries in the Personal OS format", () => {
+    const sharedWorkout: WorkoutRecord = {
+      ...baseWorkout,
+      category: "가슴",
+      sourceApp: "fitness",
+      scope: "both",
+      metadata: {
+        os_categories: ["가슴", "등", "가슴"],
+      },
+    };
+
+    expect(getWorkoutSubcategoryLabel(sharedWorkout)).toBe("가슴운동 · 등운동");
   });
 
   it("creates and updates meal carbs and fat values", () => {
