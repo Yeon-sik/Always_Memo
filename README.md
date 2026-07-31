@@ -135,10 +135,10 @@ Copy-Item .env.example .env
 ```env
 SUPABASE_URL=
 SUPABASE_ANON_KEY=
-USER_ID=
 ```
 
-`USER_ID`는 개발 단계의 단일 사용자 식별자입니다. 같은 데이터를 공유할 기기들은 같은 `USER_ID` 값을 사용해야 합니다.
+연결 정보를 저장한 뒤 설정 화면에서 Supabase Auth 계정으로 로그인합니다.
+`user_id`는 사용자가 입력하지 않으며 인증 세션의 `auth.users.id`로 결정됩니다.
 
 Tauri 앱은 빌드된 번들 안에 Supabase 값을 넣지 않고, 실행할 때 다음 순서로 `.env` 파일을 찾습니다.
 
@@ -149,7 +149,9 @@ Tauri 앱은 빌드된 번들 안에 Supabase 값을 넣지 않고, 실행할 �
 5. 실행 파일과 같은 폴더의 `yeonsik-note.env`
 6. 현재 작업 폴더의 `.env`
 
-기존 개발용 `.env`와의 호환을 위해 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_USER_ID`도 읽지만, 배포용 기본 이름은 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `USER_ID`입니다.
+기존 개발용 `.env`와의 호환을 위해 `VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY`도 읽지만, 배포용 기본 이름은 `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`입니다. 수동 `USER_ID` 설정은 지원하지 않습니다.
 
 Supabase SQL Editor에서 다음 파일 내용을 실행합니다.
 
@@ -162,6 +164,15 @@ supabase/schema.sql
 - `public.notes`
 - `public.tasks`
 - `public.devices`
+- `public.workout_records` — Personal OS/FitnessApp 공통 운동 이벤트와 요약
+- `public.workout_exercises` — FitnessApp 전용 종목 상세
+- `public.workout_sets` — FitnessApp 전용 세트 상세
+- `public.meal_records`
+- `public.weight_records`
+
+두 앱은 같은 Supabase 프로젝트와 같은 Auth 계정으로 로그인해야 합니다. 완료된 FitnessApp 운동은
+`workout_records.scope = 'both'`로 공유되고, Personal OS는 부위 요약만 표시합니다.
+세부 종목과 세트는 FitnessApp에서만 조회·수정합니다.
 
 체크리스트 날짜/시간 동기화를 위해 `public.tasks`에는 다음 컬럼이 필요합니다.
 

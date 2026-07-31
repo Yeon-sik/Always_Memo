@@ -3,9 +3,9 @@ import { localOnlySyncClient } from "./localOnlySyncClient";
 import { createSupabaseSyncClient } from "./supabaseSyncClient";
 import type { SyncClient } from "./syncTypes";
 
-// 개발 초기 단일 사용자 모드에서 두 기기는 같은 USER_ID를 공유해야 한다.
-export function getConfiguredUserId(config?: Pick<RuntimeConfig, "userId">): string {
-  return config?.userId?.trim() || "local-user";
+// 인증 세션이 없을 때 로컬 저장소에서만 사용하는 비원격 식별자다.
+export function getConfiguredUserId(): string {
+  return "local-user";
 }
 
 // Supabase 환경 변수가 없으면 앱은 자동으로 로컬 전용 동작으로 내려간다.
@@ -15,7 +15,11 @@ export function createAppSyncClient(
   const supabaseUrl = config?.supabaseUrl?.trim();
   const supabaseAnonKey = config?.supabaseAnonKey?.trim();
 
-  if (!supabaseUrl || !supabaseAnonKey) {
+  if (
+    !supabaseUrl ||
+    !supabaseAnonKey ||
+    !supabaseUrl.toLowerCase().startsWith("https://")
+  ) {
     return localOnlySyncClient;
   }
 

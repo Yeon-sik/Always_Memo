@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { formatLocalDate, parseDateInput } from "../fitness/fitnessDate";
+import {
+  formatCompactKrw,
+  type FinanceSummaryByDate,
+} from "../finance/financeCalendar";
 import type {
   CalendarMarkers,
   CalendarTaskMarker,
@@ -8,6 +12,7 @@ import type {
 
 interface RecordCalendarProps {
   markerByDate: CalendarMarkers;
+  financeByDate: FinanceSummaryByDate;
   selectedDate: string;
   visibleMonth: string;
   onSelectDate: (date: string) => void;
@@ -80,7 +85,7 @@ const emptyTaskMarker: CalendarTaskMarker = {
   allPlannedDone: false,
 };
 
-const calendarCellSize = "h-[clamp(4.25rem,13vw,5.25rem)] min-w-0";
+const calendarCellSize = "h-[clamp(5.75rem,16vw,6.75rem)] min-w-0";
 const calendarCellBase =
   `${calendarCellSize} flex flex-col justify-between gap-1 ` +
   "rounded-md border-2 px-1 py-1 text-xs";
@@ -131,6 +136,7 @@ function renderPlannedDoneMarker(taskMarker: CalendarTaskMarker) {
 
 export function RecordCalendar({
   markerByDate,
+  financeByDate,
   selectedDate,
   visibleMonth,
   onSelectDate,
@@ -204,6 +210,7 @@ export function RecordCalendar({
       <div className="mt-0.5 grid grid-cols-7 gap-0.5">
         {monthCells.map((date, index) => {
           const markers = date ? markerByDate[date] : null;
+          const finance = date ? financeByDate[date] : null;
           const isSelected = date === selectedDate;
           const isToday = date === today;
           const taskMarker = markers?.tasks ?? emptyTaskMarker;
@@ -229,6 +236,18 @@ export function RecordCalendar({
                 }
               >
                 {Number(date.slice(-2))}
+              </span>
+              <span className="min-h-6 w-full space-y-0.5 overflow-hidden text-[9px] font-semibold leading-[1.05]">
+                <span className="block truncate text-emerald-700 dark:text-emerald-300">
+                  {finance?.incomeKrw
+                    ? `+${formatCompactKrw(finance.incomeKrw)}`
+                    : "\u00a0"}
+                </span>
+                <span className="block truncate text-rose-600 dark:text-rose-300">
+                  {finance?.expenseKrw
+                    ? `-${formatCompactKrw(finance.expenseKrw)}`
+                    : "\u00a0"}
+                </span>
               </span>
               <span className="grid min-h-0 flex-1 w-full grid-rows-6 gap-0.5 overflow-hidden">
                 <span

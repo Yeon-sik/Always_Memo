@@ -127,6 +127,33 @@ describe("recordAggregation", () => {
     expect(records.workoutRecords[0].id).toBe("workout-live");
   });
 
+  it("shows shared FitnessApp workouts but hides FitnessApp-only in-progress rows", () => {
+    const sharedWorkout: WorkoutRecord = {
+      ...liveWorkout,
+      id: "fitness-shared",
+      sourceApp: "fitness",
+      scope: "both",
+      category: "가슴",
+    };
+    const inProgressWorkout: WorkoutRecord = {
+      ...sharedWorkout,
+      id: "fitness-in-progress",
+      scope: "fitness",
+    };
+    const connectedSnapshot = {
+      ...snapshot,
+      workoutRecords: [sharedWorkout, inProgressWorkout],
+    };
+
+    const records = getRecordsForDate(connectedSnapshot, "2026-06-09");
+    const markers = getCalendarMarkers(connectedSnapshot, "2026-06-09");
+
+    expect(records.workoutRecords.map((record) => record.id)).toEqual([
+      "fitness-shared",
+    ]);
+    expect(markers["2026-06-09"]?.workouts).toBe(true);
+  });
+
   it("excludes tombstones from dashboard stats", () => {
     const stats = getDashboardStats(snapshot, {
       startDate: "2026-06-01",

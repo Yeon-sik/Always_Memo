@@ -1,16 +1,17 @@
 {
   "name": "yeonsik-note",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "test": "vitest run",
+    "test": "vitest run --exclude .agents/**",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "release:verify-windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-release.ps1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",

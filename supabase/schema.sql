@@ -1,6 +1,6 @@
 -- LocalSyncMemo development schema
--- 개발 초기에는 USER_ID 단일 사용자 식별자를 사용한다.
--- 운영 배포 전에는 Supabase Auth 기반 RLS 정책으로 교체해야 한다.
+-- user_id는 Supabase Auth의 auth.users.id를 text로 저장한다.
+-- 이 파일의 마지막 RLS 정책이 익명 접근을 차단하고 소유자 행만 허용한다.
 
 create table if not exists public.devices (
   id text not null,
@@ -59,6 +59,7 @@ create table if not exists public.workout_records (
   category text not null,
   exercise_name text not null,
   duration_seconds integer,
+  total_volume_kg double precision not null default 0,
   average_heart_rate double precision,
   created_at timestamptz not null default now(),
   is_backfilled boolean not null default false,
@@ -67,6 +68,13 @@ create table if not exists public.workout_records (
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
+  source_app text not null default 'os'
+    check (source_app in ('os', 'fitness')),
+  scope text not null default 'both'
+    check (scope in ('os', 'fitness', 'both')),
+  metadata jsonb not null default '{}'::jsonb,
+  contract_version smallint not null default 1
+    check (contract_version = 1),
   constraint workout_records_device_fk
     foreign key (user_id, device_id)
     references public.devices(user_id, id)
@@ -88,6 +96,13 @@ create table if not exists public.meal_records (
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
+  source_app text not null default 'os'
+    check (source_app in ('os', 'fitness')),
+  scope text not null default 'both'
+    check (scope in ('os', 'fitness', 'both')),
+  metadata jsonb not null default '{}'::jsonb,
+  contract_version smallint not null default 1
+    check (contract_version = 1),
   constraint meal_records_device_fk
     foreign key (user_id, device_id)
     references public.devices(user_id, id)
@@ -105,9 +120,94 @@ create table if not exists public.weight_records (
   updated_at timestamptz not null,
   deleted_at timestamptz,
   device_id text not null,
+  source_app text not null default 'os'
+    check (source_app in ('os', 'fitness')),
+  scope text not null default 'both'
+    check (scope in ('os', 'fitness', 'both')),
+  metadata jsonb not null default '{}'::jsonb,
+  contract_version smallint not null default 1
+    check (contract_version = 1),
   constraint weight_records_device_fk
     foreign key (user_id, device_id)
     references public.devices(user_id, id)
+);
+
+create table if not exists public.workout_exercises (
+  id uuid primary key,
+  user_id text not null,
+  record_id uuid not null,
+  order_index integer not null,
+  exercise_id text not null,
+  exercise_name_snapshot text not null,
+  ui_part text not null,
+  primary_sub_part_snapshot text,
+  equipment_snapshot text,
+  record_type text not null
+    check (record_type in (
+      'weight_reps',
+      'reps_only',
+      'time',
+      'weight_time',
+      'assisted_weight_reps',
+      'bodyweight_added_weight_reps'
+    )),
+  contract_version smallint not null default 1
+    check (contract_version = 1),
+  memo text,
+  device_id text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null,
+  deleted_at timestamptz,
+  constraint workout_exercises_record_fk
+    foreign key (record_id)
+    references public.workout_records(id),
+  constraint workout_exercises_device_fk
+    foreign key (user_id, device_id)
+    references public.devices(user_id, id)
+);
+
+create table if not exists public.workout_sets (
+  id uuid primary key,
+  user_id text not null,
+  workout_exercise_id uuid not null,
+  set_index integer not null,
+  target_reps integer,
+  actual_reps integer,
+  weight_kg double precision,
+  volume_kg double precision,
+  duration_seconds integer,
+  distance_meters double precision,
+  rest_seconds integer,
+  assisted_weight_kg double precision,
+  added_weight_kg double precision,
+  is_completed boolean not null default false,
+  rpe integer,
+  memo text,
+  device_id text not null,
+  contract_version smallint not null default 1
+    check (contract_version = 1),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null,
+  deleted_at timestamptz,
+  constraint workout_sets_exercise_fk
+    foreign key (workout_exercise_id)
+    references public.workout_exercises(id),
+  constraint workout_sets_device_fk
+    foreign key (user_id, device_id)
+    references public.devices(user_id, id),
+  constraint workout_sets_values_v1 check (
+    set_index > 0
+    and (target_reps is null or target_reps >= 0)
+    and (actual_reps is null or actual_reps >= 0)
+    and (weight_kg is null or weight_kg >= 0)
+    and (volume_kg is null or volume_kg >= 0)
+    and (duration_seconds is null or duration_seconds >= 0)
+    and (distance_meters is null or distance_meters >= 0)
+    and (rest_seconds is null or rest_seconds >= 0)
+    and (assisted_weight_kg is null or assisted_weight_kg >= 0)
+    and (added_weight_kg is null or added_weight_kg >= 0)
+    and (rpe is null or rpe between 1 and 10)
+  )
 );
 
 alter table public.tasks
@@ -137,19 +237,41 @@ alter table public.workout_records
   add column if not exists backfilled_at timestamptz,
   add column if not exists backfill_reason text,
   add column if not exists duration_seconds integer,
-  add column if not exists average_heart_rate double precision;
+  add column if not exists total_volume_kg double precision not null default 0,
+  add column if not exists average_heart_rate double precision,
+  add column if not exists source_app text not null default 'os',
+  add column if not exists scope text not null default 'both',
+  add column if not exists metadata jsonb not null default '{}'::jsonb;
+alter table public.workout_records
+  add column if not exists contract_version smallint not null default 1;
 
 alter table public.meal_records
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists is_backfilled boolean not null default false,
   add column if not exists backfilled_at timestamptz,
-  add column if not exists backfill_reason text;
+  add column if not exists backfill_reason text,
+  add column if not exists source_app text not null default 'os',
+  add column if not exists scope text not null default 'both',
+  add column if not exists metadata jsonb not null default '{}'::jsonb;
+alter table public.meal_records
+  add column if not exists contract_version smallint not null default 1;
 
 alter table public.weight_records
   add column if not exists created_at timestamptz not null default now(),
   add column if not exists is_backfilled boolean not null default false,
   add column if not exists backfilled_at timestamptz,
-  add column if not exists backfill_reason text;
+  add column if not exists backfill_reason text,
+  add column if not exists source_app text not null default 'os',
+  add column if not exists scope text not null default 'both',
+  add column if not exists metadata jsonb not null default '{}'::jsonb;
+alter table public.weight_records
+  add column if not exists contract_version smallint not null default 1;
+
+alter table public.workout_exercises
+  add column if not exists contract_version smallint not null default 1;
+
+alter table public.workout_sets
+  add column if not exists contract_version smallint not null default 1;
 
 -- pull sync와 활성 목록 조회가 자주 쓰는 user_id + 시간/순서 기준 인덱스다.
 create index if not exists notes_user_updated_at_idx
@@ -184,6 +306,21 @@ create index if not exists workout_records_user_date_idx
 
 create index if not exists workout_records_user_type_category_idx
   on public.workout_records(user_id, workout_type, category);
+
+create index if not exists workout_records_user_scope_date_idx
+  on public.workout_records(user_id, scope, date desc);
+
+create index if not exists workout_exercises_user_record_order_idx
+  on public.workout_exercises(user_id, record_id, order_index);
+
+create index if not exists workout_exercises_user_updated_at_idx
+  on public.workout_exercises(user_id, updated_at desc);
+
+create index if not exists workout_sets_user_exercise_set_idx
+  on public.workout_sets(user_id, workout_exercise_id, set_index);
+
+create index if not exists workout_sets_user_updated_at_idx
+  on public.workout_sets(user_id, updated_at desc);
 
 create index if not exists meal_records_user_updated_at_idx
   on public.meal_records(user_id, updated_at desc);
@@ -254,6 +391,26 @@ begin
     from pg_publication_tables
     where pubname = 'supabase_realtime'
       and schemaname = 'public'
+      and tablename = 'workout_exercises'
+  ) then
+    alter publication supabase_realtime add table public.workout_exercises;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'workout_sets'
+  ) then
+    alter publication supabase_realtime add table public.workout_sets;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
       and tablename = 'meal_records'
   ) then
     alter publication supabase_realtime add table public.meal_records;
@@ -270,46 +427,112 @@ begin
   end if;
 end $$;
 
--- RLS proposal for later:
--- alter table public.notes enable row level security;
--- alter table public.tasks enable row level security;
--- alter table public.devices enable row level security;
--- alter table public.workout_records enable row level security;
--- alter table public.meal_records enable row level security;
--- alter table public.weight_records enable row level security;
---
--- create policy "notes are scoped to authenticated user"
---   on public.notes
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
---
--- create policy "tasks are scoped to authenticated user"
---   on public.tasks
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
---
--- create policy "workout records are scoped to authenticated user"
---   on public.workout_records
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
---
--- create policy "meal records are scoped to authenticated user"
---   on public.meal_records
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
---
--- create policy "weight records are scoped to authenticated user"
---   on public.weight_records
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
---
--- create policy "devices are scoped to authenticated user"
---   on public.devices
---   for all
---   using (user_id = auth.uid()::text)
---   with check (user_id = auth.uid()::text);
+-- Fresh production installs are private by default. Existing installs use the
+-- guarded 20260724121000 migration after assigning legacy rows to auth.users.
+revoke all on table
+  public.devices, public.notes, public.tasks, public.workout_records,
+  public.workout_exercises, public.workout_sets, public.meal_records,
+  public.weight_records
+from anon;
+
+grant select, insert, update, delete on table
+  public.devices, public.notes, public.tasks, public.workout_records,
+  public.workout_exercises, public.workout_sets, public.meal_records,
+  public.weight_records
+to authenticated;
+
+alter table public.devices enable row level security;
+alter table public.notes enable row level security;
+alter table public.tasks enable row level security;
+alter table public.workout_records enable row level security;
+alter table public.workout_exercises enable row level security;
+alter table public.workout_sets enable row level security;
+alter table public.meal_records enable row level security;
+alter table public.weight_records enable row level security;
+
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'devices', 'notes', 'tasks', 'workout_records', 'workout_exercises',
+    'workout_sets', 'meal_records', 'weight_records'
+  ]
+  loop
+    execute format('drop policy if exists %I on public.%I', table_name || '_select_own', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_insert_own', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_update_own', table_name);
+    execute format('drop policy if exists %I on public.%I', table_name || '_delete_own', table_name);
+    execute format(
+      'create policy %I on public.%I for select to authenticated
+       using ((select auth.uid())::text = user_id)',
+      table_name || '_select_own', table_name
+    );
+    execute format(
+      'create policy %I on public.%I for insert to authenticated
+       with check ((select auth.uid())::text = user_id)',
+      table_name || '_insert_own', table_name
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated
+       using ((select auth.uid())::text = user_id)
+       with check ((select auth.uid())::text = user_id)',
+      table_name || '_update_own', table_name
+    );
+    execute format(
+      'create policy %I on public.%I for delete to authenticated
+       using ((select auth.uid())::text = user_id)',
+      table_name || '_delete_own', table_name
+    );
+  end loop;
+end $$;
+
+drop policy if exists workout_exercises_insert_own on public.workout_exercises;
+create policy workout_exercises_insert_own
+  on public.workout_exercises for insert to authenticated
+  with check (
+    (select auth.uid())::text = user_id
+    and exists (
+      select 1 from public.workout_records parent
+      where parent.id = record_id
+        and parent.user_id = (select auth.uid())::text
+    )
+  );
+
+drop policy if exists workout_exercises_update_own on public.workout_exercises;
+create policy workout_exercises_update_own
+  on public.workout_exercises for update to authenticated
+  using ((select auth.uid())::text = user_id)
+  with check (
+    (select auth.uid())::text = user_id
+    and exists (
+      select 1 from public.workout_records parent
+      where parent.id = record_id
+        and parent.user_id = (select auth.uid())::text
+    )
+  );
+
+drop policy if exists workout_sets_insert_own on public.workout_sets;
+create policy workout_sets_insert_own
+  on public.workout_sets for insert to authenticated
+  with check (
+    (select auth.uid())::text = user_id
+    and exists (
+      select 1 from public.workout_exercises parent
+      where parent.id = workout_exercise_id
+        and parent.user_id = (select auth.uid())::text
+    )
+  );
+
+drop policy if exists workout_sets_update_own on public.workout_sets;
+create policy workout_sets_update_own
+  on public.workout_sets for update to authenticated
+  using ((select auth.uid())::text = user_id)
+  with check (
+    (select auth.uid())::text = user_id
+    and exists (
+      select 1 from public.workout_exercises parent
+      where parent.id = workout_exercise_id
+        and parent.user_id = (select auth.uid())::text
+    )
+  );

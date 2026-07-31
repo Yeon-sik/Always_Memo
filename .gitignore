@@ -15,3 +15,6 @@ supabase/.temp/
 *.pdb
 src-tauri/target
 src-tauri/gen
+.code-review-graph/
+.codex/
+.mcp.json

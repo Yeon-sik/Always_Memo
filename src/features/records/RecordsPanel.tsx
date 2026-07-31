@@ -6,6 +6,7 @@ import {
   Flame,
   Salad,
   Scale,
+  RefreshCw,
   StickyNote,
   Target,
   TrendingDown,
@@ -26,7 +27,9 @@ import {
   isFutureLocalDate,
   isPastLocalDate,
 } from "../../lib/dataTrust/backfillMetadata";
+import { getFitnessSummary } from "../fitness-summary/fitnessSummary";
 import type { SyncStatus } from "../../lib/sync/syncTypes";
+import type { FinanceDailySummary } from "../../lib/sync/syncTypes";
 import { QuickActionOverlay } from "../command-center/quickActions/QuickActionOverlay";
 import { useQuickActionState } from "../command-center/quickActions/useQuickActionState";
 import { formatKoreanDate, formatLocalDate } from "../fitness/fitnessDate";
@@ -37,6 +40,8 @@ import {
   type WorkoutRecordMetricsInput,
 } from "../fitness/fitnessService";
 import { formatMetric } from "../fitness/stats/fitnessStats";
+import { formatKrw } from "../finance/financeCalendar";
+import { useFinanceCalendar } from "../finance/useFinanceCalendar";
 import { RecordCalendar } from "./RecordCalendar";
 import { DailyItem, DailySection, DeleteItemButton } from "./components/DailyRecordSection";
 import { MarkerLegend } from "./components/RecordMarkerLegend";
@@ -73,6 +78,11 @@ interface RecordsPanelProps {
   selectedDate: string;
   snapshot: LocalDataSnapshot;
   syncStatus: SyncStatus;
+  financeEnabled: boolean;
+  loadFinanceDailySummaries: (
+    fromDate: string,
+    toDate: string,
+  ) => Promise<FinanceDailySummary[]>;
   onAddNoteForDate: (
     date: string,
     title: string,
@@ -222,6 +232,19 @@ function WorkoutMetricDetail({ record }: { record: WorkoutRecord }) {
   );
 }
 
+function formatOptionalKg(value: number | null): string {
+  return value === null ? "-" : `${formatMetric(value)} kg`;
+}
+
+function formatSignedKg(value: number | null): string {
+  if (value === null) {
+    return "-";
+  }
+
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${formatMetric(value)} kg`;
+}
+
 function clampIndex(index: number, length: number): number {
   if (length <= 0) {
     return -1;
@@ -343,6 +366,8 @@ export function RecordsPanel({
   selectedDate,
   snapshot,
   syncStatus,
+  financeEnabled,
+  loadFinanceDailySummaries,
   onAddNoteForDate,
   onAddTask,
   onAddWeightRecord,
@@ -362,6 +387,16 @@ export function RecordsPanel({
 }: RecordsPanelProps) {
   const today = formatLocalDate();
   const [visibleMonth, setVisibleMonth] = useState(selectedDate);
+  const {
+    error: financeError,
+    financeByDate,
+    isLoading: isFinanceLoading,
+    refresh: refreshFinance,
+  } = useFinanceCalendar({
+    enabled: financeEnabled,
+    visibleMonth,
+    loadSummaries: loadFinanceDailySummaries,
+  });
   const undoTimerRef = useRef<number | null>(null);
   const [pendingFitnessDelete, setPendingFitnessDelete] =
     useState<PendingFitnessDelete>(null);
@@ -384,6 +419,10 @@ export function RecordsPanel({
   const dashboardStats = useMemo(
     () => getDashboardStats(snapshot, selectedRange),
     [selectedRange, snapshot],
+  );
+  const fitnessSummary = useMemo(
+    () => getFitnessSummary(snapshot, today),
+    [snapshot, today],
   );
   const markerByDate = useMemo(
     () => getCalendarMarkers(snapshot, visibleMonth),
@@ -416,6 +455,7 @@ export function RecordsPanel({
     selectedRecords.workoutRecords.length +
     selectedRecords.mealRecords.length +
     selectedRecords.weightRecords.length;
+  const selectedFinance = financeByDate[selectedDate];
   const hasProductivityData = productivitySeries.some(
     (point) => point.totalTasks > 0,
   );
@@ -671,6 +711,91 @@ export function RecordsPanel({
         />
       </div>
 
+      <div className="rounded-md border border-slate-300 bg-white p-3 text-slate-900 dark:border-neutral-800 dark:bg-black dark:text-neutral-100">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-normal text-red-600 dark:text-red-300">
+              Fitness Summary
+            </div>
+            <h3 className="mt-1 truncate text-sm font-semibold">
+              Read-only OS view
+            </h3>
+            <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+              Detail edits stay in Fitness app. OS only shows summary and link state.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300">
+            {fitnessSummary.todayHasWorkout ? "Workout today" : "No workout today"}
+          </span>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <BriefMetric
+            label="7d workouts"
+            value={`${fitnessSummary.weeklyWorkoutCount}`}
+          />
+          <BriefMetric
+            label="Latest weight"
+            value={formatOptionalKg(fitnessSummary.latestWeightKg)}
+          />
+          <BriefMetric
+            label="Weight delta"
+            value={formatSignedKg(fitnessSummary.weightDeltaKg)}
+          />
+          <BriefMetric
+            label="Meal status"
+            value={fitnessSummary.todayHasMeal ? "Logged today" : "No meal today"}
+          />
+        </div>
+
+        <div className="mt-3 space-y-2 text-xs text-slate-600 dark:text-neutral-300">
+          <p>
+            <span className="font-semibold text-slate-800 dark:text-neutral-100">
+              Recent:
+            </span>{" "}
+            {summarizeItems(
+              fitnessSummary.recentWorkouts.map(
+                (record) => `${record.date} ${getWorkoutSubcategoryLabel(record)}`,
+              ),
+              "No recent workout sessions.",
+            )}
+          </p>
+          <p>
+            <span className="font-semibold text-slate-800 dark:text-neutral-100">
+              Main movements:
+            </span>{" "}
+            {summarizeItems(fitnessSummary.weeklyTopExercises, "No weekly movement summary.")}
+          </p>
+          <p>
+            <span className="font-semibold text-slate-800 dark:text-neutral-100">
+              Latest meal:
+            </span>{" "}
+            {fitnessSummary.latestMeal
+              ? `${fitnessSummary.latestMeal.date} ${fitnessSummary.latestMeal.menu}`
+              : "No meal record."}
+          </p>
+        </div>
+
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+          <div className="font-semibold">공유 운동 기록 상태</div>
+          <div className="mt-1">
+            공유 {fitnessSummary.connection.linkedCount} / Personal OS 생성{" "}
+            {fitnessSummary.connection.quickRecordOnlyCount} / 진행 중 비공개{" "}
+            {fitnessSummary.connection.possibleMismatchCount}
+          </div>
+          <div className="mt-1">{fitnessSummary.connection.message}</div>
+        </div>
+
+        <button
+          type="button"
+          disabled
+          className="mt-3 inline-flex h-8 items-center rounded-md border border-slate-200 px-3 text-xs font-semibold text-slate-400 dark:border-neutral-800 dark:text-neutral-500"
+          title="Fitness app deep link is not wired in this phase."
+        >
+          Open Fitness app for detail edits
+        </button>
+      </div>
+
       <div className="grid shrink-0 gap-2">
         <ChartCard
           title="생산성 흐름"
@@ -728,11 +853,74 @@ export function RecordsPanel({
 
       <RecordCalendar
         markerByDate={markerByDate}
+        financeByDate={financeByDate}
         selectedDate={selectedDate}
         visibleMonth={visibleMonth}
         onSelectDate={onSelectDate}
         onVisibleMonthChange={setVisibleMonth}
       />
+
+      <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-950 dark:text-neutral-50">
+              CashOS 현금 흐름
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-neutral-400">
+              {formatKoreanDate(selectedDate)} 기준 확정 수입·지출
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refreshFinance()}
+            disabled={!financeEnabled || isFinanceLoading}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 px-2.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isFinanceLoading ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            새로고침
+          </button>
+        </div>
+
+        {!financeEnabled ? (
+          <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            CashOS와 같은 Supabase 프로젝트·계정으로 로그인하면 금융 기록이 표시됩니다.
+          </p>
+        ) : financeError ? (
+          <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-950/30 dark:text-rose-200">
+            {financeError}
+          </p>
+        ) : selectedFinance ? (
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="rounded-md bg-emerald-50 p-2 dark:bg-emerald-950/30">
+              <div className="text-[11px] text-emerald-700 dark:text-emerald-300">수입</div>
+              <div className="mt-1 truncate text-sm font-bold text-emerald-800 dark:text-emerald-200">
+                +{formatKrw(selectedFinance.incomeKrw)}
+              </div>
+            </div>
+            <div className="rounded-md bg-rose-50 p-2 dark:bg-rose-950/30">
+              <div className="text-[11px] text-rose-700 dark:text-rose-300">지출</div>
+              <div className="mt-1 truncate text-sm font-bold text-rose-800 dark:text-rose-200">
+                -{formatKrw(selectedFinance.expenseKrw)}
+              </div>
+            </div>
+            <div className="rounded-md bg-slate-100 p-2 dark:bg-neutral-900">
+              <div className="text-[11px] text-slate-600 dark:text-neutral-400">
+                순액 · {selectedFinance.entryCount}건
+              </div>
+              <div className="mt-1 truncate text-sm font-bold text-slate-900 dark:text-neutral-100">
+                {formatKrw(selectedFinance.netKrw)}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-xs text-slate-500 dark:text-neutral-400">
+            선택한 날짜에 확정된 수입·지출 기록이 없습니다.
+          </p>
+        )}
+      </div>
 
       <div className="rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
         <div className="mb-3 flex items-center justify-between gap-2">

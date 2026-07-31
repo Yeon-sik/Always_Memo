@@ -81,6 +81,12 @@ function isVisibleEntity(entity: { deletedAt: string | null }): boolean {
   return entity.deletedAt === null;
 }
 
+function isVisibleInOs(
+  entity: { deletedAt: string | null; scope?: string },
+): boolean {
+  return entity.deletedAt === null && entity.scope !== "fitness";
+}
+
 function toLocalDateFromTimestamp(value: string): LocalDateString | null {
   const date = new Date(value);
 
@@ -251,17 +257,17 @@ export function getRecordsForDate(
       .sort(sortTasksBySchedule),
     workoutRecords: sortByDateThenUpdatedAt(
       snapshot.workoutRecords
-        .filter(isVisibleEntity)
+        .filter(isVisibleInOs)
         .filter((record) => record.date === date),
     ),
     mealRecords: sortByDateThenUpdatedAt(
       snapshot.mealRecords
-        .filter(isVisibleEntity)
+        .filter(isVisibleInOs)
         .filter((record) => record.date === date),
     ),
     weightRecords: sortByDateThenUpdatedAt(
       snapshot.weightRecords
-        .filter(isVisibleEntity)
+        .filter(isVisibleInOs)
         .filter((record) => record.date === date),
     ),
   };
@@ -278,14 +284,14 @@ export function getDashboardStats(
     (task) => !hasBackfillMetadata(task),
   );
   const rangedWorkouts = snapshot.workoutRecords
-    .filter(isVisibleEntity)
+    .filter(isVisibleInOs)
     .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate));
   const rangedMeals = snapshot.mealRecords
-    .filter(isVisibleEntity)
+    .filter(isVisibleInOs)
     .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate));
   const rangedWeights = sortByDateThenUpdatedAt(
     snapshot.weightRecords
-      .filter(isVisibleEntity)
+      .filter(isVisibleInOs)
       .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate)),
   );
   const completedTasks = rangedTasks.filter((task) => task.isDone).length;
@@ -383,19 +389,19 @@ export function getCalendarMarkers(
       marker.tasks.completedPlannedCount === marker.tasks.plannedCount;
   }
 
-  for (const record of snapshot.workoutRecords.filter(isVisibleEntity)) {
+  for (const record of snapshot.workoutRecords.filter(isVisibleInOs)) {
     if (isWithinDateRange(record.date, range.startDate, range.endDate)) {
       ensureMarker(markers, record.date).workouts = true;
     }
   }
 
-  for (const record of snapshot.mealRecords.filter(isVisibleEntity)) {
+  for (const record of snapshot.mealRecords.filter(isVisibleInOs)) {
     if (isWithinDateRange(record.date, range.startDate, range.endDate)) {
       ensureMarker(markers, record.date).meals = true;
     }
   }
 
-  for (const record of snapshot.weightRecords.filter(isVisibleEntity)) {
+  for (const record of snapshot.weightRecords.filter(isVisibleInOs)) {
     if (isWithinDateRange(record.date, range.startDate, range.endDate)) {
       ensureMarker(markers, record.date).weights = true;
     }
@@ -432,7 +438,7 @@ export function getNutritionSeries(
   meals: MealRecord[],
   range: DateRange,
 ): NutritionPoint[] {
-  const visibleMeals = meals.filter(isVisibleEntity);
+  const visibleMeals = meals.filter(isVisibleInOs);
 
   return getDateRangeDays(range).map((date) => {
     const dateMeals = visibleMeals.filter((meal) => meal.date === date);
@@ -453,7 +459,7 @@ export function getWeightSeries(
 ): WeightPoint[] {
   return sortByDateThenUpdatedAt(
     weights
-      .filter(isVisibleEntity)
+      .filter(isVisibleInOs)
       .filter((record) => isWithinDateRange(record.date, range.startDate, range.endDate)),
   ).map((record) => ({
     date: record.date,

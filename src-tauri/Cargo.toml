@@ -1,6 +1,6 @@
 [package]
 name = "yeonsik_note"
-version = "0.1.0"
+version = "1.0.0"
 description = "Yeonsik's Note desktop app"
 authors = ["Yeonsik"]
 edition = "2021"

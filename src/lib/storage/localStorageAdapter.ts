@@ -46,6 +46,22 @@ function getNormalizedSyncFields(value: Record<string, unknown>) {
   };
 }
 
+function getNormalizedScopedFields(value: Record<string, unknown>) {
+  const sourceApp: "os" | "fitness" =
+    value.sourceApp === "fitness" ? "fitness" : "os";
+  const scope: "os" | "fitness" | "both" =
+    value.scope === "os" || value.scope === "fitness" || value.scope === "both"
+      ? value.scope
+      : "both";
+  const metadata = isRecord(value.metadata) ? value.metadata : {};
+
+  return {
+    sourceApp,
+    scope,
+    metadata,
+  };
+}
+
 function normalizeNote(value: unknown): Note | null {
   if (
     !isRecord(value) ||
@@ -124,6 +140,7 @@ function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
       workoutType === "cardio" && typeof value.averageHeartRate === "number"
         ? value.averageHeartRate
         : null,
+    ...getNormalizedScopedFields(value),
     ...getNormalizedSyncFields(value),
   };
 }
@@ -148,6 +165,7 @@ function normalizeMealRecord(value: unknown): MealRecord | null {
     proteinGrams: value.proteinGrams,
     carbsGrams: typeof value.carbsGrams === "number" ? value.carbsGrams : null,
     fatGrams: typeof value.fatGrams === "number" ? value.fatGrams : null,
+    ...getNormalizedScopedFields(value),
     ...getNormalizedSyncFields(value),
   };
 }
@@ -166,6 +184,7 @@ function normalizeWeightRecord(value: unknown): WeightRecord | null {
     id: value.id as string,
     date: value.date,
     weightKg: value.weightKg,
+    ...getNormalizedScopedFields(value),
     ...getNormalizedSyncFields(value),
   };
 }

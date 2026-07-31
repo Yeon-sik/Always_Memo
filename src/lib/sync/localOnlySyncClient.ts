@@ -2,6 +2,8 @@ import type { Device, LocalDataSnapshot } from "../../types";
 import type {
   RealtimeOptions,
   RealtimeSubscription,
+  AuthState,
+  FinanceDailySummary,
   SyncClient,
   SyncContext,
   SyncResult,
@@ -37,6 +39,26 @@ export class LocalOnlySyncClient implements SyncClient {
 
   isConfigured(): boolean {
     return false;
+  }
+
+  async getAuthState(): Promise<AuthState> {
+    return { userId: null, email: null };
+  }
+
+  async signIn(_email: string, _password: string): Promise<AuthState> {
+    throw new Error("Supabase 연결 설정을 먼저 저장하세요.");
+  }
+
+  async signOut(): Promise<void> {
+    return undefined;
+  }
+
+  async getFinanceDailySummaries(
+    _userId: string,
+    _fromDate: string,
+    _toDate: string,
+  ): Promise<FinanceDailySummary[]> {
+    return [];
   }
 
   async pull(

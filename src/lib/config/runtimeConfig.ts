@@ -1,28 +1,29 @@
 export interface RuntimeConfig {
   supabaseUrl: string;
   supabaseAnonKey: string;
-  userId: string;
+  boundUserId: string;
   loaded: boolean;
   sourcePath: string | null;
 }
 
 export type SupabaseConfigInput = Pick<
   RuntimeConfig,
-  "supabaseUrl" | "supabaseAnonKey" | "userId"
+  "supabaseUrl" | "supabaseAnonKey"
 >;
 
-const SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v1";
+const SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v2";
+const LEGACY_SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v1";
 const LOCAL_SETTINGS_SOURCE = "local settings";
 
 interface StoredSupabaseConfigEnvelope {
-  version: 1;
-  config: SupabaseConfigInput;
+  version: 2;
+  config: SupabaseConfigInput & { boundUserId: string };
 }
 
 export const emptyRuntimeConfig: RuntimeConfig = {
   supabaseUrl: "",
   supabaseAnonKey: "",
-  userId: "",
+  boundUserId: "",
   loaded: false,
   sourcePath: null,
 };
@@ -37,7 +38,6 @@ function normalizeSupabaseConfigInput(
   return {
     supabaseUrl: value?.supabaseUrl?.trim() ?? "",
     supabaseAnonKey: value?.supabaseAnonKey?.trim() ?? "",
-    userId: value?.userId?.trim() ?? "",
   };
 }
 
@@ -46,16 +46,18 @@ function normalizeRuntimeConfig(value: Partial<RuntimeConfig> | null): RuntimeCo
 
   return {
     ...config,
+    boundUserId: value?.boundUserId?.trim() ?? "",
     loaded: Boolean(value?.loaded),
     sourcePath: value?.sourcePath ?? null,
   };
 }
 
 function toLocalSettingsRuntimeConfig(
-  value: Partial<SupabaseConfigInput> | null,
+  value: (Partial<SupabaseConfigInput> & { boundUserId?: string }) | null,
 ): RuntimeConfig {
   return {
     ...normalizeSupabaseConfigInput(value),
+    boundUserId: value?.boundUserId?.trim() ?? "",
     loaded: true,
     sourcePath: LOCAL_SETTINGS_SOURCE,
   };
@@ -76,7 +78,9 @@ export function loadSavedSupabaseConfig(): RuntimeConfig | null {
     return null;
   }
 
-  const rawValue = storage.getItem(SUPABASE_CONFIG_STORAGE_KEY);
+  const rawValue =
+    storage.getItem(SUPABASE_CONFIG_STORAGE_KEY) ??
+    storage.getItem(LEGACY_SUPABASE_CONFIG_STORAGE_KEY);
 
   if (!rawValue) {
     return null;
@@ -85,7 +89,11 @@ export function loadSavedSupabaseConfig(): RuntimeConfig | null {
   try {
     const parsed = JSON.parse(rawValue) as unknown;
 
-    if (isRecord(parsed) && parsed.version === 1 && isRecord(parsed.config)) {
+    if (
+      isRecord(parsed) &&
+      (parsed.version === 1 || parsed.version === 2) &&
+      isRecord(parsed.config)
+    ) {
       return toLocalSettingsRuntimeConfig(parsed.config);
     }
 
@@ -102,21 +110,69 @@ export function loadSavedSupabaseConfig(): RuntimeConfig | null {
 export function saveSupabaseConfig(
   config: SupabaseConfigInput,
 ): RuntimeConfig {
+  const normalizedConfig = normalizeSupabaseConfigInput(config);
+  if (normalizedConfig.supabaseUrl) {
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(normalizedConfig.supabaseUrl);
+    } catch {
+      throw new Error("올바른 Supabase URL을 입력하세요.");
+    }
+    if (parsedUrl.protocol !== "https:") {
+      throw new Error("Supabase URL은 HTTPS여야 합니다.");
+    }
+  }
   const storage = getBrowserLocalStorage();
-  const savedConfig = toLocalSettingsRuntimeConfig(config);
+  const current = loadSavedSupabaseConfig();
+  const savedConfig = toLocalSettingsRuntimeConfig({
+    ...normalizedConfig,
+    boundUserId: current?.boundUserId ?? "",
+  });
 
   if (!storage) {
     return savedConfig;
   }
 
   const envelope: StoredSupabaseConfigEnvelope = {
-    version: 1,
-    config: normalizeSupabaseConfigInput(config),
+    version: 2,
+    config: {
+      ...normalizedConfig,
+      boundUserId: savedConfig.boundUserId,
+    },
   };
 
   storage.setItem(SUPABASE_CONFIG_STORAGE_KEY, JSON.stringify(envelope));
+  storage.removeItem(LEGACY_SUPABASE_CONFIG_STORAGE_KEY);
 
   return savedConfig;
+}
+
+export function bindSupabaseUser(
+  userId: string,
+  fallbackConfig?: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+): RuntimeConfig {
+  const current = loadSavedSupabaseConfig() ?? fallbackConfig;
+  if (!current?.supabaseUrl || !current.supabaseAnonKey) {
+    throw new Error("Supabase 연결 설정을 먼저 저장하세요.");
+  }
+  const nextConfig = toLocalSettingsRuntimeConfig({
+    supabaseUrl: current.supabaseUrl,
+    supabaseAnonKey: current.supabaseAnonKey,
+    boundUserId: userId,
+  });
+  const storage = getBrowserLocalStorage();
+  if (storage) {
+    const envelope = {
+      version: 2 as const,
+      config: {
+        supabaseUrl: nextConfig.supabaseUrl,
+        supabaseAnonKey: nextConfig.supabaseAnonKey,
+        boundUserId: nextConfig.boundUserId,
+      },
+    };
+    storage.setItem(SUPABASE_CONFIG_STORAGE_KEY, JSON.stringify(envelope));
+  }
+  return nextConfig;
 }
 
 async function loadRuntimeEnvConfig(): Promise<RuntimeConfig> {

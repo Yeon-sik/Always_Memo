@@ -15,7 +15,6 @@ const QUICK_CAPTURE_OPEN_EVENT: &str = "quick-capture:open";
 struct RuntimeConfig {
     supabase_url: String,
     supabase_anon_key: String,
-    user_id: String,
     loaded: bool,
     source_path: Option<String>,
 }
@@ -138,7 +137,6 @@ fn config_from_values(
             &values,
             &["SUPABASE_ANON_KEY", "VITE_SUPABASE_ANON_KEY"],
         ),
-        user_id: first_env_value(&values, &["USER_ID", "VITE_USER_ID"]),
         loaded: source_path.is_some(),
         source_path,
     }

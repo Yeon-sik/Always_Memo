@@ -23,9 +23,15 @@ import {
   createAppSyncClient,
   getConfiguredUserId,
 } from "../lib/sync/syncClientFactory";
-import type { SyncClient, SyncContext, SyncStatus } from "../lib/sync/syncTypes";
+import type {
+  FinanceDailySummary,
+  SyncClient,
+  SyncContext,
+  SyncStatus,
+} from "../lib/sync/syncTypes";
 import {
   emptyRuntimeConfig,
+  bindSupabaseUser,
   loadRuntimeConfig,
   saveSupabaseConfig as persistSupabaseConfig,
   type SupabaseConfigInput,
@@ -75,6 +81,7 @@ import type {
 
 interface UseLocalSyncMemoState {
   activeDevices: Device[];
+  authEmail: string | null;
   autostartEnabled: boolean;
   autostartSupported: boolean;
   device: Device | null;
@@ -82,6 +89,7 @@ interface UseLocalSyncMemoState {
   isManualSyncing: boolean;
   isReady: boolean;
   isSupabaseConfigured: boolean;
+  isAuthenticated: boolean;
   mealRecords: MealRecord[];
   notes: Note[];
   saveState: SaveState;
@@ -148,6 +156,10 @@ interface UseLocalSyncMemoActions {
   deleteTask: (taskId: string) => void;
   deleteWeightRecord: (recordId: string) => void;
   deleteWorkoutRecord: (recordId: string) => void;
+  loadFinanceDailySummaries: (
+    fromDate: string,
+    toDate: string,
+  ) => Promise<FinanceDailySummary[]>;
   manualSync: () => Promise<void>;
   reorderTasks: (
     draggedTaskId: string,
@@ -159,6 +171,8 @@ interface UseLocalSyncMemoActions {
   restoreWeightRecord: (record: WeightRecord) => void;
   restoreWorkoutRecord: (record: WorkoutRecord) => void;
   saveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
   setAutostartEnabled: (enabled: boolean) => Promise<void>;
   toggleTask: (taskId: string) => void;
   updateSelectedNoteContent: (content: string) => void;
@@ -219,6 +233,10 @@ export function useLocalSyncMemo(
   const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfig | null>(
     null,
   );
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
+  const [authenticatedUserId, setAuthenticatedUserId] = useState<string | null>(
+    null,
+  );
   const [device, setDevice] = useState<Device | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [activeDevices, setActiveDevices] = useState<Device[]>([]);
@@ -247,8 +265,8 @@ export function useLocalSyncMemo(
     [activeRuntimeConfig, injectedSyncClient],
   );
   const userId = useMemo(
-    () => injectedUserId ?? getConfiguredUserId(activeRuntimeConfig),
-    [activeRuntimeConfig, injectedUserId],
+    () => injectedUserId ?? authenticatedUserId ?? getConfiguredUserId(),
+    [authenticatedUserId, injectedUserId],
   );
 
   const visibleNotes = useMemo(() => getVisibleNotes(notes), [notes]);
@@ -266,6 +284,7 @@ export function useLocalSyncMemo(
     [weightRecords],
   );
   const isSupabaseConfigured = syncClient.isConfigured();
+  const isAuthenticated = Boolean(authenticatedUserId);
 
   const selectedNote = useMemo(
     () => visibleNotes.find((note) => note.id === selectedNoteId) ?? null,
@@ -319,7 +338,30 @@ export function useLocalSyncMemo(
       const currentDevice = await getOrCreateDevice();
 
       try {
-        const context: SyncContext = { device: currentDevice, userId };
+        const authState = await syncClient.getAuthState();
+        if (
+          authState.userId &&
+          activeRuntimeConfig.boundUserId &&
+          authState.userId !== activeRuntimeConfig.boundUserId
+        ) {
+          await syncClient.signOut();
+          throw new Error(
+            "이 로컬 데이터는 다른 계정에 연결되어 있습니다. 계정 전환에는 별도 데이터 이전이 필요합니다.",
+          );
+        }
+        if (authState.userId && !activeRuntimeConfig.boundUserId) {
+          setRuntimeConfig(
+            bindSupabaseUser(authState.userId, activeRuntimeConfig),
+          );
+        }
+        const resolvedUserId =
+          injectedUserId ?? authState.userId ?? getConfiguredUserId();
+        setAuthenticatedUserId(authState.userId);
+        setAuthEmail(authState.email);
+        const context: SyncContext = {
+          device: currentDevice,
+          userId: resolvedUserId,
+        };
         const snapshot = await storage.load();
         const localSnapshot = {
           ...snapshot,
@@ -643,6 +685,49 @@ export function useLocalSyncMemo(
       }
     },
     [],
+  );
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      const authState = await syncClient.signIn(email, password);
+      if (!authState.userId) {
+        throw new Error("인증된 사용자 ID를 확인하지 못했습니다.");
+      }
+      if (
+        activeRuntimeConfig.boundUserId &&
+        activeRuntimeConfig.boundUserId !== authState.userId
+      ) {
+        await syncClient.signOut();
+        throw new Error(
+          "이 로컬 데이터는 다른 계정에 연결되어 있습니다. 계정 전환에는 별도 데이터 이전이 필요합니다.",
+        );
+      }
+      const nextRuntimeConfig = bindSupabaseUser(
+        authState.userId,
+        activeRuntimeConfig,
+      );
+      setRuntimeConfig(nextRuntimeConfig);
+      setAuthenticatedUserId(authState.userId);
+      setAuthEmail(authState.email);
+      setIsReady(false);
+      setSaveState("saving");
+      setError(null);
+    },
+    [activeRuntimeConfig.boundUserId, syncClient],
+  );
+
+  const signOut = useCallback(async () => {
+    await syncClient.signOut();
+    setAuthenticatedUserId(null);
+    setAuthEmail(null);
+    setIsReady(false);
+    setSyncStatus(syncClient.getStatus());
+  }, [syncClient]);
+
+  const loadFinanceDailySummaries = useCallback(
+    (fromDate: string, toDate: string) =>
+      syncClient.getFinanceDailySummaries(userId, fromDate, toDate),
+    [syncClient, userId],
   );
 
   // 설정 패널의 자동 실행 토글을 Tauri autostart 플러그인에 위임한다.
@@ -1208,6 +1293,7 @@ export function useLocalSyncMemo(
 
   return {
     activeDevices,
+    authEmail,
     addMealRecord,
     addNote,
     addNoteForDate,
@@ -1227,6 +1313,8 @@ export function useLocalSyncMemo(
     isManualSyncing,
     isReady,
     isSupabaseConfigured,
+    isAuthenticated,
+    loadFinanceDailySummaries,
     manualSync,
     mealRecords: visibleMealRecords,
     notes: visibleNotes,
@@ -1236,6 +1324,8 @@ export function useLocalSyncMemo(
     restoreWorkoutRecord,
     saveState,
     saveSupabaseConfig,
+    signIn,
+    signOut,
     selectNote,
     selectedNote,
     selectedNoteId,

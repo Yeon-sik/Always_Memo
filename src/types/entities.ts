@@ -32,8 +32,18 @@ export interface Task extends SyncableEntity {
 }
 
 export type WorkoutType = "strength" | "cardio" | "other";
+export type SourceApp = "os" | "fitness";
+export type RecordScope = "os" | "fitness" | "both";
+export type FitnessRecordContractVersion = 1;
 
-export interface WorkoutRecord extends SyncableEntity {
+export interface ScopedRecordFields {
+  sourceApp?: SourceApp;
+  scope?: RecordScope;
+  metadata?: Record<string, unknown>;
+  contractVersion?: FitnessRecordContractVersion;
+}
+
+export interface WorkoutRecord extends SyncableEntity, ScopedRecordFields {
   date: string;
   workoutType: WorkoutType;
   category: string;
@@ -42,7 +52,7 @@ export interface WorkoutRecord extends SyncableEntity {
   averageHeartRate: number | null;
 }
 
-export interface MealRecord extends SyncableEntity {
+export interface MealRecord extends SyncableEntity, ScopedRecordFields {
   date: string;
   menu: string;
   calories: number;
@@ -51,7 +61,7 @@ export interface MealRecord extends SyncableEntity {
   fatGrams: number | null;
 }
 
-export interface WeightRecord extends SyncableEntity {
+export interface WeightRecord extends SyncableEntity, ScopedRecordFields {
   date: string;
   weightKg: number;
 }
