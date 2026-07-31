@@ -1,30 +1,17 @@
-# Fitness Feature — Codex Notes
+# Fitness feature maintenance notes
 
-이 폴더는 운동/식사/체중 기록의 Full CRUD 전환 위치다.
+This directory owns Personal OS workout, meal, and weight records plus their summaries and exports.
 
-해야 할 일:
+Keep these contracts:
 
-```text
-fitnessService.ts 작성 또는 기존 함수 분리
-update/delete action 추가
-FitnessPanel row edit/delete UI 추가
-meal carbsGrams/fatGrams 입력 활성화
-fitnessStats selector에서 tombstone 제외 확인
-Markdown export에서 tombstone 제외 확인
-```
+- Record deletion is a tombstone update, never a hard delete.
+- Every mutation updates `updatedAt` and `deviceId`.
+- Summary, calendar, and export selectors exclude tombstones.
+- Shared completed workouts can be displayed from FitnessApp; in-progress exercise/set detail remains FitnessApp-owned.
+- Date/backfill metadata remains controlled by the calling panel, while form validation stays in the draft helpers.
 
-삭제 규칙:
+Current references:
 
-```text
-hard delete 금지
-deletedAt = nowIso()
-updatedAt = nowIso()
-deviceId = currentDeviceId
-```
-
-관련 문서:
-
-```text
-docs/specs/fitness-full-crud-sync.md
-docs/plans/acceptance-checklist.md
-```
+- `docs/adr/2026-08-01-current-architecture.md`
+- `docs/specs/fitness-tab.md`
+- GitHub issue #28 for remaining edit UI and Life Report/share work

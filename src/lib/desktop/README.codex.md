@@ -1,25 +1,16 @@
-# Desktop Library — Codex Notes
+# Desktop library maintenance notes
 
-이 폴더는 Tauri desktop-only 기능 wrapper 위치다.
+This directory contains browser-safe wrappers around Tauri-only features.
 
-해야 할 일:
+Keep these boundaries:
 
-```text
-shortcuts.ts: global shortcut dynamic wrapper
-quickCapture.ts: quick-capture window open/hide wrapper
-tray.ts: tray action wrapper가 필요하면 추가
-```
+- Load Tauri plugins dynamically or behind a platform guard so web builds do not crash.
+- Preserve command names, event names, capability identifiers, and `#[cfg(desktop)]` behavior.
+- The Rust tray implementation is authoritative; do not add a TypeScript tray facade without a live caller.
+- Treat close-to-hide, tray actions, global shortcut, autostart, and Quick Capture as Windows runtime behavior, not as build-only evidence.
 
-주의:
+Current references:
 
-```text
-web/Android에서 import crash가 없어야 한다.
-Tauri plugin import는 dynamic import 또는 platform guard 뒤에서만 한다.
-```
-
-관련 문서:
-
-```text
-docs/specs/native-quick-capture.md
-docs/specs/platform-compatibility.md
-```
+- `docs/adr/2026-08-01-current-architecture.md`
+- `docs/specs/platform-compatibility.md`
+- GitHub issue #26 for Windows runtime and signed-installer verification
