@@ -1,199 +1,217 @@
-# Yeonsik's Note
+# Personal OS (Yeonsik's Note)
 
-Yeonsik's Note는 Tauri v2, React, TypeScript, Vite, Tailwind CSS, Supabase를 기반으로 만든 로컬 우선 데스크톱 메모/체크리스트 앱입니다.
+Personal OS는 Tauri v2, React, TypeScript, Vite, Tailwind CSS와 Supabase로 구성한 로컬 우선 개인 기록 앱입니다. 메모, 할 일, 운동·식사·체중 기록은 네트워크나 Supabase 설정이 없어도 로컬에서 먼저 동작하고, 설정과 로그인이 완료되면 같은 계정의 여러 기기 사이에서 동기화됩니다.
 
-핵심 목표는 빠른 기록과 할 일 관리를 먼저 로컬에서 보장하고, Supabase가 설정된 경우 여러 기기 사이의 동기화까지 확장하는 것입니다. 네트워크가 없거나 Supabase 환경 변수가 비어 있어도 앱은 로컬 전용 모드로 계속 동작합니다.
+이 문서의 기능 설명은 2026-08-01 저장소 소스와 테스트를 기준으로 합니다. 파일 존재나 로컬 빌드가 실제 Windows 설치 환경, 실제 Supabase 프로젝트, 다중 기기 또는 배포 상태를 증명하지는 않습니다. 현재 구조 결정과 검증 경계는 [현재 아키텍처 ADR](docs/adr/2026-08-01-current-architecture.md), 배포 전 확인 사항은 [릴리스 준비 문서](docs/RELEASE_READINESS.md)를 확인하세요.
 
-## 현재 역할
+## 현재 기능
 
-이 저장소는 단순 웹 메모장이 아니라 Windows 데스크톱 앱으로 배포 가능한 개인 생산성 도구입니다.
+### 기록
 
-- 메모와 체크리스트를 한 화면에서 관리한다.
-- 저장 버튼 없이 로컬에 자동 저장한다.
-- Supabase 설정이 있으면 Postgres, Realtime, device heartbeat로 여러 기기 상태를 맞춘다.
-- Tauri system tray, 창 숨김, 자동 실행 설정을 통해 데스크톱 앱처럼 동작한다.
-- 날짜/시간이 있는 체크리스트 구조를 기반으로 이후 캘린더 기능까지 확장할 수 있다.
+- 날짜별 메모, 할 일, 운동, 식사, 체중 기록 조회
+- 생산성, 영양, 체중 추이와 월간 캘린더 표시
+- 선택한 날짜에서 메모·할 일·운동·식사·체중 빠른 추가
+- 운동·식사·체중 soft delete와 제한 시간 내 실행 취소
+- 같은 Supabase 프로젝트에 CashOS의 `finance_summary_daily` view가 있을 때 일별 수입·지출 요약 표시
 
-## 주요 기능
+### 메모와 할 일
 
-### 메모
+- 메모 생성, 선택, 제목·본문 수정, soft delete
+- 할 일 생성, 내용 수정, 완료 처리, soft delete
+- 날짜·시간·계획일 저장과 드래그 순서 변경
+- 앱 재실행 후 로컬 데이터 복원
 
-- 메모 생성, 선택, 제목 수정, 본문 수정
-- `deletedAt` tombstone 기반 soft delete
-- 앱 재실행 후 로컬 데이터 유지
-- Supabase 설정 시 다른 기기 변경사항 반영
+### 운동·식사·체중
 
-### 체크리스트
+- 근력·유산소·기타 운동 기록
+- 식사 열량, 단백질, 탄수화물, 지방 기록
+- 체중 기록
+- 기간별 통계와 Markdown 내보내기
+- FitnessApp과 공유하는 Fitness Record Contract v1 호환 필드
 
-- 할 일 생성, 수정, 완료 처리, 삭제
-- 드래그 기반 순서 변경
-- 항목별 선택형 날짜와 시간 저장
-- 날짜를 지우면 시간도 함께 비우는 데이터 규칙
-- `due_date` 인덱스를 이용한 향후 날짜별 조회 확장 가능
+### Quick Capture와 데스크톱 통합
 
-### 설정
+- 앱 내부 버튼과 `Ctrl+K` fallback으로 메모 또는 할 일 빠른 입력
+- 데스크톱 기본 단축키 `Alt+Space`
+- tray 메뉴: Quick Capture, Open, Hide, Quit
+- 닫기 요청 시 창 숨김, Windows 시작 시 자동 실행 설정
+- 전용 Tauri API가 없는 브라우저 환경에서는 동적 import 실패를 fallback으로 처리
 
-- 화면 모드: 시스템, 화이트, 다크
-- Supabase 연결 상태 확인
-- 수동 동기화
-- Windows 시작 시 자동 실행 설정
-- 현재 활성 기기 목록 표시
-
-### 데스크톱 동작
-
-- Tauri v2 기반 Windows 앱
-- 닫기 버튼을 누르면 종료하지 않고 창을 숨김
-- system tray 메뉴: 열기, 숨기기, 종료
-- NSIS 설치 파일 생성 가능
+데스크톱 코드는 저장소에 구현되어 있지만 tray, 전역 단축키, 자동 실행, close-to-hide는 설치된 Windows 바이너리에서 별도 수동 smoke가 필요합니다.
 
 ## 기술 스택
 
-- Runtime: Tauri v2
-- UI: React 18, TypeScript
-- Build: Vite
-- Styling: Tailwind CSS
-- Icons: lucide-react
-- Remote sync: Supabase Postgres, Supabase Realtime
-- Local storage: browser `localStorage`
-- Desktop plugin: Tauri autostart
+- Desktop runtime: Tauri v2, Rust
+- UI: React 18, TypeScript, Vite
+- Styling: Tailwind CSS, lucide-react
+- Local persistence: browser `localStorage`를 구현한 `StorageAdapter`
+- Remote sync: Supabase Auth, Postgres, Realtime
+- Test: Vitest, react-test-renderer
+- Windows bundle: NSIS
 
-## 프로젝트 구조
+## 아키텍처
+
+```text
+src/main.tsx
+  -> App
+     -> useLocalSyncMemo                    # App이 사용하는 공개 facade
+        -> app/sync/useMemoSyncRuntime      # 설정, hydrate, save, sync, realtime, presence
+        -> app/sync/useSnapshotStore        # 단일 snapshot/ref와 commit primitive
+        -> features/notes/useNoteActions
+        -> features/tasks/useTaskActions
+        -> features/fitness/useFitnessRecordActions
+     -> RecordsPanel / MemoPanel / ChecklistPanel / FitnessPanel / SettingsPanel
+     -> useQuickCapture
+
+syncClientFactory
+  -> LocalOnlySyncClient
+  -> SupabaseSyncClient                     # 기존 공개 구현
+     -> sync/supabase/rows + mappers
+     -> sync/supabase/snapshotIo
+     -> sync/supabase/realtime
+     -> sync/supabase/presence
+     -> sync/supabase/financeSummary
+
+src-tauri/src/lib.rs
+  -> runtime config와 device persistence command
+  -> desktop-only tray, shortcut, autostart, close-to-hide
+  -> quick-capture:open event
+```
+
+중요한 경계는 다음과 같습니다.
+
+- `useLocalSyncMemo`의 반환 계약은 `App`과 UI가 의존하는 공개 경계입니다.
+- 모든 도메인 변경은 공통 `commitSnapshot`을 통해 최신 snapshot ref와 React state를 함께 갱신합니다.
+- LWW와 tombstone 병합의 기준 구현은 `src/lib/sync/merge.ts`입니다.
+- Supabase row 변환, snapshot 입출력, Realtime, presence, finance query는 각각 별도 모듈이며 `SupabaseSyncClient`가 facade 역할을 합니다.
+- `RecordsPanel`, `FitnessPanel`, `ChecklistPanel`, `SettingsPanel`은 조립 책임을 유지하고 세부 UI와 상태 로직은 하위 component/hook으로 분리합니다.
+- Rust `lib.rs`의 추가 분리는 Windows native smoke를 수행할 수 있는 변경 단위에서만 진행합니다.
+
+## 주요 디렉터리
 
 ```text
 src/
   app/
-    App.tsx                 # 화면 전환과 주요 패널 조립
-    useLocalSyncMemo.ts     # 앱 상태, 로컬 저장, Supabase 동기화 조율
-    useThemeMode.ts         # 시스템/화이트/다크 테마 처리
+    App.tsx
+    useLocalSyncMemo.ts
+    sync/
   components/
-    HeaderBar.tsx           # 저장/동기화/기기 상태 표시
-    SettingsPanel.tsx       # 설정, 수동 동기화, 자동 실행, 활성 기기
-    StatusBanner.tsx        # 오류 상태 표시
+    settings/
   features/
-    notes/                  # 메모 UI와 메모 엔티티 서비스
-    tasks/                  # 체크리스트 UI와 할 일 엔티티 서비스
+    command-center/quickActions/
+    finance/
+    fitness/
+    fitness-summary/
+    notes/
+    quick-capture/
+    records/
+    tasks/
   lib/
-    desktop/                # Tauri 데스크톱 기능 래퍼
-    device/                 # 로컬 기기 id/name 생성
-    storage/                # localStorage 저장소 어댑터
-    sync/                   # local-only 또는 Supabase 동기화 클라이언트
+    auth/
+    config/
+    dataTrust/
+    desktop/
+    device/
+    platform/
+    storage/
+    sync/
   types/
-    entities.ts             # Note, Task, Device, Snapshot 타입
 src-tauri/
-  src/lib.rs                # Tauri tray, close-to-hide, autostart 연결
-  tauri.conf.json           # 앱 이름, 창 크기, 번들 설정
+  capabilities/
+  src/lib.rs
 supabase/
-  schema.sql                # 원격 동기화용 DB 스키마
+  migrations/
+  schema.sql
+docs/
+  adr/
 ```
 
 ## 데이터 모델
 
-앱은 `LocalDataSnapshot` 하나에 메모, 체크리스트, 기기 정보를 묶어서 저장합니다.
+로컬 저장의 단위는 `LocalDataSnapshot`입니다.
 
 ```text
 LocalDataSnapshot
   notes: Note[]
   tasks: Task[]
+  workoutRecords: WorkoutRecord[]
+  mealRecords: MealRecord[]
+  weightRecords: WeightRecord[]
   devices: Device[]
 ```
 
-공통 엔티티 필드:
+동기화 대상 엔티티는 `id`, `createdAt`, `updatedAt`, `deletedAt`, `deviceId`와 누락 보강 메타데이터를 공유합니다. 삭제는 배열에서 row를 제거하는 hard delete가 아니라 `deletedAt`을 기록하는 tombstone입니다. 병합은 `updatedAt`이 최신인 row를 선택하고 timestamp가 같으면 tombstone을 우선합니다.
 
-- `id`: 엔티티 고유 id
-- `updatedAt`: 마지막 수정 시간
-- `deletedAt`: soft delete 전파용 삭제 시간
-- `deviceId`: 변경을 만든 기기 id
+Fitness 공유 row는 `sourceApp`, `scope`, `metadata`, `contractVersion`을 사용합니다. 자세한 계약은 [Fitness Record Contract v1](docs/FITNESS_RECORD_CONTRACT_V1.md)에 있습니다.
 
-체크리스트 항목은 다음 필드를 추가로 가집니다.
+## 저장과 동기화 순서
 
-- `text`: 할 일 내용
-- `isDone`: 완료 여부
-- `orderIndex`: 화면 정렬 순서
-- `dueDate`: 선택형 날짜
-- `dueTime`: 선택형 시간
+1. runtime 설정과 로컬 device 정보를 읽습니다.
+2. 선택된 sync client에서 Auth 상태를 확인합니다.
+3. Auth 상태 확인이 끝나면 `localStorage` snapshot을 불러옵니다.
+4. Supabase가 설정되지 않았으면 local-only client를 사용합니다. 설정되어도 인증되지 않았으면 원격 작업을 중단하고 로컬 snapshot을 유지합니다.
+5. 인증된 경우 원격 snapshot을 pull하고 로컬 snapshot과 병합합니다.
+6. 사용자 변경은 React state에 먼저 반영하고 debounce 후 로컬 저장과 remote push를 수행합니다.
+7. Realtime 변경은 현재 snapshot에 병합하고 구독 해제 시 listener를 정리합니다.
+8. heartbeat와 active-device 갱신은 인증된 Supabase mode에서만 동작합니다.
 
-## 저장과 동기화 구조
-
-기본 원칙은 local-first입니다.
-
-1. 앱 시작 시 localStorage에서 즉시 데이터를 읽는다.
-2. Supabase 설정이 있으면 원격 데이터를 pull해서 로컬 스냅샷과 병합한다.
-3. 사용자가 수정하면 먼저 React 상태와 localStorage에 저장한다.
-4. Supabase 설정과 네트워크가 있으면 현재 기기에서 수정한 row를 push한다.
-5. 다른 기기의 변경사항은 Supabase Realtime으로 받아 로컬 스냅샷에 병합한다.
-
-현재 충돌 정책은 MVP 기준 Last Write Wins입니다. `updatedAt`이 더 최신인 row가 우선이며, 시간이 같을 때는 삭제 tombstone이 보존됩니다.
+hydrate가 끝난 뒤 발생한 pull/push 오류는 편집 자체를 직접 막지 않으며 동기화 오류를 UI에 표시합니다. 다만 현재 Auth session 초기화가 `storage.load()`보다 먼저 실행되므로 session 조회 자체가 예외를 던지는 시작 경로에서는 기존 local snapshot 복구를 보장하지 못합니다. 이 데이터 보존 위험과 회귀 테스트는 [GitHub issue #31](https://github.com/Yeon-sik/Always_Memo/issues/31)에서 추적합니다.
 
 ## Supabase 설정
 
-Supabase를 쓰지 않으면 `.env`가 없어도 앱은 로컬 전용으로 실행됩니다. 여러 기기 동기화가 필요하면 Supabase 프로젝트를 만들고 실행 시점에 읽을 `.env` 파일에 아래 값을 설정합니다.
+Supabase를 사용하지 않으면 별도 설정 없이 local-only mode로 실행할 수 있습니다.
 
-```powershell
-Copy-Item .env.example .env
-```
+동기화를 사용하려면 다음 중 하나로 Project URL과 anon/publishable key를 제공합니다.
+
+1. 앱의 설정 화면에서 연결 정보를 저장합니다.
+2. Tauri runtime env 파일에 값을 둡니다.
 
 ```env
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
 ```
 
-연결 정보를 저장한 뒤 설정 화면에서 Supabase Auth 계정으로 로그인합니다.
-`user_id`는 사용자가 입력하지 않으며 인증 세션의 `auth.users.id`로 결정됩니다.
+기존 개발 설정 호환을 위해 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`도 읽습니다. 수동 `USER_ID`는 지원하지 않습니다. 설정 후 이메일과 비밀번호로 Supabase Auth에 로그인하며, row의 `user_id`는 인증 세션의 `auth.users.id`를 문자열로 저장합니다.
 
-Tauri 앱은 빌드된 번들 안에 Supabase 값을 넣지 않고, 실행할 때 다음 순서로 `.env` 파일을 찾습니다.
+Tauri runtime env 탐색 순서는 다음과 같습니다.
 
-1. `YEONSIK_NOTE_ENV` 환경변수로 지정한 파일 경로
-2. Tauri 앱 설정 폴더의 `.env`
-3. Tauri 앱 설정 폴더의 `yeonsik-note.env`
-4. 실행 파일과 같은 폴더의 `.env`
-5. 실행 파일과 같은 폴더의 `yeonsik-note.env`
+1. `YEONSIK_NOTE_ENV`가 가리키는 파일
+2. 앱 설정 폴더의 `.env`
+3. 앱 설정 폴더의 `yeonsik-note.env`
+4. 실행 파일 폴더의 `.env`
+5. 실행 파일 폴더의 `yeonsik-note.env`
 6. 현재 작업 폴더의 `.env`
 
-기존 개발용 `.env`와의 호환을 위해 `VITE_SUPABASE_URL`,
-`VITE_SUPABASE_ANON_KEY`도 읽지만, 배포용 기본 이름은 `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`입니다. 수동 `USER_ID` 설정은 지원하지 않습니다.
+앱 설정 화면에서 저장한 값이 있으면 해당 로컬 설정을 우선합니다. 동일 로컬 데이터는 최초 연결된 Auth 계정에 binding되며, 다른 계정으로 자동 전환하지 않습니다.
 
-Supabase SQL Editor에서 다음 파일 내용을 실행합니다.
+DB 변경 절차, migration 순서와 RLS 검증은 [Supabase 운영 문서](supabase/README.codex.md)를 따르세요. `supabase/schema.sql`은 현재 개발 스키마 snapshot이고 `supabase/migrations/*.sql`이 변경 이력의 기준입니다. 저장소에 migration이 있다는 사실만으로 특정 원격 프로젝트에 적용되었다고 판단하면 안 됩니다.
 
-```text
-supabase/schema.sql
-```
+## Supabase와 저장소 간 계약
 
-생성되는 테이블:
+Personal OS가 직접 동기화하는 테이블은 다음과 같습니다.
 
-- `public.notes`
-- `public.tasks`
-- `public.devices`
-- `public.workout_records` — Personal OS/FitnessApp 공통 운동 이벤트와 요약
-- `public.workout_exercises` — FitnessApp 전용 종목 상세
-- `public.workout_sets` — FitnessApp 전용 세트 상세
-- `public.meal_records`
-- `public.weight_records`
+- `devices`
+- `notes`
+- `tasks`
+- `workout_records`
+- `meal_records`
+- `weight_records`
 
-두 앱은 같은 Supabase 프로젝트와 같은 Auth 계정으로 로그인해야 합니다. 완료된 FitnessApp 운동은
-`workout_records.scope = 'both'`로 공유되고, Personal OS는 부위 요약만 표시합니다.
-세부 종목과 세트는 FitnessApp에서만 조회·수정합니다.
+`workout_exercises`와 `workout_sets`는 같은 Fitness contract에 포함되지만 FitnessApp이 상세 row를 소유합니다. Personal OS는 compact parent summary를 사용합니다.
 
-체크리스트 날짜/시간 동기화를 위해 `public.tasks`에는 다음 컬럼이 필요합니다.
+CashOS 일별 요약은 이 저장소가 생성하지 않는 외부 계약입니다. 같은 Supabase 프로젝트에 `finance_summary_daily(date, user_id, income_krw, expense_krw, net_krw, entry_count)` view와 해당 사용자 접근 정책이 있을 때만 기록 화면에 표시됩니다.
 
-```sql
-alter table public.tasks
-  add column if not exists due_date date;
+## 보안 경계
 
-alter table public.tasks
-  add column if not exists due_time time;
+- `.env`, Supabase session, 로컬 설정, 빌드 산출물은 Git에 커밋하지 않습니다.
+- anon/publishable key는 공개 클라이언트 식별자이며 사용자 권한을 대신하지 않습니다.
+- service-role key나 secret key를 클라이언트에 넣지 않습니다.
+- repository schema와 `20260724121000_enable_authenticated_rls.sql`은 anon 접근을 회수하고 `auth.uid()::text = user_id` 소유자 정책을 정의합니다.
+- 기존 DB의 legacy owner가 실제 `auth.users.id`에 매핑되지 않으면 RLS migration은 중단하도록 설계되어 있습니다.
+- 운영 적용 여부와 cross-account 차단은 대상 Supabase 프로젝트에서 별도로 검증해야 합니다.
+- `localStorage`는 OS 보안 저장소가 아닙니다. 민감한 개인 데이터가 있는 장기 운영에서는 별도 저장소 전환과 데이터 삭제 절차가 필요합니다.
 
-alter table public.tasks
-  add column if not exists planned_date date;
-
-create index if not exists tasks_user_due_date_idx
-  on public.tasks(user_id, due_date);
-
-create index if not exists tasks_user_planned_date_idx
-  on public.tasks(user_id, planned_date);
-```
-
-## 실행 방법
+## 개발과 검증
 
 의존성 설치:
 
@@ -201,87 +219,56 @@ create index if not exists tasks_user_planned_date_idx
 npm.cmd install
 ```
 
-웹 개발 서버:
+웹 개발 서버와 Tauri 개발 실행:
 
 ```powershell
 npm.cmd run dev
-```
-
-Tauri 개발 실행:
-
-```powershell
 npm.cmd run tauri:dev
 ```
 
-프론트엔드 빌드 검증:
+변경 전후 기본 검증:
 
 ```powershell
+npm.cmd run typecheck
+npm.cmd test
 npm.cmd run build
 ```
 
-Windows 앱과 설치 파일 빌드:
+Windows native 또는 release 관련 변경 시:
 
 ```powershell
 npm.cmd run tauri:build
+npm.cmd run release:verify-windows
 ```
 
-Tauri 빌드 전에 실행 중인 `Yeonsik_Note.exe`가 있으면 Windows가 파일을 잠글 수 있습니다. 빌드가 `failed to remove file` 또는 `os error 5`로 실패하면 앱 창과 트레이 앱을 먼저 종료한 뒤 다시 빌드합니다.
+빌드가 `failed to remove file` 또는 `os error 5`로 실패하면 실행 중인 앱과 tray 프로세스가 산출물을 잠그고 있는지 먼저 확인합니다.
 
 ## 빌드 산출물
 
-빌드 성공 시 주요 산출물은 다음 위치에 생성됩니다.
+버전은 `package.json`과 `src-tauri/tauri.conf.json`의 `1.0.0`을 기준으로 합니다.
 
 ```text
 src-tauri/target/release/Yeonsik_Note.exe
-src-tauri/target/release/bundle/nsis/Yeonsik_Note_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Yeonsik_Note_1.0.0_x64-setup.exe
 ```
 
-`dist`, `src-tauri/target`, `.exe`, `.msi`는 소스 저장소에 커밋하는 대상이 아닙니다. 설치 파일은 GitHub Releases 같은 배포 채널에 올리는 것이 맞습니다.
+파일명은 번들러 환경에 따라 달라질 수 있으므로 release 검증 script로 실제 산출물을 확인합니다. `dist`, `src-tauri/target`, 설치 파일은 소스 저장소에 커밋하지 않습니다.
 
-## 현재 보안 경계
+## 문서 관리
 
-현재 구조는 개인 개발/MVP 단계에 맞춰져 있습니다.
+- 현재 구조와 결정: [docs/adr/2026-08-01-current-architecture.md](docs/adr/2026-08-01-current-architecture.md)
+- DB 운영: [supabase/README.codex.md](supabase/README.codex.md)
+- Fitness 공유 계약: [docs/FITNESS_RECORD_CONTRACT_V1.md](docs/FITNESS_RECORD_CONTRACT_V1.md)
+- 배포 gate: [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md)
+- 외부 소개 문서: `docs/Project_Intro.md`, `docs/Project_Detail.md`
 
-- Supabase URL과 anon key는 Vite 빌드 시 앱에 포함하지 않고, 실행 시점 `.env`에서 읽습니다.
-- `.env` 파일은 소스 저장소와 빌드 산출물에 포함하지 않습니다.
-- `USER_ID` 기반 분리는 개발용 단일 사용자 방식입니다.
-- 공개 배포 전에는 Supabase Auth와 RLS 정책을 실제로 적용해야 합니다.
+Git Markdown가 문서 원본이고 Notion은 생성 mirror입니다. 완료된 prompt, handoff, 상태 snapshot은 active tree에 계속 쌓지 않습니다. 아직 끝나지 않은 작업은 GitHub issue, 지속되는 결정은 ADR, 동작 보장은 test/CI가 소유합니다.
 
-현재 `supabase/schema.sql`에는 RLS 정책이 제안 주석으로만 들어 있습니다. 실제 운영 보안으로 간주하면 안 됩니다.
+## 유지보수 원칙
 
-## 확장 가능성
-
-이 앱의 다음 확장은 기존 구조를 유지하면서 작은 단위로 진행하는 것이 맞습니다.
-
-우선순위가 높은 확장:
-
-- 체크리스트 날짜 기반 일간/주간 보기
-- 캘린더 패널 추가
-- 기기 이름 편집 UI
-- Supabase Auth 도입
-- 사용자별 RLS 정책 적용
-
-중간 단계 확장:
-
-- 변경 로그 기반 sync queue
-- IndexedDB 또는 SQLite 저장소 어댑터
-- 반복 일정과 알림
-- 완료한 할 일 아카이브
-- 메모 검색과 태그
-
-나중에 고려할 확장:
-
-- 파일/이미지 첨부
-- Markdown 편집 모드
-- 충돌 해결 UI
-- CRDT 기반 병합
-- 자동 업데이트 배포 파이프라인
-
-## 개발 원칙
-
-- 로컬 저장이 먼저 동작해야 한다.
-- Supabase 실패가 편집 기능을 막으면 안 된다.
-- 데이터 모델 변경 시 localStorage 하위 호환 처리를 같이 한다.
-- Supabase 컬럼 변경 시 `schema.sql`과 TypeScript row 매핑을 함께 수정한다.
-- 설치 파일을 만들기 전 `npm.cmd run build`로 프론트 타입/번들을 먼저 검증한다.
-- 설치 파일 빌드 후에는 NSIS 산출물 위치를 확인한다.
+- 기존 facade와 public import path를 보존한 채 작은 seam부터 분리합니다.
+- 로컬 저장 성공과 원격 동기화 성공을 같은 증거로 취급하지 않습니다.
+- 데이터 모델 변경 시 local snapshot normalize, Supabase row mapper, schema/migration, Realtime 적용을 함께 검토합니다.
+- hard delete 대신 tombstone을 유지하고 LWW 규칙을 한 곳에서 관리합니다.
+- Tauri native 구조 변경은 Windows tray·shortcut·autostart smoke를 수행할 수 있을 때 진행합니다.
+- cache, generated output, secret, 개인 학습 자료를 제품 source와 섞지 않습니다.
