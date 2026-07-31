@@ -219,11 +219,13 @@ let browserStorage: BrowserStorage;
 function Harness({
   storage,
   syncClient,
+  userId = "user-a",
 }: {
   storage: StorageAdapter;
   syncClient: SyncClient;
+  userId?: string | null;
 }) {
-  currentHook = useLocalSyncMemo(storage, syncClient, "user-a");
+  currentHook = useLocalSyncMemo(storage, syncClient, userId ?? undefined);
   return null;
 }
 
@@ -236,9 +238,12 @@ async function flushEffects(iterations = 8): Promise<void> {
 async function renderHook(
   storage: StorageAdapter,
   syncClient: SyncClient,
+  userId: string | null = "user-a",
 ): Promise<HookValue> {
   await act(async () => {
-    renderer = create(<Harness storage={storage} syncClient={syncClient} />);
+    renderer = create(
+      <Harness storage={storage} syncClient={syncClient} userId={userId} />,
+    );
     await flushEffects();
   });
 
@@ -423,18 +428,21 @@ describe("useLocalSyncMemo", () => {
     storage.saved.length = 0;
 
     await act(async () => {
+      currentHook.addNote();
       currentHook.addTask("삭제될 작업");
       currentHook.addWorkoutRecord("2026-08-01", "strength", "chest", "press");
       currentHook.addMealRecord("2026-08-01", "meal", 500, 30);
       currentHook.addWeightRecord("2026-08-01", 70);
       await flushEffects();
     });
+    const noteId = currentHook.notes[0].id;
     const taskId = currentHook.tasks[0].id;
     const workoutId = currentHook.workoutRecords[0].id;
     const mealId = currentHook.mealRecords[0].id;
     const weightId = currentHook.weightRecords[0].id;
 
     await act(async () => {
+      currentHook.deleteNote(noteId);
       currentHook.deleteTask(taskId);
       currentHook.deleteWorkoutRecord(workoutId);
       currentHook.deleteMealRecord(mealId);
@@ -443,11 +451,13 @@ describe("useLocalSyncMemo", () => {
       await flushEffects();
     });
 
+    expect(currentHook.notes).toHaveLength(0);
     expect(currentHook.tasks).toHaveLength(0);
     expect(currentHook.workoutRecords).toHaveLength(0);
     expect(currentHook.mealRecords).toHaveLength(0);
     expect(currentHook.weightRecords).toHaveLength(0);
     const saved = storage.saved.at(-1);
+    expect(saved?.notes[0].deletedAt).not.toBeNull();
     expect(saved?.tasks[0].deletedAt).not.toBeNull();
     expect(saved?.workoutRecords[0].deletedAt).not.toBeNull();
     expect(saved?.mealRecords[0].deletedAt).not.toBeNull();
@@ -495,5 +505,77 @@ describe("useLocalSyncMemo", () => {
       browserStorage.getItem("localsyncmemo:supabase-config:v2") ?? "{}",
     ) as { config?: { boundUserId?: string } };
     expect(retainedConfig.config?.boundUserId).toBe("user-a");
+  });
+
+  it("rehydrates local mode and resumes saving after sign-out", async () => {
+    const storage = new MemoryStorage(createEmptySnapshot());
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient, null);
+    await settleInitialSave();
+
+    await act(async () => {
+      await currentHook.saveSupabaseConfig({
+        supabaseUrl: "https://example.supabase.co",
+        supabaseAnonKey: "anon-key",
+      });
+      await flushEffects();
+    });
+    await act(async () => {
+      await currentHook.signIn("user@example.com", "password");
+      await flushEffects(16);
+    });
+
+    expect(currentHook.isAuthenticated).toBe(true);
+    expect(currentHook.isReady).toBe(true);
+    storage.saved.length = 0;
+
+    await act(async () => {
+      await currentHook.signOut();
+      await flushEffects(16);
+    });
+
+    expect(currentHook.isAuthenticated).toBe(false);
+    expect(currentHook.isReady).toBe(true);
+
+    await act(async () => {
+      currentHook.addNote();
+      await vi.advanceTimersByTimeAsync(400);
+      await flushEffects();
+    });
+
+    expect(storage.saved.at(-1)?.notes).toHaveLength(1);
+  });
+
+  it("rejects a sign-in that conflicts with the persisted user binding", async () => {
+    browserStorage.setItem(
+      "localsyncmemo:supabase-config:v2",
+      JSON.stringify({
+        version: 2,
+        config: {
+          supabaseUrl: "https://example.supabase.co",
+          supabaseAnonKey: "anon-key",
+          boundUserId: "user-b",
+        },
+      }),
+    );
+    const storage = new MemoryStorage(createEmptySnapshot());
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient);
+
+    await act(async () => {
+      await currentHook.saveSupabaseConfig({
+        supabaseUrl: "https://example.supabase.co",
+        supabaseAnonKey: "anon-key",
+      });
+      await flushEffects();
+    });
+
+    await expect(
+      act(async () => {
+        await currentHook.signIn("other@example.com", "password");
+      }),
+    ).rejects.toThrow("다른 계정에 연결되어 있습니다");
+    expect(syncClient.trace).toContain("signOut");
+    expect(currentHook.isAuthenticated).toBe(false);
   });
 });

@@ -1,210 +1,61 @@
+import { createClient } from "@supabase/supabase-js";
+import type { Device, LocalDataSnapshot } from "../../types";
+import { mergeDevices } from "./merge";
 import {
-  createClient,
-  type SupabaseClient as SupabaseClientBase,
-} from "@supabase/supabase-js";
+  createSupabaseFinanceSummaryTransport,
+  fetchFinanceDailySummaries,
+  type FinanceSummaryTransport,
+} from "./supabase/financeSummary";
+import {
+  ACTIVE_DEVICE_WINDOW_MS,
+  createSupabasePresenceTransport,
+  filterActiveDevices,
+  loadActiveDevices,
+  startDeviceHeartbeat,
+  type PresenceTransport,
+} from "./supabase/presence";
+import {
+  createSupabaseRealtimeTransport,
+  getRealtimeDetail,
+  subscribeSnapshotRealtime,
+  type RealtimeTransport,
+} from "./supabase/realtime";
+import type { Database, SupabaseClient } from "./supabase/rows";
+import {
+  createSupabaseSnapshotTransport,
+  pullSnapshot,
+  pushSnapshot,
+  type SnapshotTransport,
+} from "./supabase/snapshotIo";
 import type {
-  Device,
-  LocalDataSnapshot,
-  MealRecord,
-  Note,
-  Task,
-  WeightRecord,
-  WorkoutRecord,
-  WorkoutType,
-} from "../../types";
-import type {
-  RealtimeOptions,
-  RealtimeSubscription,
   AuthState,
   FinanceDailySummary,
+  RealtimeOptions,
+  RealtimeSubscription,
   SyncClient,
   SyncContext,
   SyncResult,
   SyncStatus,
 } from "./syncTypes";
-import {
-  mergeDevices as mergeSyncDevices,
-  mergeEntities as mergeSyncEntities,
-} from "./merge";
 
-const ACTIVE_DEVICE_WINDOW_MS = 60_000;
-const HEARTBEAT_INTERVAL_MS = 20_000;
+type SupabaseClientFactory = (
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+) => SupabaseClient;
 
-interface EntityAuditRow {
-  created_at?: string | null;
-  is_backfilled?: boolean | null;
-  backfilled_at?: string | null;
-  backfill_reason?: string | null;
+export interface SupabaseSyncClientDependencies {
+  createClient?: SupabaseClientFactory;
+  getOnlineState?: () => boolean;
+  now?: () => Date;
 }
 
-interface NoteRow extends EntityAuditRow {
-  id: string;
-  user_id: string;
-  title: string;
-  content: string;
-  updated_at: string;
-  deleted_at: string | null;
-  device_id: string;
-}
-
-interface TaskRow extends EntityAuditRow {
-  id: string;
-  user_id: string;
-  text: string;
-  is_done: boolean;
-  order_index: number;
-  due_date: string | null;
-  due_time: string | null;
-  planned_date: string | null;
-  updated_at: string;
-  deleted_at: string | null;
-  device_id: string;
-}
-
-interface WorkoutRecordRow extends EntityAuditRow {
-  id: string;
-  user_id: string;
-  date: string;
-  workout_type: WorkoutType;
-  category: string;
-  exercise_name: string;
-  duration_seconds: number | null;
-  average_heart_rate: number | null;
-  source_app?: "os" | "fitness" | null;
-  scope?: "os" | "fitness" | "both" | null;
-  metadata?: Record<string, unknown> | null;
-  contract_version?: number | null;
-  updated_at: string;
-  deleted_at: string | null;
-  device_id: string;
-}
-
-interface MealRecordRow extends EntityAuditRow {
-  id: string;
-  user_id: string;
-  date: string;
-  menu: string;
-  calories: number;
-  protein_grams: number;
-  carbs_grams: number | null;
-  fat_grams: number | null;
-  source_app?: "os" | "fitness" | null;
-  scope?: "os" | "fitness" | "both" | null;
-  metadata?: Record<string, unknown> | null;
-  contract_version?: number | null;
-  updated_at: string;
-  deleted_at: string | null;
-  device_id: string;
-}
-
-interface WeightRecordRow extends EntityAuditRow {
-  id: string;
-  user_id: string;
-  date: string;
-  weight_kg: number;
-  source_app?: "os" | "fitness" | null;
-  scope?: "os" | "fitness" | "both" | null;
-  metadata?: Record<string, unknown> | null;
-  contract_version?: number | null;
-  updated_at: string;
-  deleted_at: string | null;
-  device_id: string;
-}
-
-interface DeviceRow {
-  id: string;
-  user_id: string;
-  name: string;
-  last_seen_at: string;
-  app_version: string | null;
-}
-
-interface FinanceDailySummaryRow {
-  user_id: string;
-  date: string;
-  income_krw: number;
-  expense_krw: number;
-  net_krw: number;
-  entry_count: number;
-}
-
-type FinanceDailySummarySelectedRow = Pick<
-  FinanceDailySummaryRow,
-  "date" | "income_krw" | "expense_krw" | "net_krw" | "entry_count"
->;
-
-interface PostgresChangePayload<Row> {
-  eventType: "INSERT" | "UPDATE" | "DELETE";
-  new: Row;
-  old: Partial<Row>;
-}
-
-interface UpsertTable<Row> {
-  upsert(
-    values: Row | Row[],
-    options?: { onConflict?: string },
-  ): Promise<{ error: Error | null }>;
-}
-
-interface Database {
-  public: {
-    Tables: {
-      notes: {
-        Row: NoteRow;
-        Insert: NoteRow;
-        Update: Partial<NoteRow>;
-        Relationships: [];
-      };
-      tasks: {
-        Row: TaskRow;
-        Insert: TaskRow;
-        Update: Partial<TaskRow>;
-        Relationships: [];
-      };
-      workout_records: {
-        Row: WorkoutRecordRow;
-        Insert: WorkoutRecordRow;
-        Update: Partial<WorkoutRecordRow>;
-        Relationships: [];
-      };
-      meal_records: {
-        Row: MealRecordRow;
-        Insert: MealRecordRow;
-        Update: Partial<MealRecordRow>;
-        Relationships: [];
-      };
-      weight_records: {
-        Row: WeightRecordRow;
-        Insert: WeightRecordRow;
-        Update: Partial<WeightRecordRow>;
-        Relationships: [];
-      };
-      devices: {
-        Row: DeviceRow;
-        Insert: DeviceRow;
-        Update: Partial<DeviceRow>;
-        Relationships: [];
-      };
-    };
-    Views: {
-      finance_summary_daily: {
-        Row: FinanceDailySummaryRow;
-        Relationships: [];
-      };
-    };
-    Functions: Record<string, never>;
-  };
-}
-
-type SupabaseClient = SupabaseClientBase<Database, "public">;
-
-interface SupabaseSyncClientOptions {
+export interface SupabaseSyncClientOptions {
   supabaseUrl?: string;
   supabaseAnonKey?: string;
+  dependencies?: SupabaseSyncClientDependencies;
 }
 
-// 브라우저/웹뷰의 네트워크 상태를 동기화 가능 여부의 1차 신호로 쓴다.
-function getOnlineState(): boolean {
+function getBrowserOnlineState(): boolean {
   if (typeof navigator === "undefined") {
     return false;
   }
@@ -212,11 +63,11 @@ function getOnlineState(): boolean {
   return navigator.onLine;
 }
 
-// Supabase 설정이 있는 상태의 공통 SyncStatus 생성기다.
-function toConfiguredStatus(
+function createConfiguredStatus(
   mode: SyncStatus["mode"],
   detail: string,
   lastSyncedAt: string | null,
+  isOnline: boolean,
 ): SyncStatus {
   const labels: Record<SyncStatus["mode"], string> = {
     offline: "offline",
@@ -230,352 +81,23 @@ function toConfiguredStatus(
     mode,
     label: labels[mode],
     detail,
-    isOnline: getOnlineState(),
+    isOnline,
     lastSyncedAt,
     isConfigured: true,
   };
 }
 
-// 환경 변수가 비어 있을 때는 Supabase 클라이언트를 만들지 않고 로컬 모드로 둔다.
-function toLocalOnlyStatus(): SyncStatus {
+function createLocalOnlyStatus(isOnline: boolean): SyncStatus {
   return {
     mode: "local-only",
     label: "local-only",
     detail: "Supabase 환경 변수가 설정되지 않아 로컬 모드로 실행 중입니다.",
-    isOnline: getOnlineState(),
+    isOnline,
     lastSyncedAt: null,
     isConfigured: false,
   };
 }
 
-function auditFieldsFromRow(
-  row: EntityAuditRow,
-  fallbackUpdatedAt: string,
-) {
-  const isBackfilled = row.is_backfilled === true;
-  const createdAt = row.created_at ?? fallbackUpdatedAt;
-
-  return {
-    createdAt,
-    isBackfilled,
-    backfilledAt: isBackfilled ? row.backfilled_at ?? createdAt : null,
-    backfillReason: isBackfilled ? row.backfill_reason ?? null : null,
-  };
-}
-
-function auditFieldsToRow(entity: {
-  createdAt: string;
-  isBackfilled: boolean;
-  backfilledAt: string | null;
-  backfillReason: string | null;
-}): Required<EntityAuditRow> {
-  return {
-    created_at: entity.createdAt,
-    is_backfilled: entity.isBackfilled,
-    backfilled_at: entity.backfilledAt,
-    backfill_reason: entity.backfillReason,
-  };
-}
-
-// DB row와 앱 엔티티는 snake_case/camelCase가 달라 변환 함수를 명시한다.
-function noteFromRow(row: NoteRow): Note {
-  return {
-    ...auditFieldsFromRow(row, row.updated_at),
-    id: row.id,
-    title: row.title,
-    content: row.content,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    deviceId: row.device_id,
-  };
-}
-
-function taskFromRow(row: TaskRow): Task {
-  return {
-    ...auditFieldsFromRow(row, row.updated_at),
-    id: row.id,
-    text: row.text,
-    isDone: row.is_done,
-    orderIndex: row.order_index,
-    dueDate: row.due_date,
-    dueTime: row.due_time ? row.due_time.slice(0, 5) : null,
-    plannedDate: row.planned_date ?? null,
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    deviceId: row.device_id,
-  };
-}
-
-function normalizeWorkoutType(value: string): WorkoutType {
-  return value === "cardio" || value === "other" ? value : "strength";
-}
-
-function normalizeSourceApp(value?: string | null): "os" | "fitness" {
-  return value === "fitness" ? "fitness" : "os";
-}
-
-function normalizeScope(value?: string | null): "os" | "fitness" | "both" {
-  if (value === "os" || value === "fitness" || value === "both") {
-    return value;
-  }
-  return "both";
-}
-
-function normalizeMetadata(value?: Record<string, unknown> | null): Record<string, unknown> {
-  return value ?? {};
-}
-
-function normalizeContractVersion(value?: number | null): 1 {
-  return value === 1 ? value : 1;
-}
-
-function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
-  return {
-    ...auditFieldsFromRow(row, row.updated_at),
-    id: row.id,
-    date: row.date,
-    workoutType: normalizeWorkoutType(row.workout_type),
-    category: row.category,
-    exerciseName: row.exercise_name,
-    durationSeconds: row.duration_seconds ?? null,
-    averageHeartRate: row.average_heart_rate ?? null,
-    sourceApp: normalizeSourceApp(row.source_app),
-    scope: normalizeScope(row.scope),
-    metadata: normalizeMetadata(row.metadata),
-    contractVersion: normalizeContractVersion(row.contract_version),
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    deviceId: row.device_id,
-  };
-}
-
-function mealRecordFromRow(row: MealRecordRow): MealRecord {
-  return {
-    ...auditFieldsFromRow(row, row.updated_at),
-    id: row.id,
-    date: row.date,
-    menu: row.menu,
-    calories: row.calories,
-    proteinGrams: row.protein_grams,
-    carbsGrams: row.carbs_grams,
-    fatGrams: row.fat_grams,
-    sourceApp: normalizeSourceApp(row.source_app),
-    scope: normalizeScope(row.scope),
-    metadata: normalizeMetadata(row.metadata),
-    contractVersion: normalizeContractVersion(row.contract_version),
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    deviceId: row.device_id,
-  };
-}
-
-function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
-  return {
-    ...auditFieldsFromRow(row, row.updated_at),
-    id: row.id,
-    date: row.date,
-    weightKg: row.weight_kg,
-    sourceApp: normalizeSourceApp(row.source_app),
-    scope: normalizeScope(row.scope),
-    metadata: normalizeMetadata(row.metadata),
-    contractVersion: normalizeContractVersion(row.contract_version),
-    updatedAt: row.updated_at,
-    deletedAt: row.deleted_at,
-    deviceId: row.device_id,
-  };
-}
-
-function deviceFromRow(row: DeviceRow): Device {
-  return {
-    id: row.id,
-    name: row.name,
-    lastSeenAt: row.last_seen_at,
-    appVersion: row.app_version,
-  };
-}
-
-function noteToRow(note: Note, userId: string): NoteRow {
-  return {
-    ...auditFieldsToRow(note),
-    id: note.id,
-    user_id: userId,
-    title: note.title,
-    content: note.content,
-    updated_at: note.updatedAt,
-    deleted_at: note.deletedAt,
-    device_id: note.deviceId,
-  };
-}
-
-function taskToRow(task: Task, userId: string): TaskRow {
-  return {
-    ...auditFieldsToRow(task),
-    id: task.id,
-    user_id: userId,
-    text: task.text,
-    is_done: task.isDone,
-    order_index: task.orderIndex,
-    due_date: task.dueDate,
-    due_time: task.dueTime,
-    planned_date: task.plannedDate,
-    updated_at: task.updatedAt,
-    deleted_at: task.deletedAt,
-    device_id: task.deviceId,
-  };
-}
-
-function workoutRecordToRow(
-  record: WorkoutRecord,
-  userId: string,
-): WorkoutRecordRow {
-  return {
-    ...auditFieldsToRow(record),
-    id: record.id,
-    user_id: userId,
-    date: record.date,
-    workout_type: record.workoutType,
-    category: record.category,
-    exercise_name: record.exerciseName,
-    duration_seconds: record.durationSeconds,
-    average_heart_rate: record.averageHeartRate,
-    source_app: record.sourceApp ?? "os",
-    scope: record.scope ?? "both",
-    metadata: record.metadata ?? {},
-    contract_version: record.contractVersion ?? 1,
-    updated_at: record.updatedAt,
-    deleted_at: record.deletedAt,
-    device_id: record.deviceId,
-  };
-}
-
-function mealRecordToRow(record: MealRecord, userId: string): MealRecordRow {
-  return {
-    ...auditFieldsToRow(record),
-    id: record.id,
-    user_id: userId,
-    date: record.date,
-    menu: record.menu,
-    calories: record.calories,
-    protein_grams: record.proteinGrams,
-    carbs_grams: record.carbsGrams,
-    fat_grams: record.fatGrams,
-    source_app: record.sourceApp ?? "os",
-    scope: record.scope ?? "both",
-    metadata: record.metadata ?? {},
-    contract_version: record.contractVersion ?? 1,
-    updated_at: record.updatedAt,
-    deleted_at: record.deletedAt,
-    device_id: record.deviceId,
-  };
-}
-
-function weightRecordToRow(
-  record: WeightRecord,
-  userId: string,
-): WeightRecordRow {
-  return {
-    ...auditFieldsToRow(record),
-    id: record.id,
-    user_id: userId,
-    date: record.date,
-    weight_kg: record.weightKg,
-    source_app: record.sourceApp ?? "os",
-    scope: record.scope ?? "both",
-    metadata: record.metadata ?? {},
-    contract_version: record.contractVersion ?? 1,
-    updated_at: record.updatedAt,
-    deleted_at: record.deletedAt,
-    device_id: record.deviceId,
-  };
-}
-
-function deviceToRow(device: Device, userId: string): DeviceRow {
-  return {
-    id: device.id,
-    user_id: userId,
-    name: device.name,
-    last_seen_at: device.lastSeenAt,
-    app_version: device.appVersion ?? null,
-  };
-}
-
-// pull sync 결과를 로컬 스냅샷과 합쳐 앱 상태로 되돌린다.
-function mergeSnapshot(
-  localSnapshot: LocalDataSnapshot,
-  incomingSnapshot: LocalDataSnapshot,
-): LocalDataSnapshot {
-  return {
-    notes: mergeSyncEntities(localSnapshot.notes, incomingSnapshot.notes),
-    tasks: mergeSyncEntities(localSnapshot.tasks, incomingSnapshot.tasks),
-    workoutRecords: mergeSyncEntities(
-      localSnapshot.workoutRecords,
-      incomingSnapshot.workoutRecords,
-    ),
-    mealRecords: mergeSyncEntities(
-      localSnapshot.mealRecords,
-      incomingSnapshot.mealRecords,
-    ),
-    weightRecords: mergeSyncEntities(
-      localSnapshot.weightRecords,
-      incomingSnapshot.weightRecords,
-    ),
-    devices: mergeSyncDevices(localSnapshot.devices, incomingSnapshot.devices),
-  };
-}
-
-// Realtime으로 받은 단일 메모 row만 현재 스냅샷에 반영한다.
-function applyRemoteNote(
-  snapshot: LocalDataSnapshot,
-  remoteNote: Note,
-): LocalDataSnapshot {
-  return {
-    ...snapshot,
-    notes: mergeSyncEntities(snapshot.notes, [remoteNote]),
-  };
-}
-
-// Realtime으로 받은 단일 체크리스트 row만 현재 스냅샷에 반영한다.
-function applyRemoteTask(
-  snapshot: LocalDataSnapshot,
-  remoteTask: Task,
-): LocalDataSnapshot {
-  return {
-    ...snapshot,
-    tasks: mergeSyncEntities(snapshot.tasks, [remoteTask]),
-  };
-}
-
-function applyRemoteWorkoutRecord(
-  snapshot: LocalDataSnapshot,
-  remoteRecord: WorkoutRecord,
-): LocalDataSnapshot {
-  return {
-    ...snapshot,
-    workoutRecords: mergeSyncEntities(snapshot.workoutRecords, [remoteRecord]),
-  };
-}
-
-function applyRemoteMealRecord(
-  snapshot: LocalDataSnapshot,
-  remoteRecord: MealRecord,
-): LocalDataSnapshot {
-  return {
-    ...snapshot,
-    mealRecords: mergeSyncEntities(snapshot.mealRecords, [remoteRecord]),
-  };
-}
-
-function applyRemoteWeightRecord(
-  snapshot: LocalDataSnapshot,
-  remoteRecord: WeightRecord,
-): LocalDataSnapshot {
-  return {
-    ...snapshot,
-    weightRecords: mergeSyncEntities(snapshot.weightRecords, [remoteRecord]),
-  };
-}
-
-// Supabase 에러와 unknown 예외를 UI에 표시 가능한 문자열로 통일한다.
 function toErrorMessage(caughtError: unknown): string {
   if (caughtError instanceof Error) {
     return caughtError.message;
@@ -584,42 +106,54 @@ function toErrorMessage(caughtError: unknown): string {
   return "Supabase 동기화 중 오류가 발생했습니다.";
 }
 
-// supabase-js의 from().upsert 타입을 테이블별 row 타입으로 좁혀 사용한다.
-function upsertTable<Row>(
-  supabase: SupabaseClient,
-  tableName:
-    | "notes"
-    | "tasks"
-    | "devices"
-    | "workout_records"
-    | "meal_records"
-    | "weight_records",
-): UpsertTable<Row> {
-  return supabase.from(tableName) as unknown as UpsertTable<Row>;
+function createDefaultSupabaseClient(
+  supabaseUrl: string,
+  supabaseAnonKey: string,
+): SupabaseClient {
+  return createClient<Database, "public">(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+    },
+  }) as SupabaseClient;
 }
 
-// Supabase Postgres, Realtime, heartbeat를 담당하는 실제 원격 동기화 클라이언트다.
+function noOpSubscription(): RealtimeSubscription {
+  return { unsubscribe: () => undefined };
+}
+
+// Public facade: auth and sync status stay here; transport-specific work lives
+// under ./supabase so it can be tested without a live project.
 export class SupabaseSyncClient implements SyncClient {
   private readonly supabase: SupabaseClient | null;
+  private readonly snapshotTransport: SnapshotTransport | null;
+  private readonly realtimeTransport: RealtimeTransport | null;
+  private readonly presenceTransport: PresenceTransport | null;
+  private readonly financeTransport: FinanceSummaryTransport | null;
+  private readonly getOnlineState: () => boolean;
+  private readonly now: () => Date;
   private authenticatedUserId: string | null = null;
   private status: SyncStatus;
 
-  constructor({ supabaseUrl, supabaseAnonKey }: SupabaseSyncClientOptions = {}) {
+  constructor({
+    supabaseUrl,
+    supabaseAnonKey,
+    dependencies = {},
+  }: SupabaseSyncClientOptions = {}) {
+    this.getOnlineState = dependencies.getOnlineState ?? getBrowserOnlineState;
+    this.now = dependencies.now ?? (() => new Date());
+
     const normalizedSupabaseUrl = supabaseUrl?.trim() ?? "";
     const normalizedSupabaseAnonKey = supabaseAnonKey?.trim() ?? "";
 
     if (normalizedSupabaseUrl && normalizedSupabaseAnonKey) {
-      this.supabase = createClient<Database, "public">(
+      const clientFactory =
+        dependencies.createClient ?? createDefaultSupabaseClient;
+      this.supabase = clientFactory(
         normalizedSupabaseUrl,
         normalizedSupabaseAnonKey,
-        {
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: false,
-          },
-        },
-      ) as SupabaseClient;
+      );
       this.supabase.auth.onAuthStateChange((_event, session) => {
         this.authenticatedUserId = session?.user.id ?? null;
       });
@@ -627,18 +161,51 @@ export class SupabaseSyncClient implements SyncClient {
       this.supabase = null;
     }
 
+    this.snapshotTransport = this.supabase
+      ? createSupabaseSnapshotTransport(this.supabase)
+      : null;
+    this.realtimeTransport = this.supabase
+      ? createSupabaseRealtimeTransport(this.supabase)
+      : null;
+    this.presenceTransport = this.supabase
+      ? createSupabasePresenceTransport(this.supabase)
+      : null;
+    this.financeTransport = this.supabase
+      ? createSupabaseFinanceSummaryTransport(this.supabase)
+      : null;
     this.status = this.supabase
-      ? toConfiguredStatus("offline", "아직 동기화하지 않았습니다.", null)
-      : toLocalOnlyStatus();
+      ? this.toConfiguredStatus("offline", "아직 동기화하지 않았습니다.", null)
+      : this.toLocalOnlyStatus();
+  }
+
+  private toConfiguredStatus(
+    mode: SyncStatus["mode"],
+    detail: string,
+    lastSyncedAt: string | null,
+  ): SyncStatus {
+    return createConfiguredStatus(
+      mode,
+      detail,
+      lastSyncedAt,
+      this.getOnlineState(),
+    );
+  }
+
+  private toLocalOnlyStatus(): SyncStatus {
+    return createLocalOnlyStatus(this.getOnlineState());
+  }
+
+  private nowIso(): string {
+    return this.now().toISOString();
   }
 
   getStatus(): SyncStatus {
     if (!this.supabase) {
-      return toLocalOnlyStatus();
+      return this.toLocalOnlyStatus();
     }
 
-    if (!getOnlineState() && this.status.mode !== "error") {
-      return toConfiguredStatus(
+    if (!this.getOnlineState() && this.status.mode !== "error") {
+      return this.toConfiguredStatus(
         "offline",
         "네트워크가 없어 로컬 모드로 계속 작동 중입니다.",
         this.status.lastSyncedAt,
@@ -664,7 +231,7 @@ export class SupabaseSyncClient implements SyncClient {
 
     this.authenticatedUserId = data.session?.user.id ?? null;
     if (!this.authenticatedUserId) {
-      this.status = toConfiguredStatus(
+      this.status = this.toConfiguredStatus(
         "offline",
         "원격 동기화를 사용하려면 로그인하세요.",
         this.status.lastSyncedAt,
@@ -709,12 +276,14 @@ export class SupabaseSyncClient implements SyncClient {
     if (!this.supabase) {
       return;
     }
+
     const { error } = await this.supabase.auth.signOut({ scope: "local" });
     if (error) {
       throw error;
     }
+
     this.authenticatedUserId = null;
-    this.status = toConfiguredStatus(
+    this.status = this.toConfiguredStatus(
       "offline",
       "원격 동기화를 사용하려면 로그인하세요.",
       this.status.lastSyncedAt,
@@ -726,34 +295,19 @@ export class SupabaseSyncClient implements SyncClient {
     fromDate: string,
     toDate: string,
   ): Promise<FinanceDailySummary[]> {
-    if (!this.supabase) {
+    if (!this.financeTransport) {
       return [];
     }
     if (!(await this.isAuthenticatedFor(userId))) {
       throw new Error("금융 기록을 보려면 같은 Supabase 계정으로 로그인해야 합니다.");
     }
 
-    const { data, error } = await this.supabase
-      .from("finance_summary_daily")
-      .select("date,income_krw,expense_krw,net_krw,entry_count")
-      .eq("user_id", userId)
-      .gte("date", fromDate)
-      .lte("date", toDate)
-      .order("date", { ascending: true });
-
-    if (error) {
-      throw error;
-    }
-
-    const rows = (data ?? []) as unknown as FinanceDailySummarySelectedRow[];
-
-    return rows.map((row) => ({
-      date: row.date,
-      incomeKrw: Number(row.income_krw),
-      expenseKrw: Number(row.expense_krw),
-      netKrw: Number(row.net_krw),
-      entryCount: Number(row.entry_count),
-    }));
+    return fetchFinanceDailySummaries(
+      this.financeTransport,
+      userId,
+      fromDate,
+      toDate,
+    );
   }
 
   private async isAuthenticatedFor(userId: string): Promise<boolean> {
@@ -763,6 +317,7 @@ export class SupabaseSyncClient implements SyncClient {
     if (this.authenticatedUserId === userId) {
       return true;
     }
+
     const authState = await this.getAuthState();
     return authState.userId === userId;
   }
@@ -785,14 +340,14 @@ export class SupabaseSyncClient implements SyncClient {
     localSnapshot: LocalDataSnapshot,
     context: SyncContext,
   ): Promise<LocalDataSnapshot> {
-    // pull은 원격 전체 row를 가져와 로컬 스냅샷과 병합한다.
-    if (!this.supabase) {
-      this.status = toLocalOnlyStatus();
+    const transport = this.snapshotTransport;
+    if (!transport) {
+      this.status = this.toLocalOnlyStatus();
       return localSnapshot;
     }
 
     if (!(await this.isAuthenticatedFor(context.userId))) {
-      this.status = toConfiguredStatus(
+      this.status = this.toConfiguredStatus(
         "offline",
         "원격 동기화를 사용하려면 로그인하세요.",
         this.status.lastSyncedAt,
@@ -800,8 +355,8 @@ export class SupabaseSyncClient implements SyncClient {
       return localSnapshot;
     }
 
-    if (!getOnlineState()) {
-      this.status = toConfiguredStatus(
+    if (!this.getOnlineState()) {
+      this.status = this.toConfiguredStatus(
         "offline",
         "오프라인 상태라 원격 데이터를 가져오지 않았습니다.",
         this.status.lastSyncedAt,
@@ -809,91 +364,30 @@ export class SupabaseSyncClient implements SyncClient {
       return localSnapshot;
     }
 
-    this.status = toConfiguredStatus("syncing", "Supabase에서 변경사항을 가져오는 중입니다.", this.status.lastSyncedAt);
+    this.status = this.toConfiguredStatus(
+      "syncing",
+      "Supabase에서 변경사항을 가져오는 중입니다.",
+      this.status.lastSyncedAt,
+    );
 
     try {
-      const [
-        notesResult,
-        tasksResult,
-        workoutRecordsResult,
-        mealRecordsResult,
-        weightRecordsResult,
-        devicesResult,
-      ] = await Promise.all([
-        this.supabase
-          .from("notes")
-          .select("*")
-          .eq("user_id", context.userId),
-        this.supabase
-          .from("tasks")
-          .select("*")
-          .eq("user_id", context.userId),
-        this.supabase
-          .from("workout_records")
-          .select("*")
-          .eq("user_id", context.userId),
-        this.supabase
-          .from("meal_records")
-          .select("*")
-          .eq("user_id", context.userId),
-        this.supabase
-          .from("weight_records")
-          .select("*")
-          .eq("user_id", context.userId),
-        this.supabase
-          .from("devices")
-          .select("*")
-          .eq("user_id", context.userId),
-      ]);
-
-      if (notesResult.error) {
-        throw notesResult.error;
-      }
-
-      if (tasksResult.error) {
-        throw tasksResult.error;
-      }
-
-      if (workoutRecordsResult.error) {
-        throw workoutRecordsResult.error;
-      }
-
-      if (mealRecordsResult.error) {
-        throw mealRecordsResult.error;
-      }
-
-      if (weightRecordsResult.error) {
-        throw weightRecordsResult.error;
-      }
-
-      if (devicesResult.error) {
-        throw devicesResult.error;
-      }
-
-      const incomingSnapshot: LocalDataSnapshot = {
-        notes: (notesResult.data ?? []).map(noteFromRow),
-        tasks: (tasksResult.data ?? []).map(taskFromRow),
-        workoutRecords: (workoutRecordsResult.data ?? []).map(
-          workoutRecordFromRow,
-        ),
-        mealRecords: (mealRecordsResult.data ?? []).map(mealRecordFromRow),
-        weightRecords: (weightRecordsResult.data ?? []).map(
-          weightRecordFromRow,
-        ),
-        devices: (devicesResult.data ?? []).map(deviceFromRow),
-      };
-      const mergedSnapshot = mergeSnapshot(localSnapshot, incomingSnapshot);
-      const now = new Date().toISOString();
-
-      this.status = toConfiguredStatus(
+      const mergedSnapshot = await pullSnapshot(
+        transport,
+        localSnapshot,
+        context.userId,
+      );
+      this.status = this.toConfiguredStatus(
         "synced",
         "Supabase에서 최신 데이터를 가져왔습니다.",
-        now,
+        this.nowIso(),
       );
-
       return mergedSnapshot;
     } catch (caughtError) {
-      this.status = toConfiguredStatus("error", toErrorMessage(caughtError), this.status.lastSyncedAt);
+      this.status = this.toConfiguredStatus(
+        "error",
+        toErrorMessage(caughtError),
+        this.status.lastSyncedAt,
+      );
       return localSnapshot;
     }
   }
@@ -902,14 +396,14 @@ export class SupabaseSyncClient implements SyncClient {
     localSnapshot: LocalDataSnapshot,
     context: SyncContext,
   ): Promise<SyncResult> {
-    // push는 이 기기에서 수정한 row와 현재 device heartbeat만 업서트한다.
-    if (!this.supabase) {
-      this.status = toLocalOnlyStatus();
+    const transport = this.snapshotTransport;
+    if (!transport) {
+      this.status = this.toLocalOnlyStatus();
       return { status: this.status, changedRows: 0 };
     }
 
     if (!(await this.isAuthenticatedFor(context.userId))) {
-      this.status = toConfiguredStatus(
+      this.status = this.toConfiguredStatus(
         "offline",
         "원격 동기화를 사용하려면 로그인하세요.",
         this.status.lastSyncedAt,
@@ -917,8 +411,8 @@ export class SupabaseSyncClient implements SyncClient {
       return { status: this.status, changedRows: 0 };
     }
 
-    if (!getOnlineState()) {
-      this.status = toConfiguredStatus(
+    if (!this.getOnlineState()) {
+      this.status = this.toConfiguredStatus(
         "offline",
         "오프라인 상태라 로컬 변경사항을 Supabase에 보내지 않았습니다.",
         this.status.lastSyncedAt,
@@ -926,377 +420,109 @@ export class SupabaseSyncClient implements SyncClient {
       return { status: this.status, changedRows: 0 };
     }
 
-    this.status = toConfiguredStatus("syncing", "로컬 변경사항을 Supabase에 저장하는 중입니다.", this.status.lastSyncedAt);
+    this.status = this.toConfiguredStatus(
+      "syncing",
+      "로컬 변경사항을 Supabase에 저장하는 중입니다.",
+      this.status.lastSyncedAt,
+    );
 
     try {
-      const currentDevice = {
-        ...context.device,
-        lastSeenAt: new Date().toISOString(),
-      };
-      const ownNotes = localSnapshot.notes
-        .filter((note) => note.deviceId === context.device.id)
-        .map((note) => noteToRow(note, context.userId));
-      const ownTasks = localSnapshot.tasks
-        .filter((task) => task.deviceId === context.device.id)
-        .map((task) => taskToRow(task, context.userId));
-      const ownWorkoutRecords = localSnapshot.workoutRecords
-        .filter((record) => record.deviceId === context.device.id)
-        .map((record) => workoutRecordToRow(record, context.userId));
-      const ownMealRecords = localSnapshot.mealRecords
-        .filter((record) => record.deviceId === context.device.id)
-        .map((record) => mealRecordToRow(record, context.userId));
-      const ownWeightRecords = localSnapshot.weightRecords
-        .filter((record) => record.deviceId === context.device.id)
-        .map((record) => weightRecordToRow(record, context.userId));
-      let changedRows = 0;
-
-      const deviceResult = await upsertTable<DeviceRow>(
-        this.supabase,
-        "devices",
-      ).upsert(deviceToRow(currentDevice, context.userId), {
-          onConflict: "user_id,id",
-        });
-
-      if (deviceResult.error) {
-        throw deviceResult.error;
-      }
-
-      changedRows += 1;
-
-      if (ownNotes.length > 0) {
-        const notesResult = await upsertTable<NoteRow>(
-          this.supabase,
-          "notes",
-        ).upsert(ownNotes, { onConflict: "id" });
-
-        if (notesResult.error) {
-          throw notesResult.error;
-        }
-
-        changedRows += ownNotes.length;
-      }
-
-      if (ownTasks.length > 0) {
-        const tasksResult = await upsertTable<TaskRow>(
-          this.supabase,
-          "tasks",
-        ).upsert(ownTasks, { onConflict: "id" });
-
-        if (tasksResult.error) {
-          throw tasksResult.error;
-        }
-
-        changedRows += ownTasks.length;
-      }
-
-      if (ownWorkoutRecords.length > 0) {
-        const workoutRecordsResult = await upsertTable<WorkoutRecordRow>(
-          this.supabase,
-          "workout_records",
-        ).upsert(ownWorkoutRecords, { onConflict: "id" });
-
-        if (workoutRecordsResult.error) {
-          throw workoutRecordsResult.error;
-        }
-
-        changedRows += ownWorkoutRecords.length;
-      }
-
-      if (ownMealRecords.length > 0) {
-        const mealRecordsResult = await upsertTable<MealRecordRow>(
-          this.supabase,
-          "meal_records",
-        ).upsert(ownMealRecords, { onConflict: "id" });
-
-        if (mealRecordsResult.error) {
-          throw mealRecordsResult.error;
-        }
-
-        changedRows += ownMealRecords.length;
-      }
-
-      if (ownWeightRecords.length > 0) {
-        const weightRecordsResult = await upsertTable<WeightRecordRow>(
-          this.supabase,
-          "weight_records",
-        ).upsert(ownWeightRecords, { onConflict: "id" });
-
-        if (weightRecordsResult.error) {
-          throw weightRecordsResult.error;
-        }
-
-        changedRows += ownWeightRecords.length;
-      }
-
-      const now = new Date().toISOString();
-      this.status = toConfiguredStatus(
+      const result = await pushSnapshot(
+        transport,
+        localSnapshot,
+        context,
+        this.nowIso(),
+      );
+      this.status = this.toConfiguredStatus(
         "synced",
         "Supabase에 로컬 변경사항을 저장했습니다.",
-        now,
+        this.nowIso(),
       );
 
       return {
         status: this.status,
-        changedRows,
+        changedRows: result.changedRows,
         snapshot: {
           ...localSnapshot,
-          devices: mergeSyncDevices(localSnapshot.devices, [currentDevice]),
+          devices: mergeDevices(localSnapshot.devices, [result.currentDevice]),
         },
       };
     } catch (caughtError) {
-      this.status = toConfiguredStatus("error", toErrorMessage(caughtError), this.status.lastSyncedAt);
+      this.status = this.toConfiguredStatus(
+        "error",
+        toErrorMessage(caughtError),
+        this.status.lastSyncedAt,
+      );
       return { status: this.status, changedRows: 0 };
     }
   }
 
   subscribeRealtime(options: RealtimeOptions): RealtimeSubscription {
-    if (
-      !this.supabase ||
-      this.authenticatedUserId !== options.context.userId
-    ) {
-      return { unsubscribe: () => undefined };
+    const transport = this.realtimeTransport;
+    if (!transport || this.authenticatedUserId !== options.context.userId) {
+      return noOpSubscription();
     }
 
     const { context, getSnapshot, onSnapshot, onError } = options;
-    // 자기 기기에서 발생한 이벤트는 이미 로컬 상태에 있으므로 무시한다.
-    const channel = this.supabase
-      .channel(`localsyncmemo:${context.userId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "notes",
-          filter: `user_id=eq.${context.userId}`,
-        },
-        (payload) => {
-          const typedPayload =
-            payload as unknown as PostgresChangePayload<NoteRow>;
-          const row = typedPayload.new;
-
-          if (!row || row.device_id === context.device.id) {
-            return;
-          }
-
-          const nextSnapshot = applyRemoteNote(getSnapshot(), noteFromRow(row));
-          this.status = toConfiguredStatus(
-            "synced",
-            "다른 기기의 메모 변경사항을 반영했습니다.",
-            new Date().toISOString(),
-          );
-          onSnapshot(nextSnapshot, this.status);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "tasks",
-          filter: `user_id=eq.${context.userId}`,
-        },
-        (payload) => {
-          const typedPayload =
-            payload as unknown as PostgresChangePayload<TaskRow>;
-          const row = typedPayload.new;
-
-          if (!row || row.device_id === context.device.id) {
-            return;
-          }
-
-          const nextSnapshot = applyRemoteTask(getSnapshot(), taskFromRow(row));
-          this.status = toConfiguredStatus(
-            "synced",
-            "다른 기기의 체크리스트 변경사항을 반영했습니다.",
-            new Date().toISOString(),
-          );
-          onSnapshot(nextSnapshot, this.status);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "workout_records",
-          filter: `user_id=eq.${context.userId}`,
-        },
-        (payload) => {
-          const typedPayload =
-            payload as unknown as PostgresChangePayload<WorkoutRecordRow>;
-          const row = typedPayload.new;
-
-          if (!row || row.device_id === context.device.id) {
-            return;
-          }
-
-          const nextSnapshot = applyRemoteWorkoutRecord(
-            getSnapshot(),
-            workoutRecordFromRow(row),
-          );
-          this.status = toConfiguredStatus(
-            "synced",
-            "다른 기기의 운동 기록 변경을 반영했습니다.",
-            new Date().toISOString(),
-          );
-          onSnapshot(nextSnapshot, this.status);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "meal_records",
-          filter: `user_id=eq.${context.userId}`,
-        },
-        (payload) => {
-          const typedPayload =
-            payload as unknown as PostgresChangePayload<MealRecordRow>;
-          const row = typedPayload.new;
-
-          if (!row || row.device_id === context.device.id) {
-            return;
-          }
-
-          const nextSnapshot = applyRemoteMealRecord(
-            getSnapshot(),
-            mealRecordFromRow(row),
-          );
-          this.status = toConfiguredStatus(
-            "synced",
-            "다른 기기의 식사 기록 변경을 반영했습니다.",
-            new Date().toISOString(),
-          );
-          onSnapshot(nextSnapshot, this.status);
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "weight_records",
-          filter: `user_id=eq.${context.userId}`,
-        },
-        (payload) => {
-          const typedPayload =
-            payload as unknown as PostgresChangePayload<WeightRecordRow>;
-          const row = typedPayload.new;
-
-          if (!row || row.device_id === context.device.id) {
-            return;
-          }
-
-          const nextSnapshot = applyRemoteWeightRecord(
-            getSnapshot(),
-            weightRecordFromRow(row),
-          );
-          this.status = toConfiguredStatus(
-            "synced",
-            "다른 기기의 체중 기록 변경을 반영했습니다.",
-            new Date().toISOString(),
-          );
-          onSnapshot(nextSnapshot, this.status);
-        },
-      )
-      .subscribe((status) => {
-        if (status === "CHANNEL_ERROR") {
-          this.status = toConfiguredStatus(
-            "error",
-            "Supabase Realtime 구독에 실패했습니다.",
-            this.status.lastSyncedAt,
-          );
-          onError(this.status.detail);
-        }
-      });
-
-    return {
-      unsubscribe: async () => {
-        await this.supabase?.removeChannel(channel);
+    return subscribeSnapshotRealtime({
+      transport,
+      userId: context.userId,
+      currentDeviceId: context.device.id,
+      getSnapshot,
+      onSnapshot: (tableName, nextSnapshot) => {
+        this.status = this.toConfiguredStatus(
+          "synced",
+          getRealtimeDetail(tableName),
+          this.nowIso(),
+        );
+        onSnapshot(nextSnapshot, this.status);
       },
-    };
+      onError: () => {
+        this.status = this.toConfiguredStatus(
+          "error",
+          "Supabase Realtime 구독에 실패했습니다.",
+          this.status.lastSyncedAt,
+        );
+        onError(this.status.detail);
+      },
+    });
   }
 
   startHeartbeat(context: SyncContext): RealtimeSubscription {
-    if (!this.supabase || this.authenticatedUserId !== context.userId) {
-      return { unsubscribe: () => undefined };
+    const transport = this.presenceTransport;
+    if (!transport || this.authenticatedUserId !== context.userId) {
+      return noOpSubscription();
     }
 
-    let isStopped = false;
-
-    // heartbeat는 활성 기기 표시용이므로 실패해도 편집/저장을 막지 않는다.
-    const beat = async () => {
-      if (isStopped || !this.supabase || !getOnlineState()) {
-        return;
-      }
-
-      try {
-        await upsertTable<DeviceRow>(this.supabase, "devices").upsert(
-          deviceToRow(
-            {
-              ...context.device,
-              lastSeenAt: new Date().toISOString(),
-            },
-            context.userId,
-          ),
-          { onConflict: "user_id,id" },
-        );
-      } catch {
-        // Heartbeat failure should never interrupt local-first editing.
-      }
-    };
-
-    void beat();
-    const timerId = window.setInterval(beat, HEARTBEAT_INTERVAL_MS);
-
-    return {
-      unsubscribe: () => {
-        isStopped = true;
-        window.clearInterval(timerId);
-      },
-    };
+    return startDeviceHeartbeat(transport, context, {
+      isOnline: this.getOnlineState,
+      now: () => this.nowIso(),
+    });
   }
 
   async getActiveDevices(
     context: SyncContext,
     fallbackDevices: Device[],
   ): Promise<Device[]> {
-    // 최근 heartbeat가 있는 기기만 활성으로 간주한다.
-    const cutoff = new Date(Date.now() - ACTIVE_DEVICE_WINDOW_MS).toISOString();
+    const cutoff = new Date(
+      this.now().getTime() - ACTIVE_DEVICE_WINDOW_MS,
+    ).toISOString();
+    const transport = this.presenceTransport;
 
     if (
-      !this.supabase ||
-      !getOnlineState() ||
+      !transport ||
+      !this.getOnlineState() ||
       !(await this.isAuthenticatedFor(context.userId))
     ) {
-      return fallbackDevices
-        .filter((device) => device.lastSeenAt >= cutoff)
-        .sort((first, second) =>
-          second.lastSeenAt.localeCompare(first.lastSeenAt),
-        );
+      return filterActiveDevices(fallbackDevices, cutoff);
     }
 
-    try {
-      const { data, error } = await this.supabase
-        .from("devices")
-        .select("*")
-        .eq("user_id", context.userId)
-        .gte("last_seen_at", cutoff)
-        .order("last_seen_at", { ascending: false });
-
-      if (error) {
-        throw error;
-      }
-
-      return (data ?? []).map(deviceFromRow);
-    } catch {
-      return fallbackDevices
-        .filter((device) => device.lastSeenAt >= cutoff)
-        .sort((first, second) =>
-          second.lastSeenAt.localeCompare(first.lastSeenAt),
-        );
-    }
+    return loadActiveDevices(
+      transport,
+      context.userId,
+      fallbackDevices,
+      cutoff,
+    );
   }
 }
 
