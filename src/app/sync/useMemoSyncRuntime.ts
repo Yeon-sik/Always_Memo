@@ -5,6 +5,7 @@ import { getVisibleNotes } from "../../features/notes/noteService";
 import {
   bindSupabaseUser,
   emptyRuntimeConfig,
+  isManagedSupabaseConfig,
   loadRuntimeConfig,
   saveSupabaseConfig as persistSupabaseConfig,
   type RuntimeConfig,
@@ -453,6 +454,11 @@ export function useMemoSyncRuntime(
   const saveSupabaseConfig = useCallback(
     async (config: SupabaseConfigInput) => {
       try {
+        if (isManagedSupabaseConfig(activeRuntimeConfig)) {
+          throw new Error(
+            "공통 Supabase 연결은 앱 환경설정에서 관리됩니다.",
+          );
+        }
         const nextRuntimeConfig = persistSupabaseConfig(config);
         const nextSyncClient = createAppSyncClient(nextRuntimeConfig);
 
@@ -471,7 +477,7 @@ export function useMemoSyncRuntime(
         throw caughtError;
       }
     },
-    [],
+    [activeRuntimeConfig],
   );
 
   const signIn = useCallback(

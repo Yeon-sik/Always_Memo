@@ -14,6 +14,7 @@ export type SupabaseConfigInput = Pick<
 const SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v2";
 const LEGACY_SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v1";
 const LOCAL_SETTINGS_SOURCE = "local settings";
+const BUILD_ENV_SOURCE = "build environment";
 
 interface StoredSupabaseConfigEnvelope {
   version: 2;
@@ -147,19 +148,55 @@ export function saveSupabaseConfig(
   return savedConfig;
 }
 
+export function isCompleteSupabaseConfig(
+  config: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+): boolean {
+  const normalizedConfig = normalizeSupabaseConfigInput(config);
+  return Boolean(
+    normalizedConfig.supabaseUrl && normalizedConfig.supabaseAnonKey,
+  );
+}
+
+export function isManagedSupabaseConfig(config: RuntimeConfig): boolean {
+  return (
+    config.loaded &&
+    config.sourcePath !== LOCAL_SETTINGS_SOURCE &&
+    isCompleteSupabaseConfig(config)
+  );
+}
+
+function isSameSupabaseConnection(
+  left: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+  right: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+): boolean {
+  const normalizedLeft = normalizeSupabaseConfigInput(left);
+  const normalizedRight = normalizeSupabaseConfigInput(right);
+
+  return (
+    normalizedLeft.supabaseUrl === normalizedRight.supabaseUrl &&
+    normalizedLeft.supabaseAnonKey === normalizedRight.supabaseAnonKey
+  );
+}
+
 export function bindSupabaseUser(
   userId: string,
-  fallbackConfig?: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+  activeConfig?: RuntimeConfig,
 ): RuntimeConfig {
-  const current = loadSavedSupabaseConfig() ?? fallbackConfig;
+  const savedConfig = loadSavedSupabaseConfig();
+  const current =
+    activeConfig && isCompleteSupabaseConfig(activeConfig)
+      ? activeConfig
+      : savedConfig;
   if (!current?.supabaseUrl || !current.supabaseAnonKey) {
     throw new Error("Supabase 연결 설정을 먼저 저장하세요.");
   }
-  const nextConfig = toLocalSettingsRuntimeConfig({
-    supabaseUrl: current.supabaseUrl,
-    supabaseAnonKey: current.supabaseAnonKey,
-    boundUserId: userId,
-  });
+  const nextConfig = isManagedSupabaseConfig(current)
+    ? normalizeRuntimeConfig({ ...current, boundUserId: userId })
+    : toLocalSettingsRuntimeConfig({
+        supabaseUrl: current.supabaseUrl,
+        supabaseAnonKey: current.supabaseAnonKey,
+        boundUserId: userId,
+      });
   const storage = getBrowserLocalStorage();
   if (storage) {
     const envelope = {
@@ -175,6 +212,19 @@ export function bindSupabaseUser(
   return nextConfig;
 }
 
+function loadBuildEnvConfig(): RuntimeConfig {
+  const config = normalizeRuntimeConfig({
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    loaded: true,
+    sourcePath: BUILD_ENV_SOURCE,
+  });
+
+  return config.supabaseUrl || config.supabaseAnonKey
+    ? config
+    : emptyRuntimeConfig;
+}
+
 async function loadRuntimeEnvConfig(): Promise<RuntimeConfig> {
   try {
     const { invoke } = await import("@tauri-apps/api/core");
@@ -186,12 +236,42 @@ async function loadRuntimeEnvConfig(): Promise<RuntimeConfig> {
   }
 }
 
-export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const savedConfig = loadSavedSupabaseConfig();
+async function loadManagedSupabaseConfig(): Promise<RuntimeConfig> {
+  const buildConfig = loadBuildEnvConfig();
 
-  if (savedConfig) {
-    return savedConfig;
+  if (isCompleteSupabaseConfig(buildConfig)) {
+    return buildConfig;
   }
 
-  return loadRuntimeEnvConfig();
+  const runtimeConfig = await loadRuntimeEnvConfig();
+
+  if (isCompleteSupabaseConfig(runtimeConfig)) {
+    return runtimeConfig;
+  }
+
+  return buildConfig.loaded ? buildConfig : runtimeConfig;
+}
+
+export function resolveRuntimeConfig(
+  managedConfig: RuntimeConfig,
+  savedConfig: RuntimeConfig | null,
+): RuntimeConfig {
+  if (!isCompleteSupabaseConfig(managedConfig)) {
+    return savedConfig ?? managedConfig;
+  }
+
+  return {
+    ...managedConfig,
+    boundUserId:
+      savedConfig && isSameSupabaseConnection(managedConfig, savedConfig)
+        ? savedConfig.boundUserId
+        : "",
+  };
+}
+
+export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
+  const managedConfig = await loadManagedSupabaseConfig();
+  const savedConfig = loadSavedSupabaseConfig();
+
+  return resolveRuntimeConfig(managedConfig, savedConfig);
 }

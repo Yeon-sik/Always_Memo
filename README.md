@@ -161,17 +161,33 @@ hydrate가 끝난 뒤 발생한 pull/push 오류는 편집 자체를 직접 막�
 
 Supabase를 사용하지 않으면 별도 설정 없이 local-only mode로 실행할 수 있습니다.
 
-동기화를 사용하려면 다음 중 하나로 Project URL과 anon/publishable key를 제공합니다.
+공통 Supabase를 사용하는 배포본은 빌드 환경에 Project URL과
+anon/publishable key를 제공합니다.
 
-1. 앱의 설정 화면에서 연결 정보를 저장합니다.
-2. Tauri runtime env 파일에 값을 둡니다.
+```env
+VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
+```
+
+완전한 빌드 설정이 있으면 앱이 해당 연결을 우선하며, 이전에 저장한 수동
+URL/key가 이를 덮어쓰지 않습니다. 사용자는 각 기기에서 이메일과 비밀번호로
+최초 한 번 로그인하고 이후에는 Supabase가 저장한 세션을 사용합니다.
+
+빌드 설정이 없을 때는 다음 순서로 fallback합니다.
+
+1. Tauri runtime env 파일의 연결 정보
+2. 앱 설정 화면에서 로컬로 저장한 수동 연결 정보
+
+Tauri runtime env 파일은 다음 키를 읽습니다.
 
 ```env
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
 ```
 
-기존 개발 설정 호환을 위해 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`도 읽습니다. 수동 `USER_ID`는 지원하지 않습니다. 설정 후 이메일과 비밀번호로 Supabase Auth에 로그인하며, row의 `user_id`는 인증 세션의 `auth.users.id`를 문자열로 저장합니다.
+`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`도 runtime env 파일에서 읽을 수
+있습니다. 수동 `USER_ID`는 지원하지 않습니다. row의 `user_id`는 인증 세션의
+`auth.users.id`를 문자열로 저장합니다.
 
 Tauri runtime env 탐색 순서는 다음과 같습니다.
 
@@ -182,7 +198,9 @@ Tauri runtime env 탐색 순서는 다음과 같습니다.
 5. 실행 파일 폴더의 `yeonsik-note.env`
 6. 현재 작업 폴더의 `.env`
 
-앱 설정 화면에서 저장한 값이 있으면 해당 로컬 설정을 우선합니다. 동일 로컬 데이터는 최초 연결된 Auth 계정에 binding되며, 다른 계정으로 자동 전환하지 않습니다.
+동일 로컬 데이터는 최초 연결된 Auth 계정에 binding되며, 다른 계정으로 자동
+전환하지 않습니다. 저장된 binding은 URL과 key가 현재 관리형 연결과 정확히
+일치할 때만 승계합니다.
 
 DB 변경 절차, migration 순서와 RLS 검증은 [Supabase 운영 문서](supabase/README.codex.md)를 따르세요. `supabase/schema.sql`은 현재 개발 스키마 snapshot이고 `supabase/migrations/*.sql`이 변경 이력의 기준입니다. 저장소에 migration이 있다는 사실만으로 특정 원격 프로젝트에 적용되었다고 판단하면 안 됩니다.
 

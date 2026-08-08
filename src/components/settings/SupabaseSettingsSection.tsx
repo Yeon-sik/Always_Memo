@@ -13,6 +13,7 @@ import type {
   RuntimeConfig,
   SupabaseConfigInput,
 } from "../../lib/config/runtimeConfig";
+import { isManagedSupabaseConfig } from "../../lib/config/runtimeConfig";
 import type { SyncStatus } from "../../lib/sync/syncTypes";
 
 interface SupabaseSettingsSectionProps {
@@ -54,9 +55,12 @@ export function SupabaseSettingsSection({
   const [supabaseSaveStatus, setSupabaseSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
-  const configSourceLabel = supabaseConfig.loaded
-    ? supabaseConfig.sourcePath ?? "runtime"
-    : "not set";
+  const usesManagedConfig = isManagedSupabaseConfig(supabaseConfig);
+  const configSourceLabel = usesManagedConfig
+    ? "app managed"
+    : supabaseConfig.loaded
+      ? "manual fallback"
+      : "not set";
 
   useEffect(() => {
     setSupabaseUrl(supabaseConfig.supabaseUrl);
@@ -142,82 +146,109 @@ export function SupabaseSettingsSection({
         </button>
       </section>
 
-      <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
-        <form onSubmit={handleSupabaseConfigSubmit} className="space-y-3">
+      {usesManagedConfig ? (
+        <section className="rounded-md border border-cyan-200 bg-cyan-50 p-3 dark:border-cyan-900 dark:bg-cyan-950/30">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
               <KeyRound
                 className="h-4 w-4 text-cyan-700 dark:text-cyan-300"
                 aria-hidden="true"
               />
-              <span>Supabase config</span>
+              <span>공통 Supabase</span>
             </div>
             <span className="max-w-36 truncate text-xs font-medium text-slate-500 dark:text-neutral-400">
               {configSourceLabel}
             </span>
           </div>
-
-          <label className="block space-y-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
-              <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" />
-              Supabase URL
-            </span>
-            <input
-              type="url"
-              value={supabaseUrl}
-              onChange={(event) => {
-                setSupabaseUrl(event.target.value);
-                setSupabaseSaveStatus("idle");
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
-            />
-          </label>
-
-          <label className="block space-y-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
-              <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
-              Anon key
-            </span>
-            <input
-              type="password"
-              value={supabaseAnonKey}
-              onChange={(event) => {
-                setSupabaseAnonKey(event.target.value);
-                setSupabaseSaveStatus("idle");
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
-            />
-          </label>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="submit"
-              disabled={supabaseSaveStatus === "saving"}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-cyan-500 dark:text-black dark:hover:bg-cyan-400 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
-            >
-              <Save className="h-4 w-4" aria-hidden="true" />
-              <span>
-                {supabaseSaveStatus === "saving" ? "Saving" : "Save config"}
+          <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-neutral-300">
+            URL과 key는 앱 환경설정에서 관리됩니다. 이 기기에서는 공통 계정으로
+            한 번 로그인하면 저장된 세션을 계속 사용합니다.
+          </p>
+        </section>
+      ) : (
+        <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
+          <form onSubmit={handleSupabaseConfigSubmit} className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
+                <KeyRound
+                  className="h-4 w-4 text-cyan-700 dark:text-cyan-300"
+                  aria-hidden="true"
+                />
+                <span>수동 Supabase 연결</span>
+              </div>
+              <span className="max-w-36 truncate text-xs font-medium text-slate-500 dark:text-neutral-400">
+                {configSourceLabel}
               </span>
-            </button>
-            {supabaseSaveStatus === "saved" ? (
-              <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200 px-2 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
-                saved
+            </div>
+
+            <p className="text-xs leading-5 text-slate-500 dark:text-neutral-400">
+              앱에 공통 DB 설정이 없을 때만 사용하는 로컬 fallback입니다.
+            </p>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
+                <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                Supabase URL
               </span>
-            ) : null}
-            {supabaseSaveStatus === "error" ? (
-              <span className="inline-flex h-9 items-center rounded-md border border-red-200 px-2 text-xs font-medium text-red-700 dark:border-red-900 dark:text-red-300">
-                failed
+              <input
+                type="url"
+                value={supabaseUrl}
+                onChange={(event) => {
+                  setSupabaseUrl(event.target.value);
+                  setSupabaseSaveStatus("idle");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-neutral-400">
+                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                Anon key
               </span>
-            ) : null}
-          </div>
-        </form>
-      </section>
+              <input
+                type="password"
+                value={supabaseAnonKey}
+                onChange={(event) => {
+                  setSupabaseAnonKey(event.target.value);
+                  setSupabaseSaveStatus("idle");
+                }}
+                autoComplete="off"
+                spellCheck={false}
+                className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 font-mono text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-100 dark:border-neutral-800 dark:bg-black dark:text-neutral-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-950"
+              />
+            </label>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={supabaseSaveStatus === "saving"}
+                className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-medium text-white transition hover:bg-cyan-600 disabled:cursor-not-allowed disabled:bg-slate-400 dark:bg-cyan-500 dark:text-black dark:hover:bg-cyan-400 dark:disabled:bg-neutral-800 dark:disabled:text-neutral-400"
+              >
+                <Save className="h-4 w-4" aria-hidden="true" />
+                <span>
+                  {supabaseSaveStatus === "saving"
+                    ? "Saving"
+                    : "Save fallback"}
+                </span>
+              </button>
+              {supabaseSaveStatus === "saved" ? (
+                <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200 px-2 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:text-emerald-300">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  saved
+                </span>
+              ) : null}
+              {supabaseSaveStatus === "error" ? (
+                <span className="inline-flex h-9 items-center rounded-md border border-red-200 px-2 text-xs font-medium text-red-700 dark:border-red-900 dark:text-red-300">
+                  failed
+                </span>
+              ) : null}
+            </div>
+          </form>
+        </section>
+      )}
 
       <section className="rounded-md border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-black">
         {isAuthenticated ? (
@@ -244,7 +275,7 @@ export function SupabaseSettingsSection({
           <form onSubmit={handleSignIn} className="space-y-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-neutral-100">
               <User className="h-4 w-4" aria-hidden="true" />
-              <span>Supabase 계정 로그인</span>
+              <span>공통 Supabase 계정 로그인</span>
             </div>
             <input
               type="email"
