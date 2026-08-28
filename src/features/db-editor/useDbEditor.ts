@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { dbEditorApi } from "./api";
 import {
+  areDbEditorValuesEqual,
+  cloneDbEditorValue,
   createRequestGenerationGuard,
+  getRowChanges,
+  getRowIdentity,
   initialDbEditorModel,
   resetForPatChange,
   selectProject as selectProjectModel,
@@ -12,11 +16,13 @@ import {
   setResourceReady,
   setRowsPage,
   type DbEditorModelState,
+  type DbEditorRowInspectorState,
   type DbEditorResource,
 } from "./model";
 import type {
   DbEditorError,
   DbEditorProject,
+  DbEditorRow,
   DbEditorRowsPage,
   DbEditorSchema,
   DbEditorTable,
@@ -34,6 +40,8 @@ type Action =
   | { type: "tablesLoaded"; tables: DbEditorTable[] }
   | { type: "metadataLoaded"; metadata: DbEditorTableMetadata }
   | { type: "rowsLoaded"; rows: DbEditorRowsPage }
+  | { type: "rowUpdated"; row: DbEditorRow }
+  | { type: "rowUpdateReset" }
   | { type: "resourceLoading"; resource: DbEditorResource }
   | { type: "resourceError"; resource: DbEditorResource; error: DbEditorError }
   | { type: "projectSelected"; projectRef: string | null }
@@ -46,6 +54,7 @@ const EXPLORER_RESOURCES: readonly DbEditorResource[] = [
   "tables",
   "metadata",
   "rows",
+  "rowUpdate",
 ];
 
 function resetResource(
@@ -103,27 +112,57 @@ function reduceDbEditorModel(
       };
     case "rowsLoaded":
       return setRowsPage(state, action.rows);
+    case "rowUpdated": {
+      const ready = setResourceReady(state, "rowUpdate");
+      if (!ready.rows || !ready.metadata || ready.metadata.primaryKey.length === 0) {
+        return ready;
+      }
+
+      const rowIndex = ready.rows.rows.findIndex((candidate) =>
+        ready.metadata?.primaryKey.every((columnName) =>
+          areDbEditorValuesEqual(candidate[columnName], action.row[columnName]),
+        ),
+      );
+      if (rowIndex < 0) {
+        return ready;
+      }
+
+      const nextRows = [...ready.rows.rows];
+      nextRows[rowIndex] = action.row;
+      return {
+        ...ready,
+        rows: { ...ready.rows, rows: nextRows },
+      };
+    }
+    case "rowUpdateReset":
+      return resetResource(state, "rowUpdate");
     case "resourceLoading":
       return setResourceLoading(state, action.resource);
     case "resourceError":
       return setResourceError(state, action.resource, action.error);
     case "projectSelected": {
       let next = selectProjectModel(state, action.projectRef);
-      for (const resource of ["schemas", "tables", "metadata", "rows"] as const) {
+      for (const resource of [
+        "schemas",
+        "tables",
+        "metadata",
+        "rows",
+        "rowUpdate",
+      ] as const) {
         next = resetResource(next, resource);
       }
       return next;
     }
     case "schemaSelected": {
       let next = selectSchemaModel(state, action.schema);
-      for (const resource of ["tables", "metadata", "rows"] as const) {
+      for (const resource of ["tables", "metadata", "rows", "rowUpdate"] as const) {
         next = resetResource(next, resource);
       }
       return next;
     }
     case "tableSelected": {
       let next = selectTableModel(state, action.tableName);
-      for (const resource of ["metadata", "rows"] as const) {
+      for (const resource of ["metadata", "rows", "rowUpdate"] as const) {
         next = resetResource(next, resource);
       }
       return next;
@@ -137,6 +176,8 @@ export function useDbEditor() {
     initialDbEditorModel,
   );
   const [patInput, setPatInput] = useState("");
+  const [rowInspector, setRowInspector] =
+    useState<DbEditorRowInspectorState | null>(null);
   const [isOnline, setIsOnline] = useState(
     () => typeof navigator === "undefined" || navigator.onLine,
   );
@@ -363,7 +404,8 @@ export function useDbEditor() {
 
   const selectProject = useCallback(
     async (projectRef: string | null) => {
-      invalidateResources(["schemas", "tables", "metadata", "rows"]);
+      invalidateResources(["schemas", "tables", "metadata", "rows", "rowUpdate"]);
+      setRowInspector(null);
       dispatch({ type: "projectSelected", projectRef });
       if (projectRef) {
         await loadSchemas(projectRef);
@@ -374,7 +416,8 @@ export function useDbEditor() {
 
   const selectSchema = useCallback(
     async (schema: string | null) => {
-      invalidateResources(["tables", "metadata", "rows"]);
+      invalidateResources(["tables", "metadata", "rows", "rowUpdate"]);
+      setRowInspector(null);
       dispatch({ type: "schemaSelected", schema });
       const projectRef = state.navigator.selectedProjectRef;
       if (projectRef && schema) {
@@ -386,7 +429,8 @@ export function useDbEditor() {
 
   const selectTable = useCallback(
     async (tableName: string | null) => {
-      invalidateResources(["metadata", "rows"]);
+      invalidateResources(["metadata", "rows", "rowUpdate"]);
+      setRowInspector(null);
       dispatch({ type: "tableSelected", tableName });
       const { selectedProjectRef, selectedSchema } = state.navigator;
       if (!selectedProjectRef || !selectedSchema || !tableName) {
@@ -436,6 +480,117 @@ export function useDbEditor() {
     [loadRows, state.navigator, state.pagination.page, state.pagination.pageSize],
   );
 
+  const openRowInspector = useCallback(
+    (row: DbEditorRow) => {
+      if (!state.metadata) {
+        return;
+      }
+      invalidateResources(["rowUpdate"]);
+      dispatch({ type: "rowUpdateReset" });
+      setRowInspector({
+        original: cloneDbEditorValue(row),
+        draft: cloneDbEditorValue(row),
+      });
+    },
+    [invalidateResources, state.metadata],
+  );
+
+  const updateRowDraft = useCallback((columnName: string, value: unknown) => {
+    setRowInspector((current) =>
+      current
+        ? {
+            ...current,
+            draft: {
+              ...current.draft,
+              [columnName]: cloneDbEditorValue(value),
+            },
+          }
+        : current,
+    );
+  }, []);
+
+  const cancelRowInspector = useCallback(() => {
+    invalidateResources(["rowUpdate"]);
+    setRowInspector(null);
+  }, [invalidateResources]);
+
+  const applyRowUpdate = useCallback(async () => {
+    const currentInspector = rowInspector;
+    const currentMetadata = state.metadata;
+    const { selectedProjectRef, selectedSchema, selectedTableName } = state.navigator;
+
+    if (!currentInspector || !currentMetadata) {
+      return false;
+    }
+    if (!selectedProjectRef || !selectedSchema || !selectedTableName) {
+      return false;
+    }
+    if (!isOnline) {
+      dispatch({
+        type: "resourceError",
+        resource: "rowUpdate",
+        error: {
+          code: "network",
+          message: "오프라인에서는 행을 수정할 수 없습니다.",
+          status: null,
+          retryAfterSeconds: null,
+        },
+      });
+      return false;
+    }
+
+    const identity = getRowIdentity(currentMetadata, currentInspector.original);
+    if (!identity) {
+      dispatch({
+        type: "resourceError",
+        resource: "rowUpdate",
+        error: {
+          code: "invalidIdentity",
+          message: "선택 행의 기본 키 identity를 확인할 수 없습니다.",
+          status: null,
+          retryAfterSeconds: null,
+        },
+      });
+      return false;
+    }
+
+    const changes = getRowChanges(
+      currentMetadata,
+      currentInspector.original,
+      currentInspector.draft,
+    );
+    if (changes.length === 0) {
+      dispatch({
+        type: "resourceError",
+        resource: "rowUpdate",
+        error: {
+          code: "noChanges",
+          message: "변경된 컬럼이 없습니다.",
+          status: null,
+          retryAfterSeconds: null,
+        },
+      });
+      return false;
+    }
+
+    const updated = await runResource(
+      "rowUpdate",
+      () =>
+        dbEditorApi.updateRow({
+          projectRef: selectedProjectRef,
+          schema: selectedSchema,
+          table: selectedTableName,
+          identity,
+          changes,
+        }),
+      (row) => {
+        dispatch({ type: "rowUpdated", row });
+        setRowInspector(null);
+      },
+    );
+    return updated !== null;
+  }, [isOnline, rowInspector, runResource, state.metadata, state.navigator]);
+
   return {
     ...state,
     isOnline,
@@ -450,5 +605,10 @@ export function useDbEditor() {
     selectSchema,
     selectTable,
     refreshRows,
+    rowInspector,
+    openRowInspector,
+    updateRowDraft,
+    cancelRowInspector,
+    applyRowUpdate,
   };
 }

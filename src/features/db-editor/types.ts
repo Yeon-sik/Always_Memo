@@ -11,6 +11,15 @@ export type DbEditorErrorCode =
   | "invalidIdentifier"
   | "blockedSchema"
   | "tableNotFound"
+  | "readOnlyTable"
+  | "primaryKeyRequired"
+  | "invalidIdentity"
+  | "unknownColumn"
+  | "protectedColumn"
+  | "noChanges"
+  | "invalidValue"
+  | "unsupportedColumnType"
+  | "affectedRows"
   | "invalidPage"
   | "invalidResponse"
   | "queryFailed"
@@ -76,6 +85,31 @@ export interface DbEditorTableMetadata {
 }
 
 export type DbEditorRow = Record<string, unknown>;
+
+export type DbEditorJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | DbEditorJsonValue[]
+  | { [key: string]: DbEditorJsonValue };
+
+export interface DbEditorRowIdentity {
+  values: Array<[string, DbEditorJsonValue]>;
+}
+
+export interface DbEditorColumnChange {
+  name: string;
+  value: DbEditorJsonValue;
+}
+
+export interface DbEditorUpdateRowRequest {
+  projectRef: string;
+  schema: string;
+  table: string;
+  identity: DbEditorRowIdentity;
+  changes: DbEditorColumnChange[];
+}
 
 export interface DbEditorRowsPage {
   rows: DbEditorRow[];

@@ -34,7 +34,7 @@ export function DbEditorLauncher() {
             </h2>
             <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-neutral-400">
               별도 전체 폭 창에서 PAT로 접근 가능한 프로젝트와 테이블을
-              읽습니다. Phase 1은 읽기 전용입니다.
+              읽고, PK가 있는 한 행의 변경 컬럼만 수정합니다.
             </p>
           </div>
         </div>

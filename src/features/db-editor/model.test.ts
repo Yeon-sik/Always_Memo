@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   createRequestGenerationGuard,
+  getRowChanges,
+  getColumnValueKind,
   initialDbEditorModel,
+  isEditableTable,
+  isProtectedColumn,
   nextPage,
   normalizeDbEditorError,
+  parseColumnDraftValue,
   paginationControls,
   previousPage,
   resetForPatChange,
@@ -15,6 +20,7 @@ import {
   setRowsPage,
   type DbEditorModelState,
 } from "./model";
+import type { DbEditorColumn, DbEditorTableMetadata } from "./types";
 
 describe("db editor navigator", () => {
   it("resets dependent selection when project, schema, or table changes", () => {
@@ -135,6 +141,71 @@ describe("db editor stale request guard", () => {
     guard.invalidate(["rows"]);
 
     expect(guard.isCurrent(tableARows)).toBe(false);
+  });
+
+  it("ignores an in-flight row update after the selected row changes", () => {
+    const guard = createRequestGenerationGuard();
+    const firstUpdate = guard.begin("rowUpdate");
+
+    guard.invalidate(["rowUpdate"]);
+
+    expect(guard.isCurrent(firstUpdate)).toBe(false);
+  });
+});
+
+describe("db editor row update values", () => {
+  const column = (
+    name: string,
+    dataType: string,
+    overrides: Partial<DbEditorColumn> = {},
+  ): DbEditorColumn => ({
+    name,
+    ordinalPosition: 1,
+    dataType,
+    udtName: dataType,
+    isNullable: false,
+    defaultExpression: null,
+    isIdentity: false,
+    isGenerated: false,
+    isPrimaryKey: false,
+    primaryKeyPosition: null,
+    ...overrides,
+  });
+
+  it("parses JSON only when the draft is valid JSON", () => {
+    const payload = column("payload", "jsonb", { isNullable: true });
+
+    expect(getColumnValueKind(payload)).toBe("json");
+    expect(parseColumnDraftValue(payload, '{"ok":true}')).toEqual({
+      value: { ok: true },
+      error: null,
+    });
+    expect(parseColumnDraftValue(payload, '{"ok":')).toEqual({
+      value: null,
+      error: "JSON 형식이 올바르지 않습니다.",
+    });
+  });
+
+  it("keeps SQL NULL distinct from an empty string and returns only changed columns", () => {
+    const metadata: DbEditorTableMetadata = {
+      schema: "public",
+      name: "records",
+      tableType: "BASE TABLE",
+      columns: [
+        column("id", "uuid", { isPrimaryKey: true, primaryKeyPosition: 1 }),
+        column("label", "text", { isNullable: true }),
+      ],
+      primaryKey: ["id"],
+    };
+    const original = { id: "11111111-1111-1111-1111-111111111111", label: "" };
+    const draft = { ...original, label: null };
+
+    expect(getRowChanges(metadata, original, draft)).toEqual([
+      { name: "label", value: null },
+    ]);
+    expect(isEditableTable(metadata)).toBe(true);
+    expect(isProtectedColumn(metadata.columns[0])).toBe(true);
+    expect(isProtectedColumn(metadata.columns[1])).toBe(false);
   });
 });
 

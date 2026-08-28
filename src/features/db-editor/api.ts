@@ -2,10 +2,12 @@ import type {
   DbEditorPatStatus,
   DbEditorPatVerification,
   DbEditorProject,
+  DbEditorRow,
   DbEditorRowsPage,
   DbEditorSchema,
   DbEditorTable,
   DbEditorTableMetadata,
+  DbEditorUpdateRowRequest,
 } from "./types";
 
 type TauriInvoke = <T>(
@@ -88,5 +90,9 @@ export const dbEditorApi = {
       page,
       pageSize,
     });
+  },
+
+  async updateRow(request: DbEditorUpdateRowRequest): Promise<DbEditorRow> {
+    return (await getInvoke())<DbEditorRow>("update_db_row", { request });
   },
 };

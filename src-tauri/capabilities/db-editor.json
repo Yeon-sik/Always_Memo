@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "db-editor",
-  "description": "Read-only Supabase DB Editor permissions",
+  "description": "Supabase DB Editor permissions with PK-scoped single-row updates",
   "windows": ["db-editor"],
   "permissions": [
     "core:default",
@@ -13,6 +13,7 @@
     "allow-db-editor-list-schemas",
     "allow-db-editor-list-tables",
     "allow-db-editor-get-table-metadata",
-    "allow-db-editor-list-rows"
+    "allow-db-editor-list-rows",
+    "allow-update-db-row"
   ]
 }
