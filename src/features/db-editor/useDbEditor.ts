@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { dbEditorApi } from "./api";
 import {
+  createRequestGenerationGuard,
   initialDbEditorModel,
+  resetForPatChange,
   selectProject as selectProjectModel,
   selectSchema as selectSchemaModel,
   selectTable as selectTableModel,
@@ -25,7 +27,8 @@ import { normalizeDbEditorError } from "./model";
 type Action =
   | { type: "patLoading" }
   | { type: "patStatus"; configured: boolean; verified: boolean }
-  | { type: "patCleared" }
+  | { type: "patChanged"; configured: boolean }
+  | { type: "patVerificationFailed"; error: DbEditorError }
   | { type: "projectsLoaded"; projects: DbEditorProject[] }
   | { type: "schemasLoaded"; schemas: DbEditorSchema[] }
   | { type: "tablesLoaded"; tables: DbEditorTable[] }
@@ -36,6 +39,14 @@ type Action =
   | { type: "projectSelected"; projectRef: string | null }
   | { type: "schemaSelected"; schema: string | null }
   | { type: "tableSelected"; tableName: string | null };
+
+const EXPLORER_RESOURCES: readonly DbEditorResource[] = [
+  "projects",
+  "schemas",
+  "tables",
+  "metadata",
+  "rows",
+];
 
 function resetResource(
   state: DbEditorModelState,
@@ -66,14 +77,10 @@ function reduceDbEditorModel(
         patConfigured: action.configured,
         patVerified: action.verified,
       };
-    case "patCleared":
-      return {
-        ...initialDbEditorModel,
-        resources: {
-          ...initialDbEditorModel.resources,
-          pat: { status: "ready", error: null },
-        },
-      };
+    case "patChanged":
+      return resetForPatChange(action.configured);
+    case "patVerificationFailed":
+      return resetForPatChange(state.patConfigured, action.error);
     case "projectsLoaded":
       return {
         ...setResourceReady(state, "projects"),
@@ -133,6 +140,7 @@ export function useDbEditor() {
   const [isOnline, setIsOnline] = useState(
     () => typeof navigator === "undefined" || navigator.onLine,
   );
+  const requestGuard = useRef(createRequestGenerationGuard());
 
   useEffect(() => {
     const updateOnlineState = () => setIsOnline(navigator.onLine);
@@ -150,13 +158,20 @@ export function useDbEditor() {
       operation: () => Promise<T>,
       onSuccess: (value: T) => void,
     ): Promise<T | null> {
+      const request = requestGuard.current.begin(resource);
       dispatch({ type: "resourceLoading", resource });
 
       try {
         const value = await operation();
+        if (!requestGuard.current.isCurrent(request)) {
+          return null;
+        }
         onSuccess(value);
         return value;
       } catch (caughtError) {
+        if (!requestGuard.current.isCurrent(request)) {
+          return null;
+        }
         dispatch({
           type: "resourceError",
           resource,
@@ -168,17 +183,31 @@ export function useDbEditor() {
     [],
   );
 
+  const invalidateResources = useCallback(
+    (resources: readonly DbEditorResource[]) => {
+      requestGuard.current.invalidate(resources);
+    },
+    [],
+  );
+
   const refreshPatStatus = useCallback(async () => {
+    const request = requestGuard.current.begin("pat");
     dispatch({ type: "patLoading" });
 
     try {
       const status = await dbEditorApi.getPatStatus();
+      if (!requestGuard.current.isCurrent(request)) {
+        return;
+      }
       dispatch({
         type: "patStatus",
         configured: status.configured,
         verified: false,
       });
     } catch (caughtError) {
+      if (!requestGuard.current.isCurrent(request)) {
+        return;
+      }
       dispatch({
         type: "resourceError",
         resource: "pat",
@@ -207,14 +236,22 @@ export function useDbEditor() {
       return false;
     }
 
+    const request = requestGuard.current.begin("pat");
     dispatch({ type: "patLoading" });
 
     try {
-      await dbEditorApi.savePat(value);
-      dispatch({ type: "patStatus", configured: true, verified: false });
+      const status = await dbEditorApi.savePat(value);
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
+      requestGuard.current.invalidate(EXPLORER_RESOURCES);
+      dispatch({ type: "patChanged", configured: status.configured });
       setPatInput("");
       return true;
     } catch (caughtError) {
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
       dispatch({
         type: "resourceError",
         resource: "pat",
@@ -225,31 +262,44 @@ export function useDbEditor() {
   }, [patInput]);
 
   const verifyPat = useCallback(async () => {
+    const request = requestGuard.current.begin("pat");
     dispatch({ type: "patLoading" });
 
     try {
       await dbEditorApi.verifyPat();
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
       dispatch({ type: "patStatus", configured: true, verified: true });
       return true;
     } catch (caughtError) {
-      dispatch({
-        type: "resourceError",
-        resource: "pat",
-        error: normalizeDbEditorError(caughtError),
-      });
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
+      const error = normalizeDbEditorError(caughtError);
+      requestGuard.current.invalidate(EXPLORER_RESOURCES);
+      dispatch({ type: "patVerificationFailed", error });
       return false;
     }
   }, []);
 
   const deletePat = useCallback(async () => {
+    const request = requestGuard.current.begin("pat");
     dispatch({ type: "patLoading" });
 
     try {
-      await dbEditorApi.deletePat();
-      dispatch({ type: "patCleared" });
+      const status = await dbEditorApi.deletePat();
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
+      requestGuard.current.invalidate(EXPLORER_RESOURCES);
+      dispatch({ type: "patChanged", configured: status.configured });
       setPatInput("");
       return true;
     } catch (caughtError) {
+      if (!requestGuard.current.isCurrent(request)) {
+        return false;
+      }
       dispatch({
         type: "resourceError",
         resource: "pat",
@@ -313,27 +363,30 @@ export function useDbEditor() {
 
   const selectProject = useCallback(
     async (projectRef: string | null) => {
+      invalidateResources(["schemas", "tables", "metadata", "rows"]);
       dispatch({ type: "projectSelected", projectRef });
       if (projectRef) {
         await loadSchemas(projectRef);
       }
     },
-    [loadSchemas],
+    [invalidateResources, loadSchemas],
   );
 
   const selectSchema = useCallback(
     async (schema: string | null) => {
+      invalidateResources(["tables", "metadata", "rows"]);
       dispatch({ type: "schemaSelected", schema });
       const projectRef = state.navigator.selectedProjectRef;
       if (projectRef && schema) {
         await loadTables(projectRef, schema);
       }
     },
-    [loadTables, state.navigator.selectedProjectRef],
+    [invalidateResources, loadTables, state.navigator.selectedProjectRef],
   );
 
   const selectTable = useCallback(
     async (tableName: string | null) => {
+      invalidateResources(["metadata", "rows"]);
       dispatch({ type: "tableSelected", tableName });
       const { selectedProjectRef, selectedSchema } = state.navigator;
       if (!selectedProjectRef || !selectedSchema || !tableName) {
@@ -355,7 +408,13 @@ export function useDbEditor() {
         );
       }
     },
-    [loadMetadata, loadRows, state.navigator, state.pagination.pageSize],
+    [
+      invalidateResources,
+      loadMetadata,
+      loadRows,
+      state.navigator,
+      state.pagination.pageSize,
+    ],
   );
 
   const refreshRows = useCallback(

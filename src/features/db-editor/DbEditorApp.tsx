@@ -110,7 +110,7 @@ function MetadataPanel({
             {columns.length}개 컬럼 ·{" "}
             {primaryKey.length > 0
               ? "PK: " + primaryKey.join(", ")
-              : "PK 없음 · Phase 1 읽기 전용"}
+              : "PK 없음 · 페이지 순서 비결정적 · Phase 1 읽기 전용"}
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300">

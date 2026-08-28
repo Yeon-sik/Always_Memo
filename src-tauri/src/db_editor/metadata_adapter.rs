@@ -20,7 +20,8 @@ WHERE nspname NOT LIKE 'pg_%'
     'net',
     'pgbouncer',
     'pgmq',
-    'supabase_functions'
+    'supabase_functions',
+    'supabase_migrations'
   )
 ORDER BY nspname
 "#;
@@ -83,6 +84,7 @@ pub const BLOCKED_SCHEMA_NAMES: &[&str] = &[
     "pgbouncer",
     "pgmq",
     "supabase_functions",
+    "supabase_migrations",
     "pg_toast",
 ];
 
@@ -375,6 +377,7 @@ mod tests {
             "auth",
             "storage",
             "realtime",
+            "supabase_migrations",
             "pg_toast",
             "pg_temp_42",
         ] {

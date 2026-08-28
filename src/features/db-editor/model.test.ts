@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
 import {
+  createRequestGenerationGuard,
   initialDbEditorModel,
   nextPage,
   normalizeDbEditorError,
   paginationControls,
   previousPage,
+  resetForPatChange,
   selectProject,
   selectSchema,
   selectTable,
   setResourceError,
   setResourceLoading,
   setRowsPage,
+  type DbEditorModelState,
 } from "./model";
 
 describe("db editor navigator", () => {
@@ -112,5 +115,77 @@ describe("db editor request state", () => {
       retryAfterSeconds: null,
     });
     expect(normalizeDbEditorError(null).code).toBe("unknown");
+  });
+});
+
+describe("db editor stale request guard", () => {
+  it("ignores a stale metadata response after a newer table request", () => {
+    const guard = createRequestGenerationGuard();
+    const tableA = guard.begin("metadata");
+    const tableB = guard.begin("metadata");
+
+    expect(guard.isCurrent(tableA)).toBe(false);
+    expect(guard.isCurrent(tableB)).toBe(true);
+  });
+
+  it("ignores a rows response after the selected table is invalidated", () => {
+    const guard = createRequestGenerationGuard();
+    const tableARows = guard.begin("rows");
+
+    guard.invalidate(["rows"]);
+
+    expect(guard.isCurrent(tableARows)).toBe(false);
+  });
+});
+
+describe("db editor PAT reset", () => {
+  it("discards the complete explorer state when the PAT changes", () => {
+    const populated: DbEditorModelState = {
+      ...initialDbEditorModel,
+      patConfigured: true,
+      patVerified: true,
+      projects: [
+        {
+          id: null,
+          projectRef: "project-a",
+          name: "Project A",
+          organizationId: null,
+          organizationSlug: null,
+          region: null,
+          status: null,
+        },
+      ],
+      schemas: [{ name: "public" }],
+      tables: [{ schema: "public", name: "records", tableType: "BASE TABLE" }],
+      metadata: {
+        schema: "public",
+        name: "records",
+        tableType: "BASE TABLE",
+        columns: [],
+        primaryKey: [],
+      },
+      rows: { page: 2, pageSize: 25, hasNext: true, rows: [{ id: 1 }] },
+      navigator: {
+        selectedProjectRef: "project-a",
+        selectedSchema: "public",
+        selectedTableName: "records",
+      },
+      pagination: { page: 2, pageSize: 25, hasNext: true },
+    };
+
+    const reset = resetForPatChange(true);
+
+    expect(reset.projects).toEqual([]);
+    expect(reset.schemas).toEqual([]);
+    expect(reset.tables).toEqual([]);
+    expect(reset.metadata).toBeNull();
+    expect(reset.rows).toBeNull();
+    expect(reset.navigator).toEqual(initialDbEditorModel.navigator);
+    expect(reset.pagination).toEqual(initialDbEditorModel.pagination);
+    expect(reset.patVerified).toBe(false);
+    expect(reset.resources).toEqual({
+      ...initialDbEditorModel.resources,
+      pat: { status: "ready", error: null },
+    });
   });
 });

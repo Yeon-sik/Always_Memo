@@ -16,6 +16,17 @@ export type DbEditorResource =
   | "metadata"
   | "rows";
 
+export interface DbEditorRequestToken {
+  resource: DbEditorResource;
+  generation: number;
+}
+
+export interface DbEditorRequestGenerationGuard {
+  begin(resource: DbEditorResource): DbEditorRequestToken;
+  invalidate(resources: readonly DbEditorResource[]): void;
+  isCurrent(token: DbEditorRequestToken): boolean;
+}
+
 export interface DbEditorNavigatorState {
   selectedProjectRef: string | null;
   selectedSchema: string | null;
@@ -79,6 +90,44 @@ export const initialDbEditorModel: DbEditorModelState = {
     rows: resourceState(),
   },
 };
+
+export function createRequestGenerationGuard(): DbEditorRequestGenerationGuard {
+  const generations = new Map<DbEditorResource, number>();
+
+  const currentGeneration = (resource: DbEditorResource) =>
+    generations.get(resource) ?? 0;
+
+  return {
+    begin(resource) {
+      const generation = currentGeneration(resource) + 1;
+      generations.set(resource, generation);
+      return { resource, generation };
+    },
+    invalidate(resources) {
+      for (const resource of resources) {
+        generations.set(resource, currentGeneration(resource) + 1);
+      }
+    },
+    isCurrent(token) {
+      return currentGeneration(token.resource) === token.generation;
+    },
+  };
+}
+
+export function resetForPatChange(
+  configured: boolean,
+  error: DbEditorError | null = null,
+): DbEditorModelState {
+  return {
+    ...initialDbEditorModel,
+    patConfigured: configured,
+    patVerified: false,
+    resources: {
+      ...initialDbEditorModel.resources,
+      pat: { status: "ready", error },
+    },
+  };
+}
 
 export function selectProject(
   state: DbEditorModelState,

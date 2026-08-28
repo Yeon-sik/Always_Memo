@@ -120,12 +120,44 @@ pub fn build_select_page_query(
                 "페이지 offset이 허용 범위를 초과했습니다.",
             )
         })?;
+    let order_by = match pagination_ordering(metadata)? {
+        RowPaginationOrdering::PrimaryKey(primary_key) => {
+            let quoted_columns = primary_key
+                .iter()
+                .map(|column| quote_identifier(column, "컬럼"))
+                .collect::<Result<Vec<_>, _>>()?;
+            format!(" ORDER BY {}", quoted_columns.join(", "))
+        }
+        RowPaginationOrdering::Unordered => String::new(),
+    };
     let query = format!(
         "SELECT to_jsonb(t) AS row FROM {schema}.{table} AS t \
-         ORDER BY to_jsonb(t)::text LIMIT $1 OFFSET $2"
+         {order_by}LIMIT $1 OFFSET $2"
     );
 
     Ok((query, vec![Value::from(limit), Value::from(offset)]))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowPaginationOrdering {
+    PrimaryKey(Vec<String>),
+    Unordered,
+}
+
+/// Tables without a primary key remain readable, but their page order is not
+/// deterministic because no safe, allowlisted ordering key exists.
+pub fn pagination_ordering(
+    metadata: &DbEditorTableMetadata,
+) -> Result<RowPaginationOrdering, DbEditorError> {
+    validate_metadata_allowlist(metadata)?;
+
+    if metadata.primary_key.is_empty() {
+        Ok(RowPaginationOrdering::Unordered)
+    } else {
+        Ok(RowPaginationOrdering::PrimaryKey(
+            metadata.primary_key.clone(),
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -202,7 +234,8 @@ fn extract_row_object(value: Value) -> Result<Map<String, Value>, DbEditorError>
 #[cfg(test)]
 mod tests {
     use super::{
-        build_select_page_query, parse_row_identity, row_mutation_policy, RowMutationPolicy,
+        build_select_page_query, pagination_ordering, parse_row_identity, row_mutation_policy,
+        RowMutationPolicy, RowPaginationOrdering,
     };
     use crate::db_editor::models::{DbEditorColumn, DbEditorTableMetadata};
     use serde_json::json;
@@ -257,8 +290,35 @@ mod tests {
                 .expect("query");
 
         assert!(query.contains("\"public\".\"records\""));
+        assert!(query.contains("ORDER BY \"tenant_id\""));
+        assert!(!query.contains("to_jsonb(t)::text"));
         assert!(query.contains("LIMIT $1 OFFSET $2"));
         assert_eq!(parameters, vec![json!(26), json!(50)]);
+    }
+
+    #[test]
+    fn orders_composite_primary_keys_in_metadata_order() {
+        let (query, _) = build_select_page_query(
+            &metadata(vec!["tenant_id".to_string(), "record_id".to_string()]),
+            0,
+            50,
+        )
+        .expect("query");
+
+        assert!(query.contains("ORDER BY \"tenant_id\", \"record_id\""));
+    }
+
+    #[test]
+    fn keeps_pkless_pagination_readable_without_claiming_deterministic_order() {
+        let metadata = metadata(Vec::new());
+        let (query, _) = build_select_page_query(&metadata, 1, 50).expect("query");
+
+        assert!(!query.contains("ORDER BY"));
+        assert!(!query.contains("to_jsonb(t)::text"));
+        assert_eq!(
+            pagination_ordering(&metadata).expect("ordering"),
+            RowPaginationOrdering::Unordered
+        );
     }
 
     #[test]

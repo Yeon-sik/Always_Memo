@@ -1,10 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Common permissions for Yeonsik's Note",
-  "windows": ["main", "db-editor"],
+  "description": "Main window permissions for Yeonsik's Note",
+  "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "allow-load-runtime-config",
+    "allow-load-persisted-device",
+    "allow-save-persisted-device",
+    "allow-quick-capture-shortcut-status",
+    "allow-show-quick-capture",
+    "allow-open-db-editor-window"
   ]
 }
