@@ -11,6 +11,7 @@ import { ActiveDevicesSettingsSection } from "./settings/ActiveDevicesSettingsSe
 import { AppearanceSettingsSection } from "./settings/AppearanceSettingsSection";
 import { DesktopIntegrationSettingsSection } from "./settings/DesktopIntegrationSettingsSection";
 import { SupabaseSettingsSection } from "./settings/SupabaseSettingsSection";
+import { DbEditorLauncher } from "../features/db-editor/DbEditorLauncher";
 
 interface SettingsPanelProps {
   activeDevices: Device[];
@@ -76,6 +77,7 @@ export function SettingsPanel({
           themeMode={themeMode}
           onChangeThemeMode={onChangeThemeMode}
         />
+        <DbEditorLauncher />
         <SupabaseSettingsSection
           authEmail={authEmail}
           isAuthenticated={isAuthenticated}

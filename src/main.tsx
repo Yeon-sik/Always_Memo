@@ -1,11 +1,30 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { App } from "./app/App";
+import { isTauriRuntime } from "./lib/platform/capabilities";
 import "./index.css";
 
-// React 앱 진입점. Tauri 웹뷰와 Vite dev 서버 모두 같은 루트 컴포넌트를 렌더링한다.
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+async function resolveRoot() {
+  if (isTauriRuntime()) {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    if (getCurrentWindow().label === "db-editor") {
+      const { DbEditorApp } = await import("./features/db-editor/DbEditorApp");
+      return <DbEditorApp />;
+    }
+  }
+
+  const { App } = await import("./app/App");
+  return <App />;
+}
+
+async function bootstrap() {
+  const root = document.getElementById("root") as HTMLElement;
+  const application = await resolveRoot();
+
+  // Main and DB Editor windows use separate React roots. DB Editor never mounts
+  // the local-first memo/sync runtime.
+  ReactDOM.createRoot(root).render(
+    <React.StrictMode>{application}</React.StrictMode>,
+  );
+}
+
+void bootstrap();

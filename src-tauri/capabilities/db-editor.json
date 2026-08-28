@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "db-editor",
+  "description": "Read-only Supabase DB Editor permissions",
+  "windows": ["db-editor"],
+  "permissions": [
+    "core:default",
+    "allow-db-editor-pat-status",
+    "allow-db-editor-save-pat",
+    "allow-db-editor-verify-pat",
+    "allow-db-editor-delete-pat",
+    "allow-db-editor-list-projects",
+    "allow-db-editor-list-schemas",
+    "allow-db-editor-list-tables",
+    "allow-db-editor-get-table-metadata",
+    "allow-db-editor-list-rows"
+  ]
+}
