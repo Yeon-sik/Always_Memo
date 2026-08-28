@@ -1,5 +1,7 @@
 use std::{collections::HashMap, env, fs, path::PathBuf, sync::Mutex};
 
+mod db_editor;
+
 #[cfg(desktop)]
 use tauri::{
     menu::{Menu, MenuItem},
@@ -359,6 +361,16 @@ pub fn run() {
             save_persisted_device,
             quick_capture_shortcut_status,
             show_quick_capture,
+            db_editor::db_editor_pat_status,
+            db_editor::db_editor_save_pat,
+            db_editor::db_editor_verify_pat,
+            db_editor::db_editor_delete_pat,
+            db_editor::db_editor_list_projects,
+            db_editor::db_editor_list_schemas,
+            db_editor::db_editor_list_tables,
+            db_editor::db_editor_get_table_metadata,
+            db_editor::db_editor_list_rows,
+            db_editor::open_db_editor_window,
         ])
         .setup(|app| {
             #[cfg(desktop)]
@@ -378,9 +390,11 @@ pub fn run() {
 
     #[cfg(desktop)]
     let builder = builder.on_window_event(|window, event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            api.prevent_close();
-            let _ = window.hide();
+        if window.label() == "main" {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
         }
     });
 
