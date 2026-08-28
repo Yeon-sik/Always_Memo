@@ -15,6 +15,7 @@ fn main() {
             "db_editor_list_tables",
             "db_editor_get_table_metadata",
             "db_editor_list_rows",
+            "update_db_row",
             "open_db_editor_window",
         ]),
     ))

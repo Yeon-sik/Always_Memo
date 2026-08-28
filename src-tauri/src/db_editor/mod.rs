@@ -6,7 +6,7 @@ mod metadata_adapter;
 mod models;
 
 use credential_store::CredentialStore;
-use database_crud_adapter::{DatabaseCrudAdapter, DEFAULT_PAGE_SIZE};
+use database_crud_adapter::{DatabaseCrudAdapter, UpdateRowRequest, DEFAULT_PAGE_SIZE};
 use error::{DbEditorError, DbEditorErrorCode};
 use management_api_adapter::{ManagementApiAdapter, ReqwestTransport};
 use metadata_adapter::MetadataAdapter;
@@ -170,6 +170,30 @@ pub async fn db_editor_list_rows(
 
     adapter
         .select_page(&project_ref, &metadata, page, page_size)
+        .await
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub async fn update_db_row(
+    window: tauri::WebviewWindow,
+    request: UpdateRowRequest,
+) -> Result<serde_json::Map<String, serde_json::Value>, DbEditorError> {
+    require_db_editor_window(&window)?;
+
+    let pat = stored_pat()?;
+    let transport = ReqwestTransport::new()?;
+    let metadata = MetadataAdapter::new(ManagementApiAdapter::new(pat.clone(), transport.clone()))
+        .get_table_metadata(&request.project_ref, &request.schema, &request.table)
+        .await?;
+    let adapter = DatabaseCrudAdapter::new(ManagementApiAdapter::new(pat, transport));
+
+    adapter
+        .update_row(
+            &request.project_ref,
+            &metadata,
+            &request.identity,
+            &request.changes,
+        )
         .await
 }
 

@@ -370,6 +370,7 @@ pub fn run() {
             db_editor::db_editor_list_tables,
             db_editor::db_editor_get_table_metadata,
             db_editor::db_editor_list_rows,
+            db_editor::update_db_row,
             db_editor::open_db_editor_window,
         ])
         .setup(|app| {

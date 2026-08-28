@@ -6,15 +6,33 @@ import {
   Database,
   KeyRound,
   LoaderCircle,
+  Pencil,
   RefreshCw,
+  Save,
   ShieldCheck,
   Table2,
   Trash2,
+  X,
 } from "lucide-react";
-import { useEffect } from "react";
-import { paginationControls } from "./model";
+import { useEffect, useMemo, useState } from "react";
+import {
+  areDbEditorValuesEqual,
+  getColumnValueKind,
+  getRowChanges,
+  isEditableTable,
+  isProtectedColumn,
+  paginationControls,
+  parseColumnDraftValue,
+  serializeColumnDraftValue,
+  type DbEditorRowInspectorState,
+} from "./model";
 import { useDbEditor } from "./useDbEditor";
-import type { DbEditorColumn, DbEditorError, DbEditorRow } from "./types";
+import type {
+  DbEditorColumn,
+  DbEditorError,
+  DbEditorRow,
+  DbEditorTableMetadata,
+} from "./types";
 
 function LoadingLabel({ label = "불러오는 중" }: { label?: string }) {
   return (
@@ -67,6 +85,27 @@ function formatCell(value: unknown): string {
   return String(value);
 }
 
+function rowsHaveSameIdentity(
+  first: DbEditorRow | null,
+  second: DbEditorRow,
+  primaryKey: string[],
+): boolean {
+  return (
+    first !== null &&
+    primaryKey.length > 0 &&
+    primaryKey.every((columnName) =>
+      areDbEditorValuesEqual(first[columnName], second[columnName]),
+    )
+  );
+}
+
+function rowKey(row: DbEditorRow, primaryKey: string[], index: number): string {
+  if (primaryKey.length === 0) {
+    return String(index);
+  }
+  return primaryKey.map((columnName) => formatCell(row[columnName])).join("|");
+}
+
 function ColumnFlags({ column }: { column: DbEditorColumn }) {
   const flags = [
     column.isPrimaryKey ? "PK" : null,
@@ -110,7 +149,7 @@ function MetadataPanel({
             {columns.length}개 컬럼 ·{" "}
             {primaryKey.length > 0
               ? "PK: " + primaryKey.join(", ")
-              : "PK 없음 · 페이지 순서 비결정적 · Phase 1 읽기 전용"}
+              : "PK 없음 · 페이지 순서 비결정적 · 읽기 전용"}
           </p>
         </div>
         <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300">
@@ -152,7 +191,9 @@ function MetadataPanel({
                   {column.defaultExpression ?? "—"}
                 </td>
                 <td className="px-4 py-2 text-slate-500 dark:text-neutral-400">
-                  Phase 1 읽기 전용
+                  {primaryKey.includes(column.name) || column.isIdentity || column.isGenerated || column.defaultExpression
+                    ? "보호됨"
+                    : "PK-scoped UPDATE 가능"}
                 </td>
               </tr>
             ))}
@@ -165,7 +206,9 @@ function MetadataPanel({
 
 function RowsPanel({
   columns,
+  primaryKey,
   rows,
+  selectedRow,
   page,
   pageSize,
   hasNext,
@@ -173,9 +216,12 @@ function RowsPanel({
   onRefresh,
   onPrevious,
   onNext,
+  onRowClick,
 }: {
   columns: DbEditorColumn[];
+  primaryKey: string[];
   rows: DbEditorRow[];
+  selectedRow: DbEditorRow | null;
   page: number;
   pageSize: number;
   hasNext: boolean;
@@ -183,6 +229,7 @@ function RowsPanel({
   onRefresh: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  onRowClick: (row: DbEditorRow) => void;
 }) {
   const controls = paginationControls({ page, pageSize, hasNext });
   const columnNames = columns.map((column) => column.name);
@@ -269,8 +316,22 @@ function RowsPanel({
             <tbody>
               {rows.map((row, rowIndex) => (
                 <tr
-                  key={rowIndex}
-                  className="border-b border-slate-100 bg-white align-top dark:border-neutral-900 dark:bg-neutral-950"
+                  key={rowKey(row, primaryKey, rowIndex)}
+                  onClick={() => onRowClick(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-selected={rowsHaveSameIdentity(selectedRow, row, primaryKey)}
+                  className={
+                    rowsHaveSameIdentity(selectedRow, row, primaryKey)
+                      ? "cursor-pointer border-b border-teal-200 bg-teal-50 align-top outline-none ring-inset hover:bg-teal-100 focus:ring-2 focus:ring-teal-500 dark:border-teal-900 dark:bg-teal-950/40 dark:hover:bg-teal-950/70"
+                      : "cursor-pointer border-b border-slate-100 bg-white align-top outline-none hover:bg-slate-50 focus:ring-2 focus:ring-teal-500 dark:border-neutral-900 dark:bg-neutral-950 dark:hover:bg-neutral-900"
+                  }
                 >
                   {visibleColumns.map((columnName) => (
                     <td
@@ -290,6 +351,316 @@ function RowsPanel({
   );
 }
 
+function draftInputValue(column: DbEditorColumn, value: unknown): string {
+  const serialized = serializeColumnDraftValue(column, value);
+  if (getColumnValueKind(column) === "timestamp" && serialized.length >= 16) {
+    return serialized.slice(0, 16).replace(" ", "T");
+  }
+  return serialized;
+}
+
+function defaultDraftValue(column: DbEditorColumn): unknown {
+  switch (getColumnValueKind(column)) {
+    case "number":
+      return 0;
+    case "boolean":
+      return false;
+    case "json":
+      return {};
+    default:
+      return "";
+  }
+}
+
+function RowInspector({
+  metadata,
+  inspector,
+  error,
+  isUpdating,
+  onDraftChange,
+  onCancel,
+  onApply,
+}: {
+  metadata: DbEditorTableMetadata;
+  inspector: DbEditorRowInspectorState;
+  error: DbEditorError | null;
+  isUpdating: boolean;
+  onDraftChange: (columnName: string, value: unknown) => void;
+  onCancel: () => void;
+  onApply: () => Promise<boolean>;
+}) {
+  const [inputTexts, setInputTexts] = useState<Record<string, string>>({});
+  const [inputErrors, setInputErrors] = useState<Record<string, string>>({});
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  useEffect(() => {
+    setInputTexts(
+      Object.fromEntries(
+        metadata.columns.map((column) => [
+          column.name,
+          draftInputValue(column, inspector.draft[column.name]),
+        ]),
+      ),
+    );
+    setInputErrors({});
+    setIsConfirming(false);
+  }, [inspector.original, metadata]);
+
+  const changes = useMemo(
+    () => getRowChanges(metadata, inspector.original, inspector.draft),
+    [inspector.draft, inspector.original, metadata],
+  );
+  const editableTable = isEditableTable(metadata);
+  const hasInputErrors = Object.values(inputErrors).some(Boolean);
+  const canApply = editableTable && changes.length > 0 && !hasInputErrors && !isUpdating;
+
+  function clearInputError(columnName: string) {
+    setInputErrors((current) => {
+      if (!(columnName in current)) {
+        return current;
+      }
+      const next = { ...current };
+      delete next[columnName];
+      return next;
+    });
+  }
+
+  function updateInput(column: DbEditorColumn, rawValue: string) {
+    setInputTexts((current) => ({ ...current, [column.name]: rawValue }));
+    const parsed = parseColumnDraftValue(column, rawValue);
+    if (parsed.error) {
+      setInputErrors((current) => ({ ...current, [column.name]: parsed.error ?? "입력값이 올바르지 않습니다." }));
+      return;
+    }
+    clearInputError(column.name);
+    onDraftChange(column.name, parsed.value);
+  }
+
+  function updateNullMode(column: DbEditorColumn, mode: string) {
+    if (mode === "null") {
+      onDraftChange(column.name, null);
+      setInputTexts((current) => ({ ...current, [column.name]: "" }));
+      clearInputError(column.name);
+      return;
+    }
+
+    const value =
+      inspector.original[column.name] === null || inspector.original[column.name] === undefined
+        ? defaultDraftValue(column)
+        : inspector.original[column.name];
+    onDraftChange(column.name, value);
+    setInputTexts((current) => ({ ...current, [column.name]: draftInputValue(column, value) }));
+    clearInputError(column.name);
+  }
+
+  function renderEditor(column: DbEditorColumn, value: unknown) {
+    const kind = getColumnValueKind(column);
+    const inputValue = inputTexts[column.name] ?? draftInputValue(column, value);
+    const inputClass = "field-input min-w-0 flex-1 text-xs";
+
+    if (kind === "boolean") {
+      return (
+        <select
+          value={value === true ? "true" : "false"}
+          onChange={(event) => updateInput(column, event.target.value)}
+          className={inputClass}
+          disabled={!editableTable || isUpdating}
+          aria-label={`${column.name} 값`}
+        >
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      );
+    }
+
+    if (kind === "json") {
+      return (
+        <textarea
+          value={inputValue}
+          onChange={(event) => updateInput(column, event.target.value)}
+          className="field-input min-h-20 min-w-0 flex-1 resize-y font-mono text-xs"
+          disabled={!editableTable || isUpdating}
+          aria-label={`${column.name} JSON 값`}
+          spellCheck={false}
+        />
+      );
+    }
+
+    return (
+      <input
+        type={
+          kind === "number" ? "number" : kind === "date" ? "date" : kind === "timestamp" ? "datetime-local" : "text"
+        }
+        step={kind === "number" ? "any" : undefined}
+        value={inputValue}
+        onChange={(event) => updateInput(column, event.target.value)}
+        className={inputClass}
+        disabled={!editableTable || isUpdating}
+        aria-label={`${column.name} 값`}
+        spellCheck={kind === "text" ? true : false}
+      />
+    );
+  }
+
+  return (
+    <section className="border-t border-slate-300 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-neutral-800">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-teal-700 dark:text-teal-300" aria-hidden="true" />
+            <h2 className="text-sm font-semibold">Row Inspector</h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+            {metadata.schema}.{metadata.name} · PK identity는 WHERE 조건으로만 사용됩니다.
+          </p>
+          <p className="mt-1 text-[11px] text-slate-500 dark:text-neutral-400">
+            {metadata.primaryKey.length > 0
+              ? "PK: " + metadata.primaryKey.map((name) => `${name}=${formatCell(inspector.original[name])}`).join(", ")
+              : "PK 없음 · 읽기 전용"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isUpdating}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-black dark:text-neutral-200"
+        >
+          <X className="h-3.5 w-3.5" aria-hidden="true" />
+          취소
+        </button>
+      </div>
+
+      <ErrorMessage error={error} />
+
+      {!editableTable ? (
+        <p className="border-b border-slate-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-neutral-800 dark:bg-amber-950/30 dark:text-amber-100">
+          VIEW 또는 PK 없는 테이블은 Row Inspector에서도 읽기 전용입니다.
+        </p>
+      ) : null}
+
+      <div className="max-h-[420px] overflow-auto">
+        <table className="w-full min-w-[900px] border-collapse text-left text-xs">
+          <thead className="sticky top-0 bg-slate-50 text-[11px] text-slate-500 dark:bg-neutral-900 dark:text-neutral-400">
+            <tr>
+              <th className="px-4 py-2 font-semibold">컬럼</th>
+              <th className="px-4 py-2 font-semibold">원본값</th>
+              <th className="px-4 py-2 font-semibold">수정 draft</th>
+              <th className="px-4 py-2 font-semibold">상태</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metadata.columns.map((column) => {
+              const originalValue = inspector.original[column.name];
+              const draftValue = inspector.draft[column.name];
+              const changed = !areDbEditorValuesEqual(originalValue, draftValue);
+              const protectedColumn = isProtectedColumn(column) || metadata.primaryKey.includes(column.name);
+              const unsupported = getColumnValueKind(column) === "unsupported";
+              const editable = editableTable && !protectedColumn && !unsupported;
+              const inputError = inputErrors[column.name];
+
+              return (
+                <tr key={column.name} className="border-t border-slate-100 align-top dark:border-neutral-900">
+                  <td className="w-48 px-4 py-3">
+                    <div className="font-medium text-slate-900 dark:text-neutral-100">{column.name}</div>
+                    <div className="mt-1 text-[11px] text-slate-500 dark:text-neutral-400">
+                      {column.dataType} · {column.isNullable ? "nullable" : "required"}
+                    </div>
+                  </td>
+                  <td className="max-w-64 whitespace-pre-wrap break-words px-4 py-3 text-slate-600 dark:text-neutral-300">
+                    {formatCell(originalValue)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {editable ? (
+                      <div className="flex min-w-72 flex-col gap-1.5">
+                        <div className="flex items-start gap-1.5">
+                          <select
+                            value={draftValue === null ? "null" : "value"}
+                            onChange={(event) => updateNullMode(column, event.target.value)}
+                            disabled={!column.isNullable || isUpdating}
+                            className="field-input w-20 shrink-0 text-xs"
+                            aria-label={`${column.name} NULL 모드`}
+                          >
+                            <option value="value">값</option>
+                            <option value="null">NULL</option>
+                          </select>
+                          {draftValue === null ? (
+                            <span className="flex h-9 flex-1 items-center rounded-md border border-dashed border-slate-300 px-2 text-xs text-slate-500 dark:border-neutral-700 dark:text-neutral-400">
+                              SQL NULL
+                            </span>
+                          ) : (
+                            renderEditor(column, draftValue)
+                          )}
+                        </div>
+                        {inputError ? <p className="text-[11px] text-red-700 dark:text-red-300">{inputError}</p> : null}
+                      </div>
+                    ) : (
+                      <div>
+                        <span className="whitespace-pre-wrap break-words text-slate-600 dark:text-neutral-300">
+                          {formatCell(draftValue)}
+                        </span>
+                        <span className="ml-2 text-[11px] text-slate-500 dark:text-neutral-500">
+                          {protectedColumn ? "보호됨" : unsupported ? "지원하지 않는 타입" : "읽기 전용"}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="w-28 px-4 py-3">
+                    {changed ? (
+                      <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+                        변경
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">동일</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 dark:border-neutral-800">
+        <p className="text-xs text-slate-500 dark:text-neutral-400">
+          {changes.length > 0 ? `${changes.length}개 컬럼 변경 예정` : "변경사항 없음"}
+        </p>
+        {isConfirming ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-800 dark:bg-amber-950/30">
+            <span className="text-xs font-semibold text-amber-900 dark:text-amber-100">이 한 행에 변경을 적용할까요?</span>
+            <button
+              type="button"
+              onClick={() => void onApply()}
+              disabled={!canApply}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md bg-teal-700 px-2.5 text-xs font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-black dark:hover:bg-teal-400"
+            >
+              <Save className="h-3.5 w-3.5" aria-hidden="true" />
+              적용 확인
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsConfirming(false)}
+              disabled={isUpdating}
+              className="inline-flex h-8 items-center rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-black dark:text-neutral-200"
+            >
+              돌아가기
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setIsConfirming(true)}
+            disabled={!canApply}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md bg-teal-700 px-3 text-xs font-semibold text-white hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-teal-500 dark:text-black dark:hover:bg-teal-400"
+          >
+            <Save className="h-3.5 w-3.5" aria-hidden="true" />
+            변경 검토
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function DbEditorApp() {
   const editor = useDbEditor();
   const {
@@ -305,6 +676,11 @@ export function DbEditorApp() {
     patConfigured,
     patVerified,
     isOnline,
+    rowInspector,
+    openRowInspector,
+    updateRowDraft,
+    cancelRowInspector,
+    applyRowUpdate,
   } = editor;
 
   const selectedProject = projects.find(
@@ -329,7 +705,7 @@ export function DbEditorApp() {
               Personal OS · Supabase DB Editor
             </h1>
             <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-              Rust adapter 기반 online-only read-only Phase 1
+              Rust adapter 기반 metadata-allowlisted Phase 2 single-row UPDATE
             </p>
           </div>
         </div>
@@ -439,9 +815,9 @@ export function DbEditorApp() {
                 <h2 className="mt-3 text-sm font-semibold">
                   PAT를 저장하면 DB 탐색을 시작할 수 있습니다.
                 </h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-neutral-400">
-                  Phase 1에서는 OAuth, Raw SQL, INSERT/UPDATE/DELETE를 제공하지
-                  않습니다.
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-neutral-400">
+                  Phase 2에서는 PK가 있는 한 행의 변경 컬럼만 UPDATE합니다. OAuth,
+                  Raw SQL, INSERT/DELETE, bulk edit은 제공하지 않습니다.
                 </p>
               </div>
             </section>
@@ -593,7 +969,7 @@ export function DbEditorApp() {
                               {navigator.selectedSchema}.{navigator.selectedTableName}
                             </p>
                             <p className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-                              SELECT only · CRUD mutation commands are not registered
+                              SELECT + PK-scoped single-row UPDATE only
                             </p>
                           </div>
                           <span className="shrink-0 rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300">
@@ -610,7 +986,9 @@ export function DbEditorApp() {
                             <ErrorMessage error={resources.rows.error} />
                             <RowsPanel
                               columns={metadata.columns}
+                              primaryKey={metadata.primaryKey}
                               rows={rows?.rows ?? []}
+                              selectedRow={rowInspector?.original ?? null}
                               page={pagination.page}
                               pageSize={pagination.pageSize}
                               hasNext={pagination.hasNext}
@@ -622,7 +1000,19 @@ export function DbEditorApp() {
                               onNext={() =>
                                 void editor.refreshRows(pagination.page + 1)
                               }
+                              onRowClick={openRowInspector}
                             />
+                            {rowInspector ? (
+                              <RowInspector
+                                metadata={metadata}
+                                inspector={rowInspector}
+                                error={resources.rowUpdate.error}
+                                isUpdating={resources.rowUpdate.status === "loading"}
+                                onDraftChange={updateRowDraft}
+                                onCancel={cancelRowInspector}
+                                onApply={applyRowUpdate}
+                              />
+                            ) : null}
                           </>
                         ) : null}
                       </>

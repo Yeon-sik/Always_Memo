@@ -81,7 +81,7 @@ impl ReqwestTransport {
     pub fn new() -> Result<Self, DbEditorError> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECONDS))
-            .user_agent("PersonalOS-DB-Editor/phase1")
+            .user_agent("PersonalOS-DB-Editor/phase2")
             .build()
             .map_err(|_| {
                 DbEditorError::new(
@@ -207,6 +207,30 @@ where
             .send(HttpRequest {
                 method: HttpMethod::Post,
                 path: format!("/v1/projects/{project_ref}/database/query/read-only"),
+                body: Some(body),
+                bearer_token: self.pat.clone(),
+            })
+            .await?;
+
+        extract_query_rows(&response.body)
+    }
+
+    pub(crate) async fn run_mutation_query(
+        &self,
+        project_ref: &str,
+        query: &str,
+        parameters: Vec<Value>,
+    ) -> Result<Vec<Value>, DbEditorError> {
+        let project_ref = validate_project_ref(project_ref)?;
+        let body = serde_json::json!({
+            "query": query,
+            "parameters": parameters,
+            "read_only": false,
+        });
+        let response = self
+            .send(HttpRequest {
+                method: HttpMethod::Post,
+                path: format!("/v1/projects/{project_ref}/database/query"),
                 body: Some(body),
                 bearer_token: self.pat.clone(),
             })
@@ -352,6 +376,7 @@ mod tests {
         TransportError,
     };
     use crate::db_editor::error::DbEditorErrorCode;
+    use serde_json::json;
     use std::{
         future::Future,
         pin::Pin,
@@ -455,5 +480,42 @@ mod tests {
             extract_query_rows("{\"result\":[{\"id\":1}]}").expect("result envelope"),
             vec![serde_json::json!({"id": 1})]
         );
+    }
+
+    #[tokio::test]
+    async fn sends_mutations_to_write_endpoint_with_bound_parameters() {
+        let transport = MockTransport::response(Ok(HttpResponse {
+            status: 201,
+            headers: Default::default(),
+            body: "[{\"row\":{\"id\":1}}]".to_string(),
+        }));
+        let adapter = ManagementApiAdapter::new("sbp_test_secret".to_string(), transport.clone());
+
+        let rows = adapter
+            .run_mutation_query(
+                "project-a",
+                "UPDATE \"public\".\"records\" SET \"label\" = $1",
+                vec![json!("new label")],
+            )
+            .await
+            .expect("mutation query");
+
+        assert_eq!(rows, vec![json!({"row": {"id": 1}})]);
+        let request = transport
+            .request
+            .lock()
+            .expect("request lock")
+            .clone()
+            .expect("request captured");
+        assert_eq!(request.path, "/v1/projects/project-a/database/query");
+        assert_eq!(
+            request.body,
+            Some(json!({
+                "query": "UPDATE \"public\".\"records\" SET \"label\" = $1",
+                "parameters": ["new label"],
+                "read_only": false,
+            }))
+        );
+        assert!(!format!("{request:?}").contains("sbp_test_secret"));
     }
 }
