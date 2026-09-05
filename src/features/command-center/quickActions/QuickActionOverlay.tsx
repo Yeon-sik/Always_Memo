@@ -1,21 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
-import {
-  createBackfillInput,
-  isFutureLocalDate,
-} from "../../../lib/dataTrust/backfillMetadata";
-import type { BackfillInput, WorkoutType } from "../../../types";
-import { formatKoreanDate, formatLocalDate } from "../../fitness/fitnessDate";
-import { QuickActionMealEditor } from "./QuickActionMealEditor";
-import type { WorkoutRecordMetricsInput } from "../../fitness/fitnessService";
+import { createBackfillInput } from "../../../lib/dataTrust/backfillMetadata";
+import type { BackfillInput } from "../../../types";
+import { formatKoreanDate } from "../../fitness/fitnessDate";
 import {
   QuickActionModeTabs,
   type QuickActionSection,
 } from "./QuickActionModeTabs";
 import { QuickActionMemoEditor } from "./QuickActionMemoEditor";
 import { QuickActionTaskList } from "./QuickActionTaskList";
-import { QuickActionWeightEditor } from "./QuickActionWeightEditor";
-import { QuickActionWorkoutEditor } from "./QuickActionWorkoutEditor";
 
 interface QuickActionOverlayProps {
   isBackfill?: boolean;
@@ -33,39 +26,6 @@ interface QuickActionOverlayProps {
     plannedDate?: string | null,
     backfillInput?: BackfillInput,
   ) => void;
-  onAddWeightRecord: (
-    date: string,
-    weightKg: number,
-    backfillInput?: BackfillInput,
-  ) => void;
-  onAddWorkoutRecord: (
-    date: string,
-    workoutType: WorkoutType,
-    category: string,
-    exerciseName: string,
-    backfillInput?: BackfillInput,
-    metrics?: WorkoutRecordMetricsInput,
-  ) => void;
-  onAddWorkoutRecords: (
-    records: Array<{
-      date: string;
-      workoutType: WorkoutType;
-      category: string;
-      exerciseName: string;
-      durationSeconds?: number | null;
-      averageHeartRate?: number | null;
-    }>,
-    backfillInput?: BackfillInput,
-  ) => void;
-  onAddMealRecord: (
-    date: string,
-    menu: string,
-    calories: number,
-    proteinGrams: number,
-    carbsGrams?: number | null,
-    fatGrams?: number | null,
-    backfillInput?: BackfillInput,
-  ) => void;
   onClose: () => void;
 }
 
@@ -77,23 +37,16 @@ export function QuickActionOverlay({
   selectedDate,
   onAddNote,
   onAddTask,
-  onAddWeightRecord,
-  onAddWorkoutRecord,
-  onAddWorkoutRecords,
-  onAddMealRecord,
   onClose,
 }: QuickActionOverlayProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [activeSection, setActiveSection] =
     useState<QuickActionSection>("task");
   const backfillInput = isBackfill ? createBackfillInput() : undefined;
-  const actualRecordDisabled = isFutureLocalDate(selectedDate, formatLocalDate());
   const actionTitle = isBackfill ? "누락 보강" : "Quick Action";
-  const actionDescription = actualRecordDisabled
-    ? "미래 날짜에는 실제 수행 기록을 추가하지 않습니다."
-    : isBackfill
-      ? "지난 날짜에 빠진 기록만 보강으로 추가합니다."
-      : "선택한 날짜에 새 기록을 추가합니다.";
+  const actionDescription = isBackfill
+    ? "지난 날짜에 빠진 기록만 보강으로 추가합니다."
+    : "선택한 날짜에 새 기록을 추가합니다.";
 
   useEffect(() => {
     const focusable = panelRef.current?.querySelector<HTMLElement>(
@@ -194,31 +147,6 @@ export function QuickActionOverlay({
             backfillInput={backfillInput}
             selectedDate={selectedDate}
             onAddNote={onAddNote}
-          />
-        ) : null}
-        {activeSection === "weight" ? (
-          <QuickActionWeightEditor
-            backfillInput={backfillInput}
-            disabled={actualRecordDisabled}
-            selectedDate={selectedDate}
-            onAddWeightRecord={onAddWeightRecord}
-          />
-        ) : null}
-        {activeSection === "workout" ? (
-          <QuickActionWorkoutEditor
-            backfillInput={backfillInput}
-            disabled={actualRecordDisabled}
-            selectedDate={selectedDate}
-            onAddWorkoutRecord={onAddWorkoutRecord}
-            onAddWorkoutRecords={onAddWorkoutRecords}
-          />
-        ) : null}
-        {activeSection === "meal" ? (
-          <QuickActionMealEditor
-            backfillInput={backfillInput}
-            disabled={actualRecordDisabled}
-            selectedDate={selectedDate}
-            onAddMealRecord={onAddMealRecord}
           />
         ) : null}
       </div>

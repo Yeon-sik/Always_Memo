@@ -1,13 +1,10 @@
 import {
   CheckSquare,
-  Dumbbell,
-  Salad,
-  Scale,
   StickyNote,
   type LucideIcon,
 } from "lucide-react";
 
-export type QuickActionSection = "task" | "memo" | "weight" | "workout" | "meal";
+export type QuickActionSection = "task" | "memo";
 
 const quickActionSections: Array<{
   id: QuickActionSection;
@@ -16,9 +13,6 @@ const quickActionSections: Array<{
 }> = [
   { id: "task", label: "할 일", Icon: CheckSquare },
   { id: "memo", label: "메모", Icon: StickyNote },
-  { id: "weight", label: "체중", Icon: Scale },
-  { id: "workout", label: "운동", Icon: Dumbbell },
-  { id: "meal", label: "식단", Icon: Salad },
 ];
 
 interface QuickActionModeTabsProps {
@@ -33,7 +27,7 @@ export function QuickActionModeTabs({
 }: QuickActionModeTabsProps) {
   return (
     <div
-      className="mb-3 grid grid-cols-5 gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 dark:border-neutral-800 dark:bg-neutral-950"
+      className="mb-3 grid grid-cols-2 gap-1 rounded-md border border-slate-200 bg-slate-50 p-1 dark:border-neutral-800 dark:bg-neutral-950"
       role="tablist"
       aria-label="빠른 작업 종류"
     >

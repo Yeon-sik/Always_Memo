@@ -1,11 +1,12 @@
 import type {
   Device,
+  FitnessSummaryProjectionV2,
+  LegacyWorkoutRecordV1,
   LocalDataSnapshot,
   MealRecord,
   Note,
   Task,
   WeightRecord,
-  WorkoutRecord,
 } from "../../../types";
 
 export const TEST_TIME = "2026-08-01T00:00:00.000Z";
@@ -45,8 +46,8 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
 }
 
 export function makeWorkoutRecord(
-  overrides: Partial<WorkoutRecord> = {},
-): WorkoutRecord {
+  overrides: Partial<LegacyWorkoutRecordV1> = {},
+): LegacyWorkoutRecordV1 {
   return {
     ...auditFields,
     id: "workout-1",
@@ -60,6 +61,29 @@ export function makeWorkoutRecord(
     scope: "both",
     metadata: { sets: 3 },
     contractVersion: 1,
+    ...overrides,
+  };
+}
+
+export function makeFitnessSummaryProjection(
+  overrides: Partial<FitnessSummaryProjectionV2> = {},
+): FitnessSummaryProjectionV2 {
+  return {
+    ...auditFields,
+    id: "workout-1",
+    sourceFitnessSessionId: "workout-1",
+    date: "2026-08-01",
+    completionStatus: "completed",
+    chestSets: 14,
+    backSets: 8,
+    legsSets: 0,
+    shouldersSets: 0,
+    absSets: 0,
+    tricepsSets: 0,
+    bicepsSets: 0,
+    totalDurationSeconds: 3600,
+    cardioDurationSeconds: null,
+    contractVersion: 2,
     ...overrides,
   };
 }
@@ -117,6 +141,7 @@ export function makeSnapshot(
     notes: [],
     tasks: [],
     workoutRecords: [],
+    fitnessSummaryProjections: [],
     mealRecords: [],
     weightRecords: [],
     devices: [],

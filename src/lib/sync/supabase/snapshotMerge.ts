@@ -12,6 +12,10 @@ export function mergeSnapshot(
       localSnapshot.workoutRecords,
       incomingSnapshot.workoutRecords,
     ),
+    fitnessSummaryProjections: mergeEntities(
+      localSnapshot.fitnessSummaryProjections,
+      incomingSnapshot.fitnessSummaryProjections,
+    ),
     mealRecords: mergeEntities(
       localSnapshot.mealRecords,
       incomingSnapshot.mealRecords,

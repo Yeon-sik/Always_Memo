@@ -1,10 +1,11 @@
 import type {
   Device,
+  FitnessSummaryProjectionV2,
+  LegacyWorkoutRecordV1,
   MealRecord,
   Note,
   Task,
   WeightRecord,
-  WorkoutRecord,
   WorkoutType,
 } from "../../../types";
 import type {
@@ -15,6 +16,7 @@ import type {
   TaskRow,
   WeightRecordRow,
   WorkoutRecordRow,
+  FitnessSummaryProjectionV2Row,
 } from "./rows";
 
 export function auditFieldsFromRow(
@@ -101,7 +103,7 @@ export function normalizeContractVersion(value?: number | null): 1 {
   return value === 1 ? value : 1;
 }
 
-export function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
+export function workoutRecordFromRow(row: WorkoutRecordRow): LegacyWorkoutRecordV1 {
   return {
     ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
@@ -115,6 +117,31 @@ export function workoutRecordFromRow(row: WorkoutRecordRow): WorkoutRecord {
     scope: normalizeScope(row.scope),
     metadata: normalizeMetadata(row.metadata),
     contractVersion: normalizeContractVersion(row.contract_version),
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function fitnessSummaryProjectionV2FromRow(
+  row: FitnessSummaryProjectionV2Row,
+): FitnessSummaryProjectionV2 {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    sourceFitnessSessionId: row.source_fitness_session_id,
+    date: row.date,
+    completionStatus: "completed",
+    chestSets: row.chest_sets,
+    backSets: row.back_sets,
+    legsSets: row.legs_sets,
+    shouldersSets: row.shoulders_sets,
+    absSets: row.abs_sets,
+    tricepsSets: row.triceps_sets,
+    bicepsSets: row.biceps_sets,
+    totalDurationSeconds: row.total_duration_seconds ?? null,
+    cardioDurationSeconds: row.cardio_duration_seconds ?? null,
+    contractVersion: 2,
     updatedAt: row.updated_at,
     deletedAt: row.deleted_at,
     deviceId: row.device_id,
@@ -197,7 +224,7 @@ export function taskToRow(task: Task, userId: string): TaskRow {
 }
 
 export function workoutRecordToRow(
-  record: WorkoutRecord,
+  record: LegacyWorkoutRecordV1,
   userId: string,
 ): WorkoutRecordRow {
   return {

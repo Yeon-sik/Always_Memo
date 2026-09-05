@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type {
+  FitnessSummaryProjectionV2,
   LocalDataSnapshot,
   MealRecord,
   Task,
   WeightRecord,
-  WorkoutRecord,
 } from "../../types";
 import {
   getCalendarMarkers,
@@ -14,24 +14,31 @@ import {
   getRecordsForDate,
 } from "./recordAggregation";
 
-const liveWorkout: WorkoutRecord = {
+const liveWorkout: FitnessSummaryProjectionV2 = {
   id: "workout-live",
   createdAt: "2026-06-09T00:00:00.000Z",
-  date: "2026-06-09",
-  workoutType: "strength",
-  category: "chest",
-  exerciseName: "bench press",
-  durationSeconds: null,
-  averageHeartRate: null,
-  isBackfilled: false,
-  backfilledAt: null,
-  backfillReason: null,
   updatedAt: "2026-06-09T00:00:00.000Z",
   deletedAt: null,
   deviceId: "device-a",
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
+  sourceFitnessSessionId: "workout-live",
+  date: "2026-06-09",
+  completionStatus: "completed",
+  chestSets: 14,
+  backSets: 0,
+  legsSets: 0,
+  shouldersSets: 0,
+  absSets: 0,
+  tricepsSets: 0,
+  bicepsSets: 0,
+  totalDurationSeconds: 3_600,
+  cardioDurationSeconds: null,
+  contractVersion: 2,
 };
 
-const deletedWorkout: WorkoutRecord = {
+const deletedWorkout: FitnessSummaryProjectionV2 = {
   ...liveWorkout,
   id: "workout-deleted",
   deletedAt: "2026-06-09T00:00:01.000Z",
@@ -111,7 +118,8 @@ const backfilledTask: Task = {
 const snapshot: LocalDataSnapshot = {
   notes: [],
   tasks: [],
-  workoutRecords: [liveWorkout, deletedWorkout],
+  workoutRecords: [],
+  fitnessSummaryProjections: [liveWorkout, deletedWorkout],
   mealRecords: [liveMeal, deletedMeal],
   weightRecords: [liveWeight, deletedWeight],
   devices: [],
@@ -127,22 +135,16 @@ describe("recordAggregation", () => {
     expect(records.workoutRecords[0].id).toBe("workout-live");
   });
 
-  it("shows shared FitnessApp workouts but hides FitnessApp-only in-progress rows", () => {
-    const sharedWorkout: WorkoutRecord = {
+  it("shows completed Summary Projection v2 rows", () => {
+    const sharedWorkout: FitnessSummaryProjectionV2 = {
       ...liveWorkout,
       id: "fitness-shared",
-      sourceApp: "fitness",
-      scope: "both",
-      category: "가슴",
-    };
-    const inProgressWorkout: WorkoutRecord = {
-      ...sharedWorkout,
-      id: "fitness-in-progress",
-      scope: "fitness",
+      sourceFitnessSessionId: "fitness-shared",
     };
     const connectedSnapshot = {
       ...snapshot,
-      workoutRecords: [sharedWorkout, inProgressWorkout],
+      workoutRecords: [],
+      fitnessSummaryProjections: [sharedWorkout],
     };
 
     const records = getRecordsForDate(connectedSnapshot, "2026-06-09");
@@ -229,7 +231,8 @@ describe("recordAggregation", () => {
     const markers = getCalendarMarkers(
       {
         ...snapshot,
-        workoutRecords: [deletedWorkout],
+        workoutRecords: [],
+        fitnessSummaryProjections: [deletedWorkout],
         mealRecords: [deletedMeal],
         weightRecords: [deletedWeight],
       },

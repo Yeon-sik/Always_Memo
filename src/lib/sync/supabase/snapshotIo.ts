@@ -3,19 +3,18 @@ import type { SyncContext } from "../syncTypes";
 import {
   deviceFromRow,
   deviceToRow,
+  fitnessSummaryProjectionV2FromRow,
   mealRecordFromRow,
-  mealRecordToRow,
   noteFromRow,
   noteToRow,
   taskFromRow,
   taskToRow,
   weightRecordFromRow,
-  weightRecordToRow,
   workoutRecordFromRow,
-  workoutRecordToRow,
 } from "./mappers";
 import type {
   DeviceRow,
+  FitnessSummaryProjectionV2Row,
   MealRecordRow,
   NoteRow,
   SnapshotTableName,
@@ -96,6 +95,7 @@ export async function pullSnapshot(
     workoutRecordsResult,
     mealRecordsResult,
     weightRecordsResult,
+    fitnessSummaryProjectionsResult,
     devicesResult,
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
@@ -103,6 +103,10 @@ export async function pullSnapshot(
     transport.selectRows<WorkoutRecordRow>("workout_records", userId),
     transport.selectRows<MealRecordRow>("meal_records", userId),
     transport.selectRows<WeightRecordRow>("weight_records", userId),
+    transport.selectRows<FitnessSummaryProjectionV2Row>(
+      "fitness_summary_projections_v2",
+      userId,
+    ),
     transport.selectRows<DeviceRow>("devices", userId),
   ]);
 
@@ -112,6 +116,7 @@ export async function pullSnapshot(
     workoutRecordsResult,
     mealRecordsResult,
     weightRecordsResult,
+    fitnessSummaryProjectionsResult,
     devicesResult,
   ]) {
     throwQueryError(result);
@@ -125,6 +130,9 @@ export async function pullSnapshot(
     ),
     mealRecords: (mealRecordsResult.data ?? []).map(mealRecordFromRow),
     weightRecords: (weightRecordsResult.data ?? []).map(weightRecordFromRow),
+    fitnessSummaryProjections: (fitnessSummaryProjectionsResult.data ?? []).map(
+      fitnessSummaryProjectionV2FromRow,
+    ),
     devices: (devicesResult.data ?? []).map(deviceFromRow),
   };
 
@@ -136,9 +144,6 @@ export interface PushPayload {
   device: DeviceRow;
   notes: NoteRow[];
   tasks: TaskRow[];
-  workoutRecords: WorkoutRecordRow[];
-  mealRecords: MealRecordRow[];
-  weightRecords: WeightRecordRow[];
 }
 
 export function createPushPayload(
@@ -162,15 +167,6 @@ export function createPushPayload(
     tasks: localSnapshot.tasks
       .filter(isOwnedByCurrentDevice)
       .map((task) => taskToRow(task, context.userId)),
-    workoutRecords: localSnapshot.workoutRecords
-      .filter(isOwnedByCurrentDevice)
-      .map((record) => workoutRecordToRow(record, context.userId)),
-    mealRecords: localSnapshot.mealRecords
-      .filter(isOwnedByCurrentDevice)
-      .map((record) => mealRecordToRow(record, context.userId)),
-    weightRecords: localSnapshot.weightRecords
-      .filter(isOwnedByCurrentDevice)
-      .map((record) => weightRecordToRow(record, context.userId)),
   };
 }
 
@@ -202,9 +198,6 @@ export async function pushSnapshot(
   }> = [
     { tableName: "notes", rows: payload.notes },
     { tableName: "tasks", rows: payload.tasks },
-    { tableName: "workout_records", rows: payload.workoutRecords },
-    { tableName: "meal_records", rows: payload.mealRecords },
-    { tableName: "weight_records", rows: payload.weightRecords },
   ];
 
   for (const batch of batches) {

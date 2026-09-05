@@ -55,7 +55,7 @@ const context: SyncContext = {
 };
 
 describe("Supabase snapshot IO", () => {
-  it("pulls all six tables and merges mapped rows into the local snapshot", async () => {
+  it("pulls all seven tables and merges mapped rows into the local snapshot", async () => {
     const transport = new FakeSnapshotTransport();
     transport.selectedRows.set("notes", {
       data: [
@@ -86,6 +86,7 @@ describe("Supabase snapshot IO", () => {
       "workout_records",
       "meal_records",
       "weight_records",
+      "fitness_summary_projections_v2",
       "devices",
     ]);
     expect(result.notes[0].content).toBe("remote");
@@ -150,19 +151,13 @@ describe("Supabase snapshot IO", () => {
       "devices",
       "notes",
       "tasks",
-      "workout_records",
-      "meal_records",
-      "weight_records",
     ]);
     expect(transport.upsertCalls.map((call) => call.onConflict)).toEqual([
       "user_id,id",
       "id",
       "id",
-      "id",
-      "id",
-      "id",
     ]);
-    expect(result.changedRows).toBe(6);
+    expect(result.changedRows).toBe(3);
     expect(result.currentDevice.lastSeenAt).toBe("2026-08-01T00:00:05.000Z");
   });
 

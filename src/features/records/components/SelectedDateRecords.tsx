@@ -6,7 +6,7 @@ import {
   Scale,
   StickyNote,
 } from "lucide-react";
-import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
+import type { FitnessSummaryProjectionV2, MealRecord, WeightRecord } from "../../../types";
 import {
   BACKFILL_LABEL,
   hasBackfillMetadata,
@@ -14,27 +14,17 @@ import {
   isPastLocalDate,
 } from "../../../lib/dataTrust/backfillMetadata";
 import { formatKoreanDate } from "../../fitness/fitnessDate";
-import {
-  getWorkoutMetricLabels,
-  getWorkoutSubcategoryLabel,
-  getWorkoutTypeLabel,
-} from "../../fitness/fitnessService";
+import { formatFitnessProjectionLabels } from "../../fitness-summary/fitnessSummary";
 import { formatMetric } from "../../fitness/stats/fitnessStats";
 import { getPlainTextFromNoteContent } from "../../notes/noteService";
 import type { DateRecords } from "../recordAggregation";
-import {
-  formatRecordTime,
-  formatTaskDueLabel,
-} from "../recordDisplayFormatters";
+import { formatRecordTime, formatTaskDueLabel } from "../recordDisplayFormatters";
 import { DailyItem, DailySection, DeleteItemButton } from "./DailyRecordSection";
 import { MarkerLegend } from "./RecordMarkerLegend";
 
 interface SelectedDateRecordsProps {
-  onDeleteMeal: (record: MealRecord) => void;
   onDeleteNote: (noteId: string) => void;
   onDeleteTask: (taskId: string) => void;
-  onDeleteWeight: (record: WeightRecord) => void;
-  onDeleteWorkout: (record: WorkoutRecord) => void;
   onOpenBackfillAction: (sourceElement: HTMLElement) => void;
   onOpenQuickAction: (date: string, sourceElement: HTMLElement) => void;
   onToggleTask: (taskId: string) => void;
@@ -55,26 +45,47 @@ function BackfillBadge({ record }: { record: { isBackfilled?: boolean } }) {
   );
 }
 
-function WorkoutMetricDetail({ record }: { record: WorkoutRecord }) {
-  const metricLabels = getWorkoutMetricLabels(record);
-
-  if (metricLabels.length === 0) {
-    return null;
-  }
-
+function WorkoutProjectionDetail({
+  projection,
+}: {
+  projection: FitnessSummaryProjectionV2;
+}) {
   return (
     <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-      {metricLabels.join(" / ")}
+      {formatFitnessProjectionLabels(projection).join(" · ")}
     </div>
   );
 }
 
+function ReadOnlyMeal({ record }: { record: MealRecord }) {
+  return (
+    <DailyItem markerClassName="bg-yellow-400">
+      <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
+        {record.menu}
+      </div>
+      <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
+        {record.calories.toLocaleString("ko-KR")} kcal / 단백질{" "}
+        {formatMetric(record.proteinGrams)} g
+      </div>
+      <BackfillBadge record={record} />
+    </DailyItem>
+  );
+}
+
+function ReadOnlyWeight({ record }: { record: WeightRecord }) {
+  return (
+    <DailyItem markerClassName="bg-emerald-500">
+      <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
+        {formatMetric(record.weightKg)} kg
+      </div>
+      <BackfillBadge record={record} />
+    </DailyItem>
+  );
+}
+
 export function SelectedDateRecords({
-  onDeleteMeal,
   onDeleteNote,
   onDeleteTask,
-  onDeleteWeight,
-  onDeleteWorkout,
   onOpenBackfillAction,
   onOpenQuickAction,
   onToggleTask,
@@ -103,7 +114,7 @@ export function SelectedDateRecords({
               ? "지난 날짜의 새 기록은 누락 보강으로만 추가합니다."
               : selectedDateIsFuture
                 ? "미래 날짜에는 실제 수행 기록을 추가하지 않습니다."
-                : "메모, 할 일, 운동/식사/체중 기록을 모았습니다."}
+                : "메모, 할 일, Fitness 소유 요약을 모았습니다."}
           </p>
         </div>
         <div className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 dark:border-neutral-800 dark:bg-black dark:text-neutral-200">
@@ -148,12 +159,7 @@ export function SelectedDateRecords({
             <DailyItem
               key={note.id}
               markerClassName="border border-slate-400 bg-white dark:border-neutral-200 dark:bg-neutral-100"
-              actions={
-                <DeleteItemButton
-                  label="메모 삭제"
-                  onDelete={() => onDeleteNote(note.id)}
-                />
-              }
+              actions={<DeleteItemButton label="메모 삭제" onDelete={() => onDeleteNote(note.id)} />}
             >
               <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
                 {note.title.trim() || "제목 없음"}
@@ -179,12 +185,7 @@ export function SelectedDateRecords({
             <DailyItem
               key={task.id}
               markerClassName="bg-sky-400"
-              actions={
-                <DeleteItemButton
-                  label="할 일 삭제"
-                  onDelete={() => onDeleteTask(task.id)}
-                />
-              }
+              actions={<DeleteItemButton label="할 일 삭제" onDelete={() => onDeleteTask(task.id)} />}
             >
               <div className="flex min-w-0 items-center gap-2">
                 <input
@@ -213,26 +214,17 @@ export function SelectedDateRecords({
         </DailySection>
 
         <DailySection
-          title="운동"
+          title="운동 요약"
           count={records.workoutRecords.length}
-          emptyText="운동 기록 없음"
+          emptyText="Fitness에서 공유한 완료 운동 요약이 없습니다."
           icon={<Dumbbell className="h-4 w-4 text-red-600" />}
         >
           {records.workoutRecords.map((record) => (
-            <DailyItem
-              key={record.id}
-              markerClassName="bg-red-500"
-              actions={
-                <DeleteItemButton
-                  label="운동 기록 삭제"
-                  onDelete={() => onDeleteWorkout(record)}
-                />
-              }
-            >
+            <DailyItem key={record.id} markerClassName="bg-red-500">
               <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                {getWorkoutTypeLabel(record)} - {getWorkoutSubcategoryLabel(record)}
+                Fitness 운동 요약
               </div>
-              <WorkoutMetricDetail record={record} />
+              <WorkoutProjectionDetail projection={record} />
               <BackfillBadge record={record} />
             </DailyItem>
           ))}
@@ -245,25 +237,7 @@ export function SelectedDateRecords({
           icon={<Salad className="h-4 w-4 text-yellow-600" />}
         >
           {records.mealRecords.map((record) => (
-            <DailyItem
-              key={record.id}
-              markerClassName="bg-yellow-400"
-              actions={
-                <DeleteItemButton
-                  label="식사 기록 삭제"
-                  onDelete={() => onDeleteMeal(record)}
-                />
-              }
-            >
-              <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                {record.menu}
-              </div>
-              <div className="mt-1 text-xs text-slate-500 dark:text-neutral-400">
-                {record.calories.toLocaleString("ko-KR")} kcal / 단백질{" "}
-                {formatMetric(record.proteinGrams)} g
-              </div>
-              <BackfillBadge record={record} />
-            </DailyItem>
+            <ReadOnlyMeal key={record.id} record={record} />
           ))}
         </DailySection>
 
@@ -274,21 +248,7 @@ export function SelectedDateRecords({
           icon={<Scale className="h-4 w-4 text-emerald-600" />}
         >
           {records.weightRecords.map((record) => (
-            <DailyItem
-              key={record.id}
-              markerClassName="bg-emerald-500"
-              actions={
-                <DeleteItemButton
-                  label="체중 기록 삭제"
-                  onDelete={() => onDeleteWeight(record)}
-                />
-              }
-            >
-              <div className="truncate text-sm font-semibold text-slate-900 dark:text-neutral-100">
-                {formatMetric(record.weightKg)} kg
-              </div>
-              <BackfillBadge record={record} />
-            </DailyItem>
+            <ReadOnlyWeight key={record.id} record={record} />
           ))}
         </DailySection>
       </div>

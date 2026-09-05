@@ -1,10 +1,11 @@
 import type {
+  FitnessSummaryProjectionV2,
   LocalDataSnapshot,
+  LegacyWorkoutRecordV1,
   MealRecord,
   Note,
   Task,
   WeightRecord,
-  WorkoutRecord,
 } from "../../../types";
 import type { RealtimeSubscription } from "../syncTypes";
 import { mergeEntities } from "../merge";
@@ -12,6 +13,7 @@ import {
   mealRecordFromRow,
   noteFromRow,
   taskFromRow,
+  fitnessSummaryProjectionV2FromRow,
   weightRecordFromRow,
   workoutRecordFromRow,
 } from "./mappers";
@@ -23,6 +25,7 @@ import type {
   SupabaseClient,
   TaskRow,
   WeightRecordRow,
+  FitnessSummaryProjectionV2Row,
   WorkoutRecordRow,
 } from "./rows";
 
@@ -30,6 +33,7 @@ const REALTIME_TABLES: RealtimeTableName[] = [
   "notes",
   "tasks",
   "workout_records",
+  "fitness_summary_projections_v2",
   "meal_records",
   "weight_records",
 ];
@@ -38,6 +42,8 @@ const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
   notes: "다른 기기의 메모 변경사항을 반영했습니다.",
   tasks: "다른 기기의 체크리스트 변경사항을 반영했습니다.",
   workout_records: "다른 기기의 운동 기록 변경을 반영했습니다.",
+  fitness_summary_projections_v2:
+    "Fitness Summary Projection v2 변경을 반영했습니다.",
   meal_records: "다른 기기의 식사 기록 변경을 반영했습니다.",
   weight_records: "다른 기기의 체중 기록 변경을 반영했습니다.",
 };
@@ -68,11 +74,24 @@ export function applyRemoteTask(
 
 export function applyRemoteWorkoutRecord(
   snapshot: LocalDataSnapshot,
-  remoteRecord: WorkoutRecord,
+  remoteRecord: LegacyWorkoutRecordV1,
 ): LocalDataSnapshot {
   return {
     ...snapshot,
     workoutRecords: mergeEntities(snapshot.workoutRecords, [remoteRecord]),
+  };
+}
+
+export function applyRemoteFitnessSummaryProjectionV2(
+  snapshot: LocalDataSnapshot,
+  remoteProjection: FitnessSummaryProjectionV2,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    fitnessSummaryProjections: mergeEntities(
+      snapshot.fitnessSummaryProjections,
+      [remoteProjection],
+    ),
   };
 }
 
@@ -119,6 +138,13 @@ export function applyRealtimePayload(
       return applyRemoteWorkoutRecord(
         snapshot,
         workoutRecordFromRow(row as WorkoutRecordRow),
+      );
+    case "fitness_summary_projections_v2":
+      return applyRemoteFitnessSummaryProjectionV2(
+        snapshot,
+        fitnessSummaryProjectionV2FromRow(
+          row as FitnessSummaryProjectionV2Row,
+        ),
       );
     case "meal_records":
       return applyRemoteMealRecord(

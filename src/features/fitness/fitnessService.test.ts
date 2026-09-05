@@ -1,232 +1,109 @@
 import { describe, expect, it } from "vitest";
-import type { MealRecord, WeightRecord, WorkoutRecord } from "../../types";
+import type { LegacyWorkoutRecordV1, MealRecord, WeightRecord } from "../../types";
 import {
-  createMealRecord,
-  createWorkoutRecord,
-  getWorkoutSubcategoryLabel,
+  formatDurationSeconds,
+  getVisibleMealRecords,
+  getVisibleWeightRecords,
+  getVisibleWorkoutRecords,
+  getWorkoutCategoryLabels,
   getWorkoutMetricLabels,
-  restoreWeightRecord,
-  softDeleteWeightRecord,
-  updateMealRecord,
-  updateWeightRecord,
-  updateWorkoutRecord,
+  getWorkoutSubcategoryLabel,
 } from "./fitnessService";
 
-const baseWorkout: WorkoutRecord = {
-  id: "workout-1",
+const auditFields = {
   createdAt: "2026-06-09T00:00:00.000Z",
+  updatedAt: "2026-06-09T00:00:00.000Z",
+  deletedAt: null,
+  deviceId: "device-a",
+  isBackfilled: false,
+  backfilledAt: null,
+  backfillReason: null,
+} as const;
+
+const legacyWorkout: LegacyWorkoutRecordV1 = {
+  ...auditFields,
+  id: "workout-1",
   date: "2026-06-09",
   workoutType: "strength",
   category: "chest",
   exerciseName: "bench press",
   durationSeconds: null,
   averageHeartRate: null,
-  isBackfilled: false,
-  backfilledAt: null,
-  backfillReason: null,
-  updatedAt: "2026-06-09T00:00:00.000Z",
-  deletedAt: null,
-  deviceId: "device-a",
+  sourceApp: "fitness",
+  scope: "both",
+  metadata: {
+    category_codes: ["chest", "back"],
+    os_categories: ["가슴", "등"],
+  },
+  contractVersion: 1,
 };
 
-const baseMeal: MealRecord = {
+const legacyMeal: MealRecord = {
+  ...auditFields,
   id: "meal-1",
-  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   menu: "salad",
   calories: 500,
   proteinGrams: 30,
   carbsGrams: null,
   fatGrams: null,
-  isBackfilled: false,
-  backfilledAt: null,
-  backfillReason: null,
-  updatedAt: "2026-06-09T00:00:00.000Z",
-  deletedAt: null,
-  deviceId: "device-a",
+  sourceApp: "fitness",
+  scope: "both",
+  metadata: {},
+  contractVersion: 1,
 };
 
-const baseWeight: WeightRecord = {
+const legacyWeight: WeightRecord = {
+  ...auditFields,
   id: "weight-1",
-  createdAt: "2026-06-09T00:00:00.000Z",
   date: "2026-06-09",
   weightKg: 72,
-  isBackfilled: false,
-  backfilledAt: null,
-  backfillReason: null,
-  updatedAt: "2026-06-09T00:00:00.000Z",
-  deletedAt: null,
-  deviceId: "device-a",
+  sourceApp: "fitness",
+  scope: "both",
+  metadata: {},
+  contractVersion: 1,
 };
 
-describe("fitnessService", () => {
-  it("updates workout records with timestamp and device id", () => {
-    const updated = updateWorkoutRecord(
-      baseWorkout,
-      { category: "back", exerciseName: "row" },
-      "device-b",
-    );
-
-    expect(updated.category).toBe("back");
-    expect(updated.exerciseName).toBe("row");
-    expect(updated.deviceId).toBe("device-b");
-    expect(updated.updatedAt).not.toBe(baseWorkout.updatedAt);
-    expect(updated.deletedAt).toBeNull();
+describe("fitnessService legacy compatibility readers", () => {
+  it("keeps v1 Fitness rows readable without exposing a write API", () => {
+    expect(getVisibleWorkoutRecords([legacyWorkout])).toEqual([legacyWorkout]);
+    expect(
+      getVisibleWorkoutRecords([
+        legacyWorkout,
+        { ...legacyWorkout, id: "hidden", scope: "fitness" },
+        { ...legacyWorkout, id: "deleted", deletedAt: auditFields.updatedAt },
+      ]).map((record) => record.id),
+    ).toEqual(["workout-1"]);
   });
 
-  it("stores cardio metrics only on cardio workout records", () => {
-    const cardio = createWorkoutRecord(
-      "2026-06-09",
-      "cardio",
-      "run",
-      "run",
-      "device-b",
-      undefined,
-      {
-        durationSeconds: 1800,
-        averageHeartRate: 140,
-      },
-    );
-    const strength = createWorkoutRecord(
-      "2026-06-09",
-      "strength",
-      "chest",
-      "bench press",
-      "device-b",
-      undefined,
-      {
-        durationSeconds: 1800,
-        averageHeartRate: 140,
-      },
-    );
+  it("retains v1 category and metric formatting for compatibility readers", () => {
+    expect(getWorkoutCategoryLabels(legacyWorkout)).toEqual(["가슴", "등"]);
+    expect(getWorkoutSubcategoryLabel(legacyWorkout)).toBe("가슴운동 · 등운동");
 
-    expect(cardio.durationSeconds).toBe(1800);
-    expect(cardio.averageHeartRate).toBe(140);
+    const cardio: LegacyWorkoutRecordV1 = {
+      ...legacyWorkout,
+      id: "cardio-1",
+      workoutType: "cardio",
+      category: "달리기",
+      exerciseName: "running",
+      durationSeconds: 1_800,
+      averageHeartRate: 140,
+    };
     expect(getWorkoutMetricLabels(cardio)).toEqual([
       "00:30:00",
       "평균 심박수 140 bpm",
     ]);
-    expect(strength.durationSeconds).toBeNull();
-    expect(strength.averageHeartRate).toBeNull();
+    expect(formatDurationSeconds(90)).toBe("00:01:30");
   });
 
-  it("writes the frozen v1 contract and stable category codes", () => {
-    const strength = createWorkoutRecord(
-      "2026-07-24",
-      "strength",
-      "가슴",
-      "벤치 프레스",
-      "device-b",
-    );
-    const cardio = createWorkoutRecord(
-      "2026-07-24",
-      "cardio",
-      "실내 달리기",
-      "러닝",
-      "device-b",
-    );
-
-    expect(strength.contractVersion).toBe(1);
-    expect(strength.metadata).toMatchObject({
-      contract_version: 1,
-      category_codes: ["chest"],
-      os_categories: ["가슴"],
-    });
-    expect(cardio.metadata).toMatchObject({
-      contract_version: 1,
-      category_codes: ["cardio"],
-      os_categories: ["유산소"],
-    });
-  });
-
-  it("renders FitnessApp body-part summaries in the Personal OS format", () => {
-    const sharedWorkout: WorkoutRecord = {
-      ...baseWorkout,
-      category: "가슴",
-      sourceApp: "fitness",
-      scope: "both",
-      metadata: {
-        os_categories: ["가슴", "등", "가슴"],
-      },
-    };
-
-    expect(getWorkoutSubcategoryLabel(sharedWorkout)).toBe("가슴운동 · 등운동");
-  });
-
-  it("creates and updates meal carbs and fat values", () => {
-    const created = createMealRecord(
-      "2026-06-09",
-      "rice bowl",
-      700,
-      35,
-      "device-b",
-      80,
-      20,
-    );
-    const updated = updateMealRecord(
-      created,
-      { carbsGrams: 90.5, fatGrams: null },
-      "device-c",
-    );
-
-    expect(created.carbsGrams).toBe(80);
-    expect(created.fatGrams).toBe(20);
-    expect(created.createdAt).toBeTruthy();
-    expect(created.isBackfilled).toBe(false);
-    expect(updated.carbsGrams).toBe(90.5);
-    expect(updated.fatGrams).toBeNull();
-    expect(updated.deviceId).toBe("device-c");
-  });
-
-  it("creates backfilled records with stable audit metadata", () => {
-    const created = createMealRecord(
-      "2026-06-08",
-      "late meal",
-      650,
-      42,
-      "device-b",
-      null,
-      null,
-      {
-        isBackfilled: true,
-        backfilledAt: "2026-06-09T01:00:00.000Z",
-        backfillReason: "test",
-      },
-    );
-
-    expect(created.isBackfilled).toBe(true);
-    expect(created.backfilledAt).toBe("2026-06-09T01:00:00.000Z");
-    expect(created.backfillReason).toBe("test");
-    expect(created.createdAt).toBeTruthy();
-  });
-
-  it("soft deletes and restores weight records without hard delete", () => {
-    const deleted = softDeleteWeightRecord(baseWeight, "device-b");
-    const restored = restoreWeightRecord(deleted, "device-c");
-
-    expect(deleted.id).toBe(baseWeight.id);
-    expect(deleted.deletedAt).not.toBeNull();
-    expect(deleted.updatedAt).toBe(deleted.deletedAt);
-    expect(deleted.deviceId).toBe("device-b");
-    expect(restored.deletedAt).toBeNull();
-    expect(restored.deviceId).toBe("device-c");
-  });
-
-  it("updates weight records through a patch object", () => {
-    const updated = updateWeightRecord(
-      baseWeight,
-      { date: "2026-06-10", weightKg: 71.4 },
-      "device-b",
-    );
-
-    expect(updated.date).toBe("2026-06-10");
-    expect(updated.weightKg).toBe(71.4);
-    expect(updated.deviceId).toBe("device-b");
-  });
-
-  it("trims meal menu on update", () => {
-    const updated = updateMealRecord(baseMeal, { menu: "  soup  " }, "device-b");
-
-    expect(updated.menu).toBe("soup");
+  it("keeps meal and weight rows read-compatible while filtering Fitness-only rows", () => {
+    expect(getVisibleMealRecords([legacyMeal])).toEqual([legacyMeal]);
+    expect(getVisibleWeightRecords([legacyWeight])).toEqual([legacyWeight]);
+    expect(
+      getVisibleMealRecords([{ ...legacyMeal, scope: "fitness" }]),
+    ).toEqual([]);
+    expect(
+      getVisibleWeightRecords([{ ...legacyWeight, scope: "fitness" }]),
+    ).toEqual([]);
   });
 });

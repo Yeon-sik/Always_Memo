@@ -1,18 +1,18 @@
-import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
+import type {
+  FitnessSummaryProjectionV2,
+  MealRecord,
+  WeightRecord,
+} from "../../../types";
 import {
   BACKFILL_LABEL,
   hasBackfillMetadata,
 } from "../../../lib/dataTrust/backfillMetadata";
 import { formatKoreanDate, isWithinDateRange } from "../fitnessDate";
-import {
-  getWorkoutMetricLabels,
-  getWorkoutSubcategoryLabel,
-  getWorkoutTypeLabel,
-} from "../fitnessService";
+import { formatFitnessProjectionLabels } from "../../fitness-summary/fitnessSummary";
 import { calculateFitnessStats, formatMetric } from "../stats/fitnessStats";
 
 interface FitnessExportInput {
-  workoutRecords: WorkoutRecord[];
+  workoutRecords: FitnessSummaryProjectionV2[];
   mealRecords: MealRecord[];
   weightRecords: WeightRecord[];
   startDate: string;
@@ -134,16 +134,8 @@ export function createFitnessMarkdownExport({
     lines,
     "운동",
     rangedWorkouts,
-    (record) => {
-      const groupLabel = `${getWorkoutTypeLabel(
-        record,
-      )} - ${getWorkoutSubcategoryLabel(record)}`;
-      const metricLabels = getWorkoutMetricLabels(record);
-      const metricSuffix =
-        metricLabels.length > 0 ? `, ${metricLabels.join(", ")}` : "";
-
-      return `- ${groupLabel}${metricSuffix}${formatBackfillSuffix(record)}`;
-    },
+    (record) =>
+      `- ${formatFitnessProjectionLabels(record).join(" · ")}${formatBackfillSuffix(record)}`,
   );
   appendEmptyAwareSection(
     lines,

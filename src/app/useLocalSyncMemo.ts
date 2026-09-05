@@ -1,7 +1,10 @@
 import { useMemo } from "react";
 
-import { useFitnessRecordActions } from "../features/fitness/useFitnessRecordActions";
-import { getVisibleMealRecords, getVisibleWeightRecords, getVisibleWorkoutRecords } from "../features/fitness/fitnessService";
+import {
+  getVisibleMealRecords,
+  getVisibleWeightRecords,
+  getVisibleWorkoutRecords,
+} from "../features/fitness/fitnessService";
 import { getVisibleNotes } from "../features/notes/noteService";
 import { useNoteActions } from "../features/notes/useNoteActions";
 import { getVisibleTasks } from "../features/tasks/taskService";
@@ -43,6 +46,22 @@ export function useLocalSyncMemo(
     () => getVisibleWeightRecords(runtime.snapshot.weightRecords),
     [runtime.snapshot.weightRecords],
   );
+  const visibleFitnessSummaryProjections = useMemo(
+    () =>
+      runtime.snapshot.fitnessSummaryProjections
+        .filter(
+          (projection) =>
+            projection.deletedAt === null &&
+            projection.completionStatus === "completed",
+        )
+        .sort((first, second) => {
+          if (first.date !== second.date) {
+            return first.date.localeCompare(second.date);
+          }
+          return first.updatedAt.localeCompare(second.updatedAt);
+        }),
+    [runtime.snapshot.fitnessSummaryProjections],
+  );
   const selectedNote = useMemo(
     () =>
       visibleNotes.find((note) => note.id === runtime.selectedNoteId) ?? null,
@@ -59,21 +78,16 @@ export function useLocalSyncMemo(
     commitSnapshot: runtime.commitSnapshot,
     device: runtime.device,
   });
-  const fitnessActions = useFitnessRecordActions({
-    commitSnapshot: runtime.commitSnapshot,
-    device: runtime.device,
-  });
-
   return {
     activeDevices: runtime.activeDevices,
     authEmail: runtime.authEmail,
-    ...fitnessActions,
     ...noteActions,
     ...taskActions,
     autostartEnabled: runtime.autostartEnabled,
     autostartSupported: runtime.autostartSupported,
     device: runtime.device,
     error: runtime.error,
+    fitnessSummaryProjections: visibleFitnessSummaryProjections,
     isAuthenticated: runtime.isAuthenticated,
     isManualSyncing: runtime.isManualSyncing,
     isReady: runtime.isReady,

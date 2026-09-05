@@ -5,7 +5,8 @@ import type {
   Note,
   Task,
   WeightRecord,
-  WorkoutRecord,
+  FitnessSummaryProjectionV2,
+  LegacyWorkoutRecordV1,
   WorkoutType,
 } from "../../types";
 import { normalizeEntityAuditFields } from "../dataTrust/backfillMetadata";
@@ -108,7 +109,7 @@ function normalizeTask(value: unknown): Task | null {
   };
 }
 
-function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
+function normalizeWorkoutRecord(value: unknown): LegacyWorkoutRecordV1 | null {
   if (
     !isRecord(value) ||
     !isSyncableEntity(value) ||
@@ -143,6 +144,74 @@ function normalizeWorkoutRecord(value: unknown): WorkoutRecord | null {
     ...getNormalizedScopedFields(value),
     ...getNormalizedSyncFields(value),
   };
+}
+
+function normalizeNonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function normalizeFitnessSummaryProjection(
+  value: unknown,
+): FitnessSummaryProjectionV2 | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.sourceFitnessSessionId !== "string" ||
+    !value.sourceFitnessSessionId.trim() ||
+    typeof value.date !== "string" ||
+    value.completionStatus !== "completed" ||
+    value.contractVersion !== 2
+  ) {
+    return null;
+  }
+
+  const counts = {
+    chestSets: normalizeNonNegativeInteger(value.chestSets),
+    backSets: normalizeNonNegativeInteger(value.backSets),
+    legsSets: normalizeNonNegativeInteger(value.legsSets),
+    shouldersSets: normalizeNonNegativeInteger(value.shouldersSets),
+    absSets: normalizeNonNegativeInteger(value.absSets),
+    tricepsSets: normalizeNonNegativeInteger(value.tricepsSets),
+    bicepsSets: normalizeNonNegativeInteger(value.bicepsSets),
+  };
+  if (Object.values(counts).some((count) => count === null)) {
+    return null;
+  }
+
+  const optionalSeconds = (candidate: unknown): number | null =>
+    candidate === null || candidate === undefined
+      ? null
+      : normalizeNonNegativeInteger(candidate);
+  const totalDurationSeconds = optionalSeconds(value.totalDurationSeconds);
+  const cardioDurationSeconds = optionalSeconds(value.cardioDurationSeconds);
+  if (
+    value.totalDurationSeconds !== null &&
+    value.totalDurationSeconds !== undefined &&
+    totalDurationSeconds === null
+  ) {
+    return null;
+  }
+  if (
+    value.cardioDurationSeconds !== null &&
+    value.cardioDurationSeconds !== undefined &&
+    cardioDurationSeconds === null
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    sourceFitnessSessionId: value.sourceFitnessSessionId,
+    date: value.date,
+    completionStatus: "completed",
+    ...counts,
+    totalDurationSeconds,
+    cardioDurationSeconds,
+    contractVersion: 2,
+    ...getNormalizedSyncFields(value),
+  } as FitnessSummaryProjectionV2;
 }
 
 function normalizeMealRecord(value: unknown): MealRecord | null {
@@ -226,6 +295,10 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     value.workoutRecords,
     normalizeWorkoutRecord,
   );
+  const fitnessSummaryProjections = normalizeArray(
+    value.fitnessSummaryProjections,
+    normalizeFitnessSummaryProjection,
+  );
   const mealRecords = normalizeArray(value.mealRecords, normalizeMealRecord);
   const weightRecords = normalizeArray(
     value.weightRecords,
@@ -239,6 +312,7 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     notes,
     tasks,
     workoutRecords,
+    fitnessSummaryProjections,
     mealRecords,
     weightRecords,
     devices,

@@ -13,7 +13,12 @@ import type {
   SyncResult,
   SyncStatus,
 } from "../lib/sync/syncTypes";
-import type { Device, LocalDataSnapshot, Note } from "../types";
+import type {
+  Device,
+  FitnessSummaryProjectionV2,
+  LocalDataSnapshot,
+  Note,
+} from "../types";
 import { getOrCreateDevice } from "../lib/device/device";
 import { getAutostartEnabled } from "../lib/desktop/autostart";
 import { useLocalSyncMemo } from "./useLocalSyncMemo";
@@ -420,48 +425,44 @@ describe("useLocalSyncMemo", () => {
     expect(syncClient.activeDeviceCalls.length).toBeGreaterThan(initialCalls);
   });
 
-  it("keeps soft-delete tombstones in the persisted snapshot", async () => {
-    const storage = new MemoryStorage(createEmptySnapshot());
+  it("exposes Fitness projections as read-only data without canonical write actions", async () => {
+    const projection: FitnessSummaryProjectionV2 = {
+      id: "fitness-session-1",
+      sourceFitnessSessionId: "fitness-session-1",
+      date: "2026-08-01",
+      completionStatus: "completed",
+      chestSets: 14,
+      backSets: 0,
+      legsSets: 0,
+      shouldersSets: 0,
+      absSets: 0,
+      tricepsSets: 0,
+      bicepsSets: 0,
+      totalDurationSeconds: 3_600,
+      cardioDurationSeconds: null,
+      contractVersion: 2,
+      createdAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+      deletedAt: null,
+      deviceId: "device-a",
+      isBackfilled: false,
+      backfilledAt: null,
+      backfillReason: null,
+    };
+    const storage = new MemoryStorage({
+      ...createEmptySnapshot(),
+      fitnessSummaryProjections: [projection],
+    });
     const syncClient = new FakeSyncClient();
     await renderHook(storage, syncClient);
-    await settleInitialSave();
-    storage.saved.length = 0;
 
-    await act(async () => {
-      currentHook.addNote();
-      currentHook.addTask("삭제될 작업");
-      currentHook.addWorkoutRecord("2026-08-01", "strength", "chest", "press");
-      currentHook.addMealRecord("2026-08-01", "meal", 500, 30);
-      currentHook.addWeightRecord("2026-08-01", 70);
-      await flushEffects();
-    });
-    const noteId = currentHook.notes[0].id;
-    const taskId = currentHook.tasks[0].id;
-    const workoutId = currentHook.workoutRecords[0].id;
-    const mealId = currentHook.mealRecords[0].id;
-    const weightId = currentHook.weightRecords[0].id;
-
-    await act(async () => {
-      currentHook.deleteNote(noteId);
-      currentHook.deleteTask(taskId);
-      currentHook.deleteWorkoutRecord(workoutId);
-      currentHook.deleteMealRecord(mealId);
-      currentHook.deleteWeightRecord(weightId);
-      await vi.advanceTimersByTimeAsync(400);
-      await flushEffects();
-    });
-
-    expect(currentHook.notes).toHaveLength(0);
-    expect(currentHook.tasks).toHaveLength(0);
-    expect(currentHook.workoutRecords).toHaveLength(0);
-    expect(currentHook.mealRecords).toHaveLength(0);
-    expect(currentHook.weightRecords).toHaveLength(0);
-    const saved = storage.saved.at(-1);
-    expect(saved?.notes[0].deletedAt).not.toBeNull();
-    expect(saved?.tasks[0].deletedAt).not.toBeNull();
-    expect(saved?.workoutRecords[0].deletedAt).not.toBeNull();
-    expect(saved?.mealRecords[0].deletedAt).not.toBeNull();
-    expect(saved?.weightRecords[0].deletedAt).not.toBeNull();
+    expect(currentHook.fitnessSummaryProjections).toEqual([projection]);
+    expect("addWorkoutRecord" in currentHook).toBe(false);
+    expect("addMealRecord" in currentHook).toBe(false);
+    expect("addWeightRecord" in currentHook).toBe(false);
+    expect("deleteWorkoutRecord" in currentHook).toBe(false);
+    expect("deleteMealRecord" in currentHook).toBe(false);
+    expect("deleteWeightRecord" in currentHook).toBe(false);
   });
 
   it("binds the signed-in user and keeps that binding after sign-out", async () => {

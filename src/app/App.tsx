@@ -28,12 +28,14 @@ export function App() {
       notes: memo.notes,
       tasks: memo.tasks,
       workoutRecords: memo.workoutRecords,
+      fitnessSummaryProjections: memo.fitnessSummaryProjections,
       mealRecords: memo.mealRecords,
       weightRecords: memo.weightRecords,
       devices: memo.activeDevices,
     }),
     [
       memo.activeDevices,
+      memo.fitnessSummaryProjections,
       memo.mealRecords,
       memo.notes,
       memo.tasks,
@@ -98,31 +100,17 @@ export function App() {
               loadFinanceDailySummaries={memo.loadFinanceDailySummaries}
               onAddNoteForDate={memo.addNoteForDate}
               onAddTask={memo.addTask}
-              onAddWeightRecord={memo.addWeightRecord}
-              onAddWorkoutRecord={memo.addWorkoutRecord}
-              onAddWorkoutRecords={memo.addWorkoutRecords}
-              onAddMealRecord={memo.addMealRecord}
               onDeleteNote={memo.deleteNote}
               onDeleteTask={memo.deleteTask}
-              onDeleteMealRecord={memo.deleteMealRecord}
-              onDeleteWeightRecord={memo.deleteWeightRecord}
-              onDeleteWorkoutRecord={memo.deleteWorkoutRecord}
-              onRestoreMealRecord={memo.restoreMealRecord}
-              onRestoreWeightRecord={memo.restoreWeightRecord}
-              onRestoreWorkoutRecord={memo.restoreWorkoutRecord}
               onSelectDate={setSelectedDate}
               onToggleTask={memo.toggleTask}
             />
           ) : activeView === "fitness" ? (
             <FitnessPanel
+              fitnessSummaryProjections={memo.fitnessSummaryProjections}
               mealRecords={memo.mealRecords}
               selectedDate={selectedDate}
               weightRecords={memo.weightRecords}
-              workoutRecords={memo.workoutRecords}
-              onAddMealRecord={memo.addMealRecord}
-              onAddWeightRecord={memo.addWeightRecord}
-              onAddWorkoutRecord={memo.addWorkoutRecord}
-              onAddWorkoutRecords={memo.addWorkoutRecords}
             />
           ) : (
             <div className="grid h-full min-h-0 grid-cols-2 gap-3">

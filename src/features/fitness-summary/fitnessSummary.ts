@@ -1,17 +1,17 @@
 import type {
+  FitnessSummaryProjectionV2,
   LocalDataSnapshot,
   MealRecord,
   WeightRecord,
-  WorkoutRecord,
 } from "../../types";
 import { formatLocalDate, isWithinDateRange, parseDateInput } from "../fitness/fitnessDate";
-import { getWorkoutSubcategoryLabel } from "../fitness/fitnessService";
+import { formatDurationSeconds } from "../fitness/fitnessService";
 
 export interface FitnessSummary {
   todayHasWorkout: boolean;
-  recentWorkouts: WorkoutRecord[];
+  recentWorkouts: FitnessSummaryProjectionV2[];
   weeklyWorkoutCount: number;
-  weeklyTopExercises: string[];
+  weeklyStrengthSetSummaries: string[];
   latestWeightKg: number | null;
   previousWeightKg: number | null;
   weightDeltaKg: number | null;
@@ -22,7 +22,7 @@ export interface FitnessSummary {
 
 export type FitnessConnectionStatus =
   | "no_fitness_records"
-  | "shared_workout_records";
+  | "summary_projection_v2";
 
 export interface FitnessConnectionSummary {
   status: FitnessConnectionStatus;
@@ -32,8 +32,43 @@ export interface FitnessConnectionSummary {
   message: string;
 }
 
-function isVisible(entity: { deletedAt: string | null; scope?: string }): boolean {
+const STRENGTH_PARTS: Array<{
+  key: keyof Pick<
+    FitnessSummaryProjectionV2,
+    | "chestSets"
+    | "backSets"
+    | "legsSets"
+    | "shouldersSets"
+    | "absSets"
+    | "tricepsSets"
+    | "bicepsSets"
+  >;
+  label: string;
+}> = [
+  { key: "chestSets", label: "가슴" },
+  { key: "backSets", label: "등" },
+  { key: "legsSets", label: "하체" },
+  { key: "shouldersSets", label: "어깨" },
+  { key: "absSets", label: "복부" },
+  { key: "tricepsSets", label: "삼두" },
+  { key: "bicepsSets", label: "이두" },
+];
+
+function isVisibleLegacyRecord(entity: {
+  deletedAt: string | null;
+  scope?: string;
+}): boolean {
   return entity.deletedAt === null && entity.scope !== "fitness";
+}
+
+function isVisibleProjection(
+  projection: FitnessSummaryProjectionV2,
+): boolean {
+  return (
+    projection.deletedAt === null &&
+    projection.completionStatus === "completed" &&
+    projection.contractVersion === 2
+  );
 }
 
 function sortByDateDescThenUpdatedDesc<T extends { date: string; updatedAt: string }>(
@@ -59,26 +94,62 @@ function getLastSevenDayRange(today: string): { startDate: string; endDate: stri
   };
 }
 
-function getExerciseLabel(record: WorkoutRecord): string {
-  return getWorkoutSubcategoryLabel(record);
-}
+/**
+ * Converts the v2 projection into the only workout labels Personal OS may
+ * display. Exercise identity and per-set values never enter this formatter.
+ */
+export function formatFitnessProjectionLabels(
+  projection: FitnessSummaryProjectionV2,
+): string[] {
+  const strengthLabels = STRENGTH_PARTS.filter(
+    ({ key }) => projection[key] > 0,
+  ).map(({ key, label }) => `${label} 운동 ${projection[key]}세트`);
 
-function getTopExerciseLabels(records: WorkoutRecord[]): string[] {
-  const counts = new Map<string, number>();
-
-  for (const record of records) {
-    const label = getExerciseLabel(record);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+  if (strengthLabels.length > 0) {
+    return strengthLabels;
   }
 
-  return [...counts.entries()]
-    .sort((first, second) => second[1] - first[1] || first[0].localeCompare(second[0]))
-    .slice(0, 3)
-    .map(([label, count]) => (count > 1 ? `${label} x${count}` : label));
+  const cardioDuration =
+    projection.cardioDurationSeconds ?? projection.totalDurationSeconds;
+  if (cardioDuration !== null) {
+    return [`유산소 ${formatDurationSeconds(cardioDuration)}`];
+  }
+
+  return ["완료 운동 요약"];
 }
 
-function getConnectionSummary(snapshot: LocalDataSnapshot): FitnessConnectionSummary {
-  const visibleWorkouts = snapshot.workoutRecords.filter(isVisible);
+function getWeeklyStrengthSetSummaries(
+  projections: FitnessSummaryProjectionV2[],
+): string[] {
+  const totals = new Map<(typeof STRENGTH_PARTS)[number]["key"], number>();
+
+  for (const projection of projections) {
+    for (const { key } of STRENGTH_PARTS) {
+      const count = projection[key];
+      if (count > 0) {
+        totals.set(key, (totals.get(key) ?? 0) + count);
+      }
+    }
+  }
+
+  return [...totals.entries()]
+    .sort((first, second) => {
+      if (first[1] !== second[1]) {
+        return second[1] - first[1];
+      }
+      return first[0].localeCompare(second[0]);
+    })
+    .slice(0, 3)
+    .map(([key, count]) => {
+      const label = STRENGTH_PARTS.find((part) => part.key === key)?.label ?? "기타";
+      return `${label} 운동 ${count}세트`;
+    });
+}
+
+function getConnectionSummary(
+  snapshot: LocalDataSnapshot,
+  visibleProjections: FitnessSummaryProjectionV2[],
+): FitnessConnectionSummary {
   const hiddenInProgressFitnessRecords = snapshot.workoutRecords.filter(
     (record) =>
       record.deletedAt === null &&
@@ -86,25 +157,23 @@ function getConnectionSummary(snapshot: LocalDataSnapshot): FitnessConnectionSum
       record.scope === "fitness",
   ).length;
 
-  if (visibleWorkouts.length === 0) {
+  if (visibleProjections.length === 0) {
     return {
       status: "no_fitness_records",
       linkedCount: 0,
       quickRecordOnlyCount: 0,
       possibleMismatchCount: hiddenInProgressFitnessRecords,
-      message: "Personal OS에 표시할 완료 운동 기록이 없습니다.",
+      message: "Personal OS에 표시할 Summary Projection v2가 없습니다.",
     };
   }
 
   return {
-    status: "shared_workout_records",
-    linkedCount: visibleWorkouts.length,
-    quickRecordOnlyCount: visibleWorkouts.filter(
-      (record) => record.sourceApp !== "fitness",
-    ).length,
+    status: "summary_projection_v2",
+    linkedCount: visibleProjections.length,
+    quickRecordOnlyCount: 0,
     possibleMismatchCount: hiddenInProgressFitnessRecords,
     message:
-      "양쪽 앱이 같은 workout_records ID를 사용합니다. FitnessApp 세트 상세는 Personal OS 요약에 노출하지 않습니다.",
+      "FitnessApp가 생성한 Summary Projection v2만 표시합니다. 원본 운동과 세트 상세는 FitnessApp에 남습니다.",
   };
 }
 
@@ -112,27 +181,27 @@ export function getFitnessSummary(
   snapshot: LocalDataSnapshot,
   today = formatLocalDate(),
 ): FitnessSummary {
-  const visibleWorkouts = sortByDateDescThenUpdatedDesc(
-    snapshot.workoutRecords.filter(isVisible),
+  const visibleProjections = sortByDateDescThenUpdatedDesc(
+    snapshot.fitnessSummaryProjections.filter(isVisibleProjection),
   );
   const visibleWeights = sortByDateDescThenUpdatedDesc(
-    snapshot.weightRecords.filter(isVisible),
+    snapshot.weightRecords.filter(isVisibleLegacyRecord),
   );
   const visibleMeals = sortByDateDescThenUpdatedDesc(
-    snapshot.mealRecords.filter(isVisible),
+    snapshot.mealRecords.filter(isVisibleLegacyRecord),
   );
   const weekRange = getLastSevenDayRange(today);
-  const weeklyWorkouts = visibleWorkouts.filter((record) =>
+  const weeklyWorkouts = visibleProjections.filter((record) =>
     isWithinDateRange(record.date, weekRange.startDate, weekRange.endDate),
   );
   const latestWeight = visibleWeights[0] ?? null;
   const previousWeight = visibleWeights[1] ?? null;
 
   return {
-    todayHasWorkout: visibleWorkouts.some((record) => record.date === today),
-    recentWorkouts: visibleWorkouts.slice(0, 3),
+    todayHasWorkout: visibleProjections.some((record) => record.date === today),
+    recentWorkouts: visibleProjections.slice(0, 3),
     weeklyWorkoutCount: weeklyWorkouts.length,
-    weeklyTopExercises: getTopExerciseLabels(weeklyWorkouts),
+    weeklyStrengthSetSummaries: getWeeklyStrengthSetSummaries(weeklyWorkouts),
     latestWeightKg: latestWeight?.weightKg ?? null,
     previousWeightKg: previousWeight?.weightKg ?? null,
     weightDeltaKg:
@@ -141,6 +210,6 @@ export function getFitnessSummary(
         : null,
     latestMeal: visibleMeals[0] ?? null,
     todayHasMeal: visibleMeals.some((record) => record.date === today),
-    connection: getConnectionSummary(snapshot),
+    connection: getConnectionSummary(snapshot, visibleProjections),
   };
 }

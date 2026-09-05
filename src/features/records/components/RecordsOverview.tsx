@@ -14,9 +14,11 @@ import {
   BACKFILL_LABEL,
   hasBackfillMetadata,
 } from "../../../lib/dataTrust/backfillMetadata";
-import { getFitnessSummary } from "../../fitness-summary/fitnessSummary";
+import {
+  formatFitnessProjectionLabels,
+  getFitnessSummary,
+} from "../../fitness-summary/fitnessSummary";
 import { formatKoreanDate } from "../../fitness/fitnessDate";
-import { getWorkoutSubcategoryLabel } from "../../fitness/fitnessService";
 import { formatMetric } from "../../fitness/stats/fitnessStats";
 import {
   getDashboardStats,
@@ -337,16 +339,20 @@ export function RecordsOverview({
             </span>{" "}
             {summarizeItems(
               fitnessSummary.recentWorkouts.map(
-                (record) => `${record.date} ${getWorkoutSubcategoryLabel(record)}`,
+                (record) =>
+                  `${record.date} ${formatFitnessProjectionLabels(record).join(" · ")}`,
               ),
               "No recent workout sessions.",
             )}
           </p>
           <p>
             <span className="font-semibold text-slate-800 dark:text-neutral-100">
-              Main movements:
+              Strength summary:
             </span>{" "}
-            {summarizeItems(fitnessSummary.weeklyTopExercises, "No weekly movement summary.")}
+            {summarizeItems(
+              fitnessSummary.weeklyStrengthSetSummaries,
+              "No weekly strength summary.",
+            )}
           </p>
           <p>
             <span className="font-semibold text-slate-800 dark:text-neutral-100">

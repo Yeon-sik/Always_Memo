@@ -1,7 +1,11 @@
-import type { MealRecord, WeightRecord, WorkoutRecord } from "../../../types";
+import type {
+  FitnessSummaryProjectionV2,
+  MealRecord,
+  WeightRecord,
+} from "../../../types";
 import { countBackfilledRecords } from "../../../lib/dataTrust/backfillMetadata";
 import { isWithinDateRange } from "../fitnessDate";
-import { getWorkoutStatsLabel } from "../fitnessService";
+import { formatFitnessProjectionLabels } from "../../fitness-summary/fitnessSummary";
 
 export interface FitnessStats {
   workoutTotal: number;
@@ -68,7 +72,7 @@ export function getRecordsInRange<T extends { date: string; deletedAt?: string |
 }
 
 export function calculateFitnessStats(
-  workoutRecords: WorkoutRecord[],
+  workoutRecords: FitnessSummaryProjectionV2[],
   mealRecords: MealRecord[],
   weightRecords: WeightRecord[],
   startDate: string,
@@ -78,7 +82,10 @@ export function calculateFitnessStats(
   const rangedMeals = getRecordsInRange(mealRecords, startDate, endDate);
   const rangedWeights = getRecordsInRange(weightRecords, startDate, endDate);
   const weightValues = rangedWeights.map((record) => record.weightKg);
-  const workoutBySubcategory = countBy(rangedWorkouts, getWorkoutStatsLabel);
+  const workoutBySubcategory = countBy(
+    rangedWorkouts,
+    (record) => formatFitnessProjectionLabels(record).join(" · "),
+  );
 
   return {
     workoutTotal: rangedWorkouts.length,

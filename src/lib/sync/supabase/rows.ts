@@ -49,6 +49,27 @@ export interface WorkoutRecordRow extends EntityAuditRow {
   device_id: string;
 }
 
+export interface FitnessSummaryProjectionV2Row extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  source_fitness_session_id: string;
+  date: string;
+  completion_status: "completed";
+  chest_sets: number;
+  back_sets: number;
+  legs_sets: number;
+  shoulders_sets: number;
+  abs_sets: number;
+  triceps_sets: number;
+  biceps_sets: number;
+  total_duration_seconds: number | null;
+  cardio_duration_seconds: number | null;
+  contract_version: 2;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
 export interface MealRecordRow extends EntityAuditRow {
   id: string;
   user_id: string;
@@ -130,6 +151,12 @@ export interface Database {
         Update: Partial<WorkoutRecordRow>;
         Relationships: [];
       };
+      fitness_summary_projections_v2: {
+        Row: FitnessSummaryProjectionV2Row;
+        Insert: FitnessSummaryProjectionV2Row;
+        Update: Partial<FitnessSummaryProjectionV2Row>;
+        Relationships: [];
+      };
       meal_records: {
         Row: MealRecordRow;
         Insert: MealRecordRow;
@@ -165,6 +192,7 @@ export type SnapshotTableName =
   | "notes"
   | "tasks"
   | "workout_records"
+  | "fitness_summary_projections_v2"
   | "meal_records"
   | "weight_records"
   | "devices";
