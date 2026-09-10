@@ -30,6 +30,11 @@ export interface DevControlPanelProps extends DevControlActions {
 }
 
 const PROJECT_STATUSES: DevProjectStatus[] = ["ACTIVE", "PLANNED", "COMPLETED"];
+const PROJECT_STATUS_LABELS: Record<DevProjectStatus, string> = {
+  ACTIVE: "진행 중",
+  PLANNED: "예정",
+  COMPLETED: "완료",
+};
 const MILESTONE_STATUSES: DevMilestoneStatus[] = [
   "PLANNED",
   "IN_PROGRESS",
@@ -256,14 +261,14 @@ export function DevControlPanel({
         const statusProjects = projects.filter((project) => project.status === status);
         return (
           <section key={status} className="grid gap-2">
-            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-neutral-400">{status}</h3>
+            <h3 className="text-xs font-bold tracking-wide text-slate-500 dark:text-neutral-400">{PROJECT_STATUS_LABELS[status]}</h3>
             {statusProjects.length === 0 ? <p className="rounded border border-dashed border-slate-300 p-3 text-xs text-slate-400 dark:border-neutral-800">프로젝트 없음</p> : null}
             {statusProjects.map((project) => {
               const actions = getProjectChildren(project.id, projects, projectActions);
               const lastUpdated = getProjectLastUpdated(project, projectMilestones.filter((item) => item.projectId === project.id), actions, projectIdeas.filter((item) => item.projectId === project.id), projectHistory.filter((item) => item.projectId === project.id));
               return (
                 <button key={project.id} type="button" onClick={() => { onSelectProject(project.id); startEdit(project); }} className={`grid gap-1 rounded-lg border p-3 text-left transition ${selectedProjectId === project.id ? "border-teal-500 bg-teal-50 dark:bg-teal-950/30" : "border-slate-200 bg-white hover:border-slate-400 dark:border-neutral-800 dark:bg-neutral-950"}`}>
-                  <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{project.name}</span><span className="text-[10px] text-slate-500">{project.status}</span></div>
+                  <div className="flex items-center justify-between gap-2"><span className="truncate text-sm font-semibold">{project.name}</span><span className="text-[10px] text-slate-500">{PROJECT_STATUS_LABELS[project.status]}</span></div>
                   <p className="line-clamp-2 text-xs text-slate-600 dark:text-neutral-300">{project.currentSummary || "현재 상태를 기록하세요."}</p>
                   <p className="line-clamp-1 text-[11px] text-slate-500">목표: {project.targetSummary || "미정"}</p>
                   <div className="flex flex-wrap gap-2 text-[10px] text-slate-500"><span>OPEN NEXT {getOpenNextCount(actions)}</span><span className={hasBlockedAction(actions) ? "font-semibold text-rose-600" : ""}>{hasBlockedAction(actions) ? "BLOCKED" : "차단 없음"}</span><span>변경 {formatTimestamp(lastUpdated)}</span></div>

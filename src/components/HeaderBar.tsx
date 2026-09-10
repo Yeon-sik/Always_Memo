@@ -37,7 +37,7 @@ const viewItems: Array<{
   { view: "records", label: "기록", icon: CalendarDays },
   { view: "memo", label: "메모", icon: NotebookTabs },
   { view: "fitness", label: "운동", icon: Dumbbell },
-  { view: "dev-control", label: "개발", icon: PanelsTopLeft },
+  { view: "dev-control", label: "Dev Control", icon: PanelsTopLeft },
 ];
 
 function getSaveLabel(saveState: SaveState): string {
