@@ -2,6 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   deviceFromRow,
   deviceToRow,
+  projectActionFromRow,
+  projectActionToRow,
+  projectFromRow,
+  projectHistoryFromRow,
+  projectHistoryToRow,
+  projectIdeaFromRow,
+  projectIdeaToRow,
+  projectMilestoneFromRow,
+  projectMilestoneToRow,
+  projectToRow,
   mealRecordFromRow,
   mealRecordToRow,
   noteFromRow,
@@ -18,6 +28,11 @@ import {
   makeDevice,
   makeMealRecord,
   makeNote,
+  makeProject,
+  makeProjectAction,
+  makeProjectHistory,
+  makeProjectIdea,
+  makeProjectMilestone,
   makeTask,
   makeWeightRecord,
   makeWorkoutRecord,
@@ -33,6 +48,11 @@ describe("Supabase row mappers", () => {
     const meal = makeMealRecord();
     const weight = makeWeightRecord();
     const device = makeDevice();
+    const project = makeProject();
+    const milestone = makeProjectMilestone();
+    const action = makeProjectAction();
+    const idea = makeProjectIdea();
+    const history = makeProjectHistory();
 
     expect(noteFromRow(noteToRow(note, USER_ID))).toEqual(note);
     expect(taskFromRow(taskToRow(task, USER_ID))).toEqual(task);
@@ -44,6 +64,17 @@ describe("Supabase row mappers", () => {
       weight,
     );
     expect(deviceFromRow(deviceToRow(device, USER_ID))).toEqual(device);
+    expect(projectFromRow(projectToRow(project, USER_ID))).toEqual(project);
+    expect(
+      projectMilestoneFromRow(projectMilestoneToRow(milestone, USER_ID)),
+    ).toEqual(milestone);
+    expect(projectActionFromRow(projectActionToRow(action, USER_ID))).toEqual(
+      action,
+    );
+    expect(projectIdeaFromRow(projectIdeaToRow(idea, USER_ID))).toEqual(idea);
+    expect(
+      projectHistoryFromRow(projectHistoryToRow(history, USER_ID)),
+    ).toEqual(history);
   });
 
   it("normalizes missing audit fields and database time precision", () => {

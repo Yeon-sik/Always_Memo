@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { mergeSnapshot } from "./snapshotMerge";
-import { makeDevice, makeNote, makeSnapshot } from "./testFixtures";
+import {
+  makeDevice,
+  makeNote,
+  makeProject,
+  makeProjectHistory,
+  makeSnapshot,
+} from "./testFixtures";
 
 describe("Supabase snapshot merge", () => {
   it("uses the canonical LWW rule for each snapshot collection", () => {
@@ -34,6 +40,36 @@ describe("Supabase snapshot merge", () => {
     });
 
     expect(mergeSnapshot(local, incoming).notes[0].deletedAt).toBe(updatedAt);
+  });
+
+  it("merges all Dev Control collections with the same LWW rule", () => {
+    const localProject = makeProject({
+      updatedAt: "2026-08-01T00:00:02.000Z",
+      currentSummary: "local",
+    });
+    const incomingHistory = makeProjectHistory({
+      updatedAt: "2026-08-01T00:00:02.000Z",
+      summary: "remote history",
+    });
+    const local = makeSnapshot({
+      projects: [localProject],
+      projectHistory: [
+        makeProjectHistory({ summary: "local history" }),
+      ],
+    });
+    const incoming = makeSnapshot({
+      projects: [
+        makeProject({
+          updatedAt: "2026-08-01T00:00:01.000Z",
+          currentSummary: "stale",
+        }),
+      ],
+      projectHistory: [incomingHistory],
+    });
+
+    const merged = mergeSnapshot(local, incoming);
+    expect(merged.projects[0].currentSummary).toBe("local");
+    expect(merged.projectHistory[0].summary).toBe("remote history");
   });
 
   it("keeps the latest device heartbeat and sorts devices newest first", () => {

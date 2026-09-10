@@ -3,6 +3,11 @@ import type {
   LocalDataSnapshot,
   MealRecord,
   Note,
+  Project,
+  ProjectAction,
+  ProjectHistory,
+  ProjectIdea,
+  ProjectMilestone,
   Task,
   WeightRecord,
   FitnessSummaryProjectionV2,
@@ -25,6 +30,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNullableString(value: unknown): value is string | null {
   return typeof value === "string" || value === null;
+}
+
+function isOptionalNullableString(
+  value: unknown,
+): value is string | null | undefined {
+  return value === undefined || isNullableString(value);
 }
 
 function isSyncableEntity(value: Record<string, unknown>): boolean {
@@ -60,6 +71,131 @@ function getNormalizedScopedFields(value: Record<string, unknown>) {
     sourceApp,
     scope,
     metadata,
+  };
+}
+
+function isOneOf<T extends string>(value: unknown, values: readonly T[]): value is T {
+  return typeof value === "string" && values.includes(value as T);
+}
+
+const PROJECT_STATUSES = ["PLANNED", "ACTIVE", "COMPLETED"] as const;
+const MILESTONE_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED"] as const;
+const ACTION_TYPES = ["NEXT", "LATER", "BLOCKED"] as const;
+const ACTION_STATUSES = ["OPEN", "DONE"] as const;
+const HISTORY_TYPES = ["STATUS_CHANGE", "MILESTONE", "RELEASE", "NOTE"] as const;
+
+function normalizeProject(value: unknown): Project | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.name !== "string" ||
+    !isOneOf(value.status, PROJECT_STATUSES) ||
+    typeof value.currentSummary !== "string" ||
+    typeof value.targetSummary !== "string" ||
+    !isOptionalNullableString(value.repository) ||
+    !isOptionalNullableString(value.branch) ||
+    !isOptionalNullableString(value.lastVerifiedCommit) ||
+    !isOptionalNullableString(value.lastVerifiedAt)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    name: value.name as string,
+    repository: (value.repository as string | null | undefined) ?? null,
+    branch: (value.branch as string | null | undefined) ?? null,
+    status: value.status as (typeof PROJECT_STATUSES)[number],
+    currentSummary: value.currentSummary as string,
+    targetSummary: value.targetSummary as string,
+    lastVerifiedCommit:
+      (value.lastVerifiedCommit as string | null | undefined) ?? null,
+    lastVerifiedAt: (value.lastVerifiedAt as string | null | undefined) ?? null,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeProjectMilestone(value: unknown): ProjectMilestone | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.projectId !== "string" ||
+    typeof value.title !== "string" ||
+    !isOneOf(value.status, MILESTONE_STATUSES)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    projectId: value.projectId as string,
+    title: value.title as string,
+    status: value.status as (typeof MILESTONE_STATUSES)[number],
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeProjectAction(value: unknown): ProjectAction | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.projectId !== "string" ||
+    typeof value.title !== "string" ||
+    !isOneOf(value.type, ACTION_TYPES) ||
+    !isOneOf(value.status, ACTION_STATUSES)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    projectId: value.projectId as string,
+    title: value.title as string,
+    type: value.type as (typeof ACTION_TYPES)[number],
+    status: value.status as (typeof ACTION_STATUSES)[number],
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeProjectIdea(value: unknown): ProjectIdea | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.projectId !== "string" ||
+    typeof value.title !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    projectId: value.projectId as string,
+    title: value.title as string,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeProjectHistory(value: unknown): ProjectHistory | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.projectId !== "string" ||
+    !isOneOf(value.type, HISTORY_TYPES) ||
+    typeof value.summary !== "string" ||
+    typeof value.occurredAt !== "string" ||
+    !isOptionalNullableString(value.githubRef)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    projectId: value.projectId as string,
+    type: value.type as (typeof HISTORY_TYPES)[number],
+    summary: value.summary as string,
+    occurredAt: value.occurredAt as string,
+    githubRef: (value.githubRef as string | null | undefined) ?? null,
+    ...getNormalizedSyncFields(value),
   };
 }
 
@@ -307,6 +443,14 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
   const devices = Array.isArray(value.devices)
     ? value.devices.filter(isDevice)
     : [];
+  const projects = normalizeArray(value.projects, normalizeProject);
+  const projectMilestones = normalizeArray(
+    value.projectMilestones,
+    normalizeProjectMilestone,
+  );
+  const projectActions = normalizeArray(value.projectActions, normalizeProjectAction);
+  const projectIdeas = normalizeArray(value.projectIdeas, normalizeProjectIdea);
+  const projectHistory = normalizeArray(value.projectHistory, normalizeProjectHistory);
 
   return {
     notes,
@@ -316,6 +460,11 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     mealRecords,
     weightRecords,
     devices,
+    projects,
+    projectMilestones,
+    projectActions,
+    projectIdeas,
+    projectHistory,
   };
 }
 

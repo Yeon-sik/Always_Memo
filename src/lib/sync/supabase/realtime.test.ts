@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { noteToRow } from "./mappers";
+import { noteToRow, projectActionToRow } from "./mappers";
 import {
   applyRealtimePayload,
   subscribeSnapshotRealtime,
@@ -9,7 +9,7 @@ import type {
   PostgresChangePayload,
   RealtimeTableName,
 } from "./rows";
-import { makeNote, makeSnapshot } from "./testFixtures";
+import { makeNote, makeProjectAction, makeSnapshot } from "./testFixtures";
 
 class FakeRealtimeTransport implements RealtimeTransport {
   readonly channel = { id: "channel-1" };
@@ -98,6 +98,31 @@ describe("Supabase realtime", () => {
         "device-a",
       )?.notes[0].deletedAt,
     ).toBe(updatedAt);
+  });
+
+  it("maps a Dev Control realtime row into its bounded collection", () => {
+    const remoteAction = projectActionToRow(
+      makeProjectAction({
+        deviceId: "device-b",
+        updatedAt: "2026-08-01T00:00:02.000Z",
+      }),
+      "user-1",
+    );
+
+    const result = applyRealtimePayload(
+      makeSnapshot(),
+      "project_actions",
+      { eventType: "INSERT", new: remoteAction },
+      "device-a",
+    );
+
+    expect(result?.projectActions).toEqual([
+      expect.objectContaining({
+        id: "action-1",
+        projectId: "project-1",
+        type: "NEXT",
+      }),
+    ]);
   });
 
   it("ignores self-device rows and hard-delete payloads without new rows", () => {

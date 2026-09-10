@@ -120,7 +120,7 @@ describe("SupabaseSyncClient facade", () => {
     await expect(
       client.pull(snapshot, { userId: "user-1", device: makeDevice() }),
     ).resolves.toBe(snapshot);
-    expect(fake.select).toHaveBeenCalledTimes(7);
+    expect(fake.select).toHaveBeenCalledTimes(12);
     expect(client.getStatus()).toMatchObject({
       mode: "error",
       detail: "RLS denied",

@@ -14,6 +14,11 @@ import {
   makeDevice,
   makeMealRecord,
   makeNote,
+  makeProject,
+  makeProjectAction,
+  makeProjectHistory,
+  makeProjectIdea,
+  makeProjectMilestone,
   makeSnapshot,
   makeTask,
   makeWeightRecord,
@@ -55,7 +60,7 @@ const context: SyncContext = {
 };
 
 describe("Supabase snapshot IO", () => {
-  it("pulls all seven tables and merges mapped rows into the local snapshot", async () => {
+  it("pulls all snapshot tables and merges mapped rows into the local snapshot", async () => {
     const transport = new FakeSnapshotTransport();
     transport.selectedRows.set("notes", {
       data: [
@@ -88,6 +93,11 @@ describe("Supabase snapshot IO", () => {
       "weight_records",
       "fitness_summary_projections_v2",
       "devices",
+      "projects",
+      "project_milestones",
+      "project_actions",
+      "project_ideas",
+      "project_history",
     ]);
     expect(result.notes[0].content).toBe("remote");
   });
@@ -138,6 +148,11 @@ describe("Supabase snapshot IO", () => {
       workoutRecords: [makeWorkoutRecord()],
       mealRecords: [makeMealRecord()],
       weightRecords: [makeWeightRecord()],
+      projects: [makeProject()],
+      projectMilestones: [makeProjectMilestone()],
+      projectActions: [makeProjectAction()],
+      projectIdeas: [makeProjectIdea()],
+      projectHistory: [makeProjectHistory()],
     });
 
     const result = await pushSnapshot(
@@ -149,15 +164,25 @@ describe("Supabase snapshot IO", () => {
 
     expect(transport.upsertCalls.map((call) => call.tableName)).toEqual([
       "devices",
+      "projects",
       "notes",
       "tasks",
+      "project_milestones",
+      "project_actions",
+      "project_ideas",
+      "project_history",
     ]);
     expect(transport.upsertCalls.map((call) => call.onConflict)).toEqual([
       "user_id,id",
       "id",
       "id",
+      "id",
+      "id",
+      "id",
+      "id",
+      "id",
     ]);
-    expect(result.changedRows).toBe(3);
+    expect(result.changedRows).toBe(8);
     expect(result.currentDevice.lastSeenAt).toBe("2026-08-01T00:00:05.000Z");
   });
 

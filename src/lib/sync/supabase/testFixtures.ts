@@ -1,10 +1,20 @@
 import type {
   Device,
+  DevActionStatus,
+  DevActionType,
+  DevHistoryType,
+  DevMilestoneStatus,
+  DevProjectStatus,
   FitnessSummaryProjectionV2,
   LegacyWorkoutRecordV1,
   LocalDataSnapshot,
   MealRecord,
   Note,
+  Project,
+  ProjectAction,
+  ProjectHistory,
+  ProjectIdea,
+  ProjectMilestone,
   Task,
   WeightRecord,
 } from "../../../types";
@@ -134,6 +144,74 @@ export function makeDevice(overrides: Partial<Device> = {}): Device {
   };
 }
 
+export function makeProject(overrides: Partial<Project> = {}): Project {
+  return {
+    ...auditFields,
+    id: "project-1",
+    name: "Project",
+    repository: "https://github.com/example/project",
+    branch: "main",
+    status: "ACTIVE" satisfies DevProjectStatus,
+    currentSummary: "Current",
+    targetSummary: "Target",
+    lastVerifiedCommit: null,
+    lastVerifiedAt: null,
+    ...overrides,
+  };
+}
+
+export function makeProjectMilestone(
+  overrides: Partial<ProjectMilestone> = {},
+): ProjectMilestone {
+  return {
+    ...auditFields,
+    id: "milestone-1",
+    projectId: "project-1",
+    title: "Milestone",
+    status: "PLANNED" satisfies DevMilestoneStatus,
+    ...overrides,
+  };
+}
+
+export function makeProjectAction(
+  overrides: Partial<ProjectAction> = {},
+): ProjectAction {
+  return {
+    ...auditFields,
+    id: "action-1",
+    projectId: "project-1",
+    title: "Action",
+    type: "NEXT" satisfies DevActionType,
+    status: "OPEN" satisfies DevActionStatus,
+    ...overrides,
+  };
+}
+
+export function makeProjectIdea(overrides: Partial<ProjectIdea> = {}): ProjectIdea {
+  return {
+    ...auditFields,
+    id: "idea-1",
+    projectId: "project-1",
+    title: "Idea",
+    ...overrides,
+  };
+}
+
+export function makeProjectHistory(
+  overrides: Partial<ProjectHistory> = {},
+): ProjectHistory {
+  return {
+    ...auditFields,
+    id: "history-1",
+    projectId: "project-1",
+    type: "NOTE" satisfies DevHistoryType,
+    summary: "History",
+    occurredAt: TEST_TIME,
+    githubRef: null,
+    ...overrides,
+  };
+}
+
 export function makeSnapshot(
   overrides: Partial<LocalDataSnapshot> = {},
 ): LocalDataSnapshot {
@@ -145,6 +223,11 @@ export function makeSnapshot(
     mealRecords: [],
     weightRecords: [],
     devices: [],
+    projects: [],
+    projectMilestones: [],
+    projectActions: [],
+    projectIdeas: [],
+    projectHistory: [],
     ...overrides,
   };
 }

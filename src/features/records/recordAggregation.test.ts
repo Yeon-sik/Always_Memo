@@ -123,6 +123,11 @@ const snapshot: LocalDataSnapshot = {
   mealRecords: [liveMeal, deletedMeal],
   weightRecords: [liveWeight, deletedWeight],
   devices: [],
+  projects: [],
+  projectMilestones: [],
+  projectActions: [],
+  projectIdeas: [],
+  projectHistory: [],
 };
 
 describe("recordAggregation", () => {

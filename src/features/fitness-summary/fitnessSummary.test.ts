@@ -80,6 +80,11 @@ function snapshot(
     mealRecords: [],
     weightRecords: [],
     devices: [],
+    projects: [],
+    projectMilestones: [],
+    projectActions: [],
+    projectIdeas: [],
+    projectHistory: [],
     ...overrides,
   };
 }

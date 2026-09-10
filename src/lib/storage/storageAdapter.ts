@@ -17,5 +17,10 @@ export function createEmptySnapshot(): LocalDataSnapshot {
     mealRecords: [],
     weightRecords: [],
     devices: [],
+    projects: [],
+    projectMilestones: [],
+    projectActions: [],
+    projectIdeas: [],
+    projectHistory: [],
   };
 }

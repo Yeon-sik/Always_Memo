@@ -7,6 +7,16 @@ import {
   mealRecordFromRow,
   noteFromRow,
   noteToRow,
+  projectActionFromRow,
+  projectActionToRow,
+  projectFromRow,
+  projectHistoryFromRow,
+  projectHistoryToRow,
+  projectIdeaFromRow,
+  projectIdeaToRow,
+  projectMilestoneFromRow,
+  projectMilestoneToRow,
+  projectToRow,
   taskFromRow,
   taskToRow,
   weightRecordFromRow,
@@ -17,6 +27,11 @@ import type {
   FitnessSummaryProjectionV2Row,
   MealRecordRow,
   NoteRow,
+  ProjectActionRow,
+  ProjectHistoryRow,
+  ProjectIdeaRow,
+  ProjectMilestoneRow,
+  ProjectRow,
   SnapshotTableName,
   SupabaseClient,
   TaskRow,
@@ -97,6 +112,11 @@ export async function pullSnapshot(
     weightRecordsResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
+    projectsResult,
+    projectMilestonesResult,
+    projectActionsResult,
+    projectIdeasResult,
+    projectHistoryResult,
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
     transport.selectRows<TaskRow>("tasks", userId),
@@ -108,6 +128,11 @@ export async function pullSnapshot(
       userId,
     ),
     transport.selectRows<DeviceRow>("devices", userId),
+    transport.selectRows<ProjectRow>("projects", userId),
+    transport.selectRows<ProjectMilestoneRow>("project_milestones", userId),
+    transport.selectRows<ProjectActionRow>("project_actions", userId),
+    transport.selectRows<ProjectIdeaRow>("project_ideas", userId),
+    transport.selectRows<ProjectHistoryRow>("project_history", userId),
   ]);
 
   for (const result of [
@@ -118,6 +143,11 @@ export async function pullSnapshot(
     weightRecordsResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
+    projectsResult,
+    projectMilestonesResult,
+    projectActionsResult,
+    projectIdeasResult,
+    projectHistoryResult,
   ]) {
     throwQueryError(result);
   }
@@ -134,6 +164,13 @@ export async function pullSnapshot(
       fitnessSummaryProjectionV2FromRow,
     ),
     devices: (devicesResult.data ?? []).map(deviceFromRow),
+    projects: (projectsResult.data ?? []).map(projectFromRow),
+    projectMilestones: (projectMilestonesResult.data ?? []).map(
+      projectMilestoneFromRow,
+    ),
+    projectActions: (projectActionsResult.data ?? []).map(projectActionFromRow),
+    projectIdeas: (projectIdeasResult.data ?? []).map(projectIdeaFromRow),
+    projectHistory: (projectHistoryResult.data ?? []).map(projectHistoryFromRow),
   };
 
   return mergeSnapshot(localSnapshot, incomingSnapshot);
@@ -144,6 +181,11 @@ export interface PushPayload {
   device: DeviceRow;
   notes: NoteRow[];
   tasks: TaskRow[];
+  projects: ProjectRow[];
+  projectMilestones: ProjectMilestoneRow[];
+  projectActions: ProjectActionRow[];
+  projectIdeas: ProjectIdeaRow[];
+  projectHistory: ProjectHistoryRow[];
 }
 
 export function createPushPayload(
@@ -167,6 +209,21 @@ export function createPushPayload(
     tasks: localSnapshot.tasks
       .filter(isOwnedByCurrentDevice)
       .map((task) => taskToRow(task, context.userId)),
+    projects: localSnapshot.projects
+      .filter(isOwnedByCurrentDevice)
+      .map((project) => projectToRow(project, context.userId)),
+    projectMilestones: localSnapshot.projectMilestones
+      .filter(isOwnedByCurrentDevice)
+      .map((milestone) => projectMilestoneToRow(milestone, context.userId)),
+    projectActions: localSnapshot.projectActions
+      .filter(isOwnedByCurrentDevice)
+      .map((action) => projectActionToRow(action, context.userId)),
+    projectIdeas: localSnapshot.projectIdeas
+      .filter(isOwnedByCurrentDevice)
+      .map((idea) => projectIdeaToRow(idea, context.userId)),
+    projectHistory: localSnapshot.projectHistory
+      .filter(isOwnedByCurrentDevice)
+      .map((history) => projectHistoryToRow(history, context.userId)),
   };
 }
 
@@ -196,8 +253,15 @@ export async function pushSnapshot(
     tableName: SnapshotTableName;
     rows: unknown[];
   }> = [
+    { tableName: "projects", rows: payload.projects },
     { tableName: "notes", rows: payload.notes },
     { tableName: "tasks", rows: payload.tasks },
+    // Parents must arrive before children so the composite ownership FK is
+    // satisfied on every device, including a first sync of a new project.
+    { tableName: "project_milestones", rows: payload.projectMilestones },
+    { tableName: "project_actions", rows: payload.projectActions },
+    { tableName: "project_ideas", rows: payload.projectIdeas },
+    { tableName: "project_history", rows: payload.projectHistory },
   ];
 
   for (const batch of batches) {

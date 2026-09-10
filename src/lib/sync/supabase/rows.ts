@@ -102,6 +102,68 @@ export interface WeightRecordRow extends EntityAuditRow {
   device_id: string;
 }
 
+export interface ProjectRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  name: string;
+  repository: string | null;
+  branch: string | null;
+  status: "PLANNED" | "ACTIVE" | "COMPLETED";
+  current_summary: string;
+  target_summary: string;
+  last_verified_commit: string | null;
+  last_verified_at: string | null;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface ProjectMilestoneRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  title: string;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface ProjectActionRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  title: string;
+  type: "NEXT" | "LATER" | "BLOCKED";
+  status: "OPEN" | "DONE";
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface ProjectIdeaRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  title: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface ProjectHistoryRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  project_id: string;
+  type: "STATUS_CHANGE" | "MILESTONE" | "RELEASE" | "NOTE";
+  summary: string;
+  occurred_at: string;
+  github_ref: string | null;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
 export interface DeviceRow {
   id: string;
   user_id: string;
@@ -169,6 +231,36 @@ export interface Database {
         Update: Partial<WeightRecordRow>;
         Relationships: [];
       };
+      projects: {
+        Row: ProjectRow;
+        Insert: ProjectRow;
+        Update: Partial<ProjectRow>;
+        Relationships: [];
+      };
+      project_milestones: {
+        Row: ProjectMilestoneRow;
+        Insert: ProjectMilestoneRow;
+        Update: Partial<ProjectMilestoneRow>;
+        Relationships: [];
+      };
+      project_actions: {
+        Row: ProjectActionRow;
+        Insert: ProjectActionRow;
+        Update: Partial<ProjectActionRow>;
+        Relationships: [];
+      };
+      project_ideas: {
+        Row: ProjectIdeaRow;
+        Insert: ProjectIdeaRow;
+        Update: Partial<ProjectIdeaRow>;
+        Relationships: [];
+      };
+      project_history: {
+        Row: ProjectHistoryRow;
+        Insert: ProjectHistoryRow;
+        Update: Partial<ProjectHistoryRow>;
+        Relationships: [];
+      };
       devices: {
         Row: DeviceRow;
         Insert: DeviceRow;
@@ -195,6 +287,11 @@ export type SnapshotTableName =
   | "fitness_summary_projections_v2"
   | "meal_records"
   | "weight_records"
-  | "devices";
+  | "devices"
+  | "projects"
+  | "project_milestones"
+  | "project_actions"
+  | "project_ideas"
+  | "project_history";
 
 export type RealtimeTableName = Exclude<SnapshotTableName, "devices">;

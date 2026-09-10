@@ -97,6 +97,7 @@ class FakeSyncClient implements SyncClient {
   readonly trace: string[];
   readonly pushSnapshots: LocalDataSnapshot[] = [];
   readonly activeDeviceCalls: SyncContext[] = [];
+  status: SyncStatus = syncedStatus;
   authState: AuthState = { userId: null, email: null };
   pullSnapshot: LocalDataSnapshot | null = null;
   realtimeOptions: RealtimeOptions | null = null;
@@ -108,7 +109,7 @@ class FakeSyncClient implements SyncClient {
   }
 
   getStatus(): SyncStatus {
-    return syncedStatus;
+    return this.status;
   }
 
   isConfigured(): boolean {
@@ -153,7 +154,7 @@ class FakeSyncClient implements SyncClient {
   ): Promise<SyncResult> {
     this.trace.push("push");
     this.pushSnapshots.push(structuredClone(localSnapshot));
-    return { changedRows: 0, status: syncedStatus };
+    return { changedRows: 0, status: this.status };
   }
 
   subscribeRealtime(options: RealtimeOptions): RealtimeSubscription {
@@ -307,6 +308,24 @@ afterEach(async () => {
 });
 
 describe("useLocalSyncMemo", () => {
+  it("does not overwrite data when the local snapshot cannot be loaded", async () => {
+    const storage: StorageAdapter = {
+      load: vi.fn(async () => {
+        throw new Error("local read failed");
+      }),
+      save: vi.fn(async () => undefined),
+    };
+    const syncClient = new FakeSyncClient();
+
+    const result = await renderHook(storage, syncClient);
+
+    expect(result.isReady).toBe(false);
+    expect(result.error).toBe("local read failed");
+    expect(syncClient.trace).not.toContain("auth");
+    expect(syncClient.trace).not.toContain("pull");
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
   it("hydrates local data before saving and selects the newest visible note", async () => {
     const trace: string[] = [];
     vi.mocked(getOrCreateDevice).mockImplementation(async () => {
@@ -323,7 +342,10 @@ describe("useLocalSyncMemo", () => {
 
     const result = await renderHook(storage, syncClient);
 
-    expect(trace.slice(0, 5)).toEqual(["device", "auth", "load", "pull", "save"]);
+    expect(trace.indexOf("device")).toBeGreaterThanOrEqual(0);
+    expect(trace.indexOf("load")).toBeGreaterThan(trace.indexOf("device"));
+    expect(trace.indexOf("auth")).toBeGreaterThan(trace.indexOf("load"));
+    expect(trace.indexOf("pull")).toBeGreaterThan(trace.indexOf("auth"));
     expect(result.isReady).toBe(true);
     expect(result.notes.map((note) => note.id)).toEqual(["newer", "older"]);
     expect(result.selectedNoteId).toBe("newer");
@@ -357,6 +379,68 @@ describe("useLocalSyncMemo", () => {
     expect(storage.saved).toHaveLength(1);
     expect(syncClient.pushSnapshots).toHaveLength(1);
     expect(syncClient.pushSnapshots[0].notes).toHaveLength(2);
+  });
+
+  it("keeps offline edits locally and retries pull then push after reconnect", async () => {
+    const trace: string[] = [];
+    const storage = new MemoryStorage(createEmptySnapshot(), trace);
+    const syncClient = new FakeSyncClient(trace);
+    await renderHook(storage, syncClient);
+    await settleInitialSave();
+    storage.saved.length = 0;
+    syncClient.pushSnapshots.length = 0;
+
+    syncClient.status = {
+      ...syncedStatus,
+      mode: "offline",
+      label: "offline",
+      detail: "offline",
+      isOnline: false,
+    };
+    await act(async () => {
+      currentHook.addNote();
+      await vi.advanceTimersByTimeAsync(400);
+      await flushEffects();
+    });
+
+    expect(storage.saved.at(-1)?.notes).toHaveLength(1);
+    expect(syncClient.pushSnapshots.at(-1)?.notes).toHaveLength(1);
+
+    syncClient.status = syncedStatus;
+    await act(async () => {
+      await currentHook.manualSync();
+      await flushEffects();
+    });
+
+    const pullIndex = syncClient.trace.lastIndexOf("pull");
+    const pushIndex = syncClient.trace.lastIndexOf("push");
+    const saveIndex = syncClient.trace.lastIndexOf("save");
+    expect(pullIndex).toBeLessThan(pushIndex);
+    expect(pushIndex).toBeLessThan(saveIndex);
+    expect(syncClient.pushSnapshots.at(-1)?.notes).toHaveLength(1);
+  });
+
+  it("does not push after a failed pull and leaves the error retryable", async () => {
+    const storage = new MemoryStorage(createEmptySnapshot());
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient);
+    await settleInitialSave();
+    const pushCount = syncClient.pushSnapshots.length;
+    syncClient.status = {
+      ...syncedStatus,
+      mode: "error",
+      label: "error",
+      detail: "pull failed",
+    };
+
+    await act(async () => {
+      await currentHook.manualSync();
+      await flushEffects();
+    });
+
+    expect(syncClient.pushSnapshots).toHaveLength(pushCount);
+    expect(currentHook.error).toBe("pull failed");
+    expect(currentHook.saveState).toBe("error");
   });
 
   it("applies realtime snapshots, saves them, and cleans up subscriptions", async () => {

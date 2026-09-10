@@ -25,5 +25,22 @@ export function mergeSnapshot(
       incomingSnapshot.weightRecords,
     ),
     devices: mergeDevices(localSnapshot.devices, incomingSnapshot.devices),
+    projects: mergeEntities(localSnapshot.projects, incomingSnapshot.projects),
+    projectMilestones: mergeEntities(
+      localSnapshot.projectMilestones,
+      incomingSnapshot.projectMilestones,
+    ),
+    projectActions: mergeEntities(
+      localSnapshot.projectActions,
+      incomingSnapshot.projectActions,
+    ),
+    projectIdeas: mergeEntities(
+      localSnapshot.projectIdeas,
+      incomingSnapshot.projectIdeas,
+    ),
+    projectHistory: mergeEntities(
+      localSnapshot.projectHistory,
+      incomingSnapshot.projectHistory,
+    ),
   };
 }

@@ -4,6 +4,11 @@ import type {
   LegacyWorkoutRecordV1,
   MealRecord,
   Note,
+  Project,
+  ProjectAction,
+  ProjectHistory,
+  ProjectIdea,
+  ProjectMilestone,
   Task,
   WeightRecord,
 } from "../../../types";
@@ -13,6 +18,11 @@ import {
   mealRecordFromRow,
   noteFromRow,
   taskFromRow,
+  projectActionFromRow,
+  projectHistoryFromRow,
+  projectIdeaFromRow,
+  projectMilestoneFromRow,
+  projectFromRow,
   fitnessSummaryProjectionV2FromRow,
   weightRecordFromRow,
   workoutRecordFromRow,
@@ -26,6 +36,11 @@ import type {
   TaskRow,
   WeightRecordRow,
   FitnessSummaryProjectionV2Row,
+  ProjectActionRow,
+  ProjectHistoryRow,
+  ProjectIdeaRow,
+  ProjectMilestoneRow,
+  ProjectRow,
   WorkoutRecordRow,
 } from "./rows";
 
@@ -36,6 +51,11 @@ const REALTIME_TABLES: RealtimeTableName[] = [
   "fitness_summary_projections_v2",
   "meal_records",
   "weight_records",
+  "projects",
+  "project_milestones",
+  "project_actions",
+  "project_ideas",
+  "project_history",
 ];
 
 const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
@@ -46,6 +66,11 @@ const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
     "Fitness Summary Projection v2 변경을 반영했습니다.",
   meal_records: "다른 기기의 식사 기록 변경을 반영했습니다.",
   weight_records: "다른 기기의 체중 기록 변경을 반영했습니다.",
+  projects: "다른 기기의 프로젝트 변경사항을 반영했습니다.",
+  project_milestones: "다른 기기의 마일스톤 변경사항을 반영했습니다.",
+  project_actions: "다른 기기의 프로젝트 작업 변경사항을 반영했습니다.",
+  project_ideas: "다른 기기의 프로젝트 아이디어 변경사항을 반영했습니다.",
+  project_history: "다른 기기의 프로젝트 이력 변경사항을 반영했습니다.",
 };
 
 export function getRealtimeDetail(tableName: RealtimeTableName): string {
@@ -115,6 +140,56 @@ export function applyRemoteWeightRecord(
   };
 }
 
+export function applyRemoteProject(
+  snapshot: LocalDataSnapshot,
+  remoteProject: Project,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    projects: mergeEntities(snapshot.projects, [remoteProject]),
+  };
+}
+
+export function applyRemoteProjectMilestone(
+  snapshot: LocalDataSnapshot,
+  remoteMilestone: ProjectMilestone,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    projectMilestones: mergeEntities(snapshot.projectMilestones, [remoteMilestone]),
+  };
+}
+
+export function applyRemoteProjectAction(
+  snapshot: LocalDataSnapshot,
+  remoteAction: ProjectAction,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    projectActions: mergeEntities(snapshot.projectActions, [remoteAction]),
+  };
+}
+
+export function applyRemoteProjectIdea(
+  snapshot: LocalDataSnapshot,
+  remoteIdea: ProjectIdea,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    projectIdeas: mergeEntities(snapshot.projectIdeas, [remoteIdea]),
+  };
+}
+
+export function applyRemoteProjectHistory(
+  snapshot: LocalDataSnapshot,
+  remoteHistory: ProjectHistory,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    projectHistory: mergeEntities(snapshot.projectHistory, [remoteHistory]),
+  };
+}
+
 export function applyRealtimePayload(
   snapshot: LocalDataSnapshot,
   tableName: RealtimeTableName,
@@ -155,6 +230,28 @@ export function applyRealtimePayload(
       return applyRemoteWeightRecord(
         snapshot,
         weightRecordFromRow(row as WeightRecordRow),
+      );
+    case "projects":
+      return applyRemoteProject(snapshot, projectFromRow(row as ProjectRow));
+    case "project_milestones":
+      return applyRemoteProjectMilestone(
+        snapshot,
+        projectMilestoneFromRow(row as ProjectMilestoneRow),
+      );
+    case "project_actions":
+      return applyRemoteProjectAction(
+        snapshot,
+        projectActionFromRow(row as ProjectActionRow),
+      );
+    case "project_ideas":
+      return applyRemoteProjectIdea(
+        snapshot,
+        projectIdeaFromRow(row as ProjectIdeaRow),
+      );
+    case "project_history":
+      return applyRemoteProjectHistory(
+        snapshot,
+        projectHistoryFromRow(row as ProjectHistoryRow),
       );
   }
 }

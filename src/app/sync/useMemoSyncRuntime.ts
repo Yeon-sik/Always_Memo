@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { SaveState } from "../../components/HeaderBar";
 import { getVisibleNotes } from "../../features/notes/noteService";
@@ -17,6 +17,7 @@ import {
 import { getOrCreateDevice, upsertDevice } from "../../lib/device/device";
 import { localStorageAdapter } from "../../lib/storage/localStorageAdapter";
 import type { StorageAdapter } from "../../lib/storage/storageAdapter";
+import { mergeSnapshot } from "../../lib/sync/supabase/snapshotMerge";
 import {
   createAppSyncClient,
   getConfiguredUserId,
@@ -91,6 +92,9 @@ export function useMemoSyncRuntime(
   const [activeDevices, setActiveDevices] = useState<Device[]>([]);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(false);
+  const [localLoadFailed, setLocalLoadFailed] = useState(false);
+  const remoteSyncBlockedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [syncStatus, setSyncStatus] =
@@ -145,8 +149,45 @@ export function useMemoSyncRuntime(
 
     async function hydrate() {
       const currentDevice = await getOrCreateDevice();
+      setIsHydrating(true);
 
       try {
+        // Restore the last local snapshot before auth or network work. This
+        // keeps the app useful offline and prevents a failed remote request
+        // from deciding whether local data is shown.
+        let storedSnapshot: LocalDataSnapshot;
+        try {
+          storedSnapshot = await storage.load();
+        } catch (caughtError) {
+          if (isMounted) {
+            const message =
+              caughtError instanceof Error
+                ? caughtError.message
+                : "저장된 로컬 데이터를 읽지 못했습니다.";
+            setLocalLoadFailed(true);
+            setIsHydrating(false);
+            setDevice(currentDevice);
+            setError(message);
+            setSaveState("error");
+          }
+          return;
+        }
+
+        const localSnapshot: LocalDataSnapshot = {
+          ...storedSnapshot,
+          devices: upsertDevice(storedSnapshot.devices, currentDevice),
+        };
+        if (!isMounted) {
+          return;
+        }
+        setLocalLoadFailed(false);
+        replaceSnapshot(localSnapshot);
+        setDevice(currentDevice);
+        setActiveDevices([currentDevice]);
+        setSelectedNoteId(getVisibleNotes(localSnapshot.notes)[0]?.id ?? null);
+        setIsReady(true);
+        setSaveState("saved");
+
         const authState = await syncClient.getAuthState();
         if (
           authState.userId &&
@@ -171,15 +212,12 @@ export function useMemoSyncRuntime(
           device: currentDevice,
           userId: resolvedUserId,
         };
-        const storedSnapshot = await storage.load();
-        const localSnapshot = {
-          ...storedSnapshot,
-          devices: upsertDevice(storedSnapshot.devices, currentDevice),
-        };
-        const syncedSnapshot = await syncClient.pull(localSnapshot, context);
-        const nextSnapshot = {
-          ...syncedSnapshot,
-          devices: upsertDevice(syncedSnapshot.devices, currentDevice),
+        const syncedSnapshot = await syncClient.pull(snapshotRef.current, context);
+        const pullStatus = syncClient.getStatus();
+        const mergedSnapshot = mergeSnapshot(snapshotRef.current, syncedSnapshot);
+        const nextSnapshot: LocalDataSnapshot = {
+          ...mergedSnapshot,
+          devices: upsertDevice(mergedSnapshot.devices, currentDevice),
         };
         const nextVisibleNotes = getVisibleNotes(nextSnapshot.notes);
 
@@ -195,10 +233,12 @@ export function useMemoSyncRuntime(
         setSelectedNoteId(nextVisibleNotes[0]?.id ?? null);
         setSyncStatus(syncClient.getStatus());
         setIsReady(true);
+        setIsHydrating(false);
         setSaveState("saved");
 
-        if (syncClient.getStatus().mode === "error") {
-          setError(syncClient.getStatus().detail);
+        if (pullStatus.mode === "error") {
+          remoteSyncBlockedRef.current = true;
+          setError(pullStatus.detail);
         }
       } catch (caughtError) {
         if (!isMounted) {
@@ -211,11 +251,15 @@ export function useMemoSyncRuntime(
             : "앱 데이터를 불러오지 못했습니다.";
 
         setError(message);
+        remoteSyncBlockedRef.current = true;
+        setSyncStatus({
+          ...syncClient.getStatus(),
+          mode: "error",
+          label: "error",
+          detail: message,
+        });
         setDevice(currentDevice);
-        commitSnapshot((current) => ({
-          ...current,
-          devices: upsertDevice(current.devices, currentDevice),
-        }));
+        setIsHydrating(false);
         setActiveDevices([currentDevice]);
         setIsReady(true);
         setSaveState("error");
@@ -260,7 +304,13 @@ export function useMemoSyncRuntime(
   }, []);
 
   useEffect(() => {
-    if (!isReady || !device) {
+    if (
+      !isReady ||
+      isHydrating ||
+      localLoadFailed ||
+      remoteSyncBlockedRef.current ||
+      !device
+    ) {
       return;
     }
 
@@ -291,7 +341,9 @@ export function useMemoSyncRuntime(
     };
   }, [
     device,
+    isHydrating,
     isReady,
+    localLoadFailed,
     replaceSnapshot,
     snapshotRef,
     storage,
@@ -300,7 +352,7 @@ export function useMemoSyncRuntime(
   ]);
 
   useEffect(() => {
-    if (!isReady || !device) {
+    if (!isReady || localLoadFailed || !device) {
       return;
     }
 
@@ -319,8 +371,33 @@ export function useMemoSyncRuntime(
     const saveTimer = window.setTimeout(() => {
       storage
         .save(snapshotToSave)
-        .then(() => syncClient.push(snapshotToSave, context))
+        .then(() => {
+          if (isHydrating) {
+            // Persist edits made while the remote hydration request is still
+            // running, but defer the remote write until pull/merge finishes.
+            setSaveState("saved");
+            return null;
+          }
+          // A failed pull must not be hidden by a follow-up push. Keep the
+          // local snapshot durable and wait for manual/online retry instead.
+          if (
+            remoteSyncBlockedRef.current ||
+            syncClient.getStatus().mode === "error"
+          ) {
+            setSaveState("saved");
+            return null;
+          }
+          return syncClient.push(snapshotToSave, context);
+        })
         .then((result) => {
+          if (!result) {
+            return;
+          }
+          if (result.status.mode === "error") {
+            remoteSyncBlockedRef.current = true;
+          } else {
+            remoteSyncBlockedRef.current = false;
+          }
           setSaveState(result.status.mode === "error" ? "error" : "saved");
           setSyncStatus(result.status);
 
@@ -342,7 +419,16 @@ export function useMemoSyncRuntime(
     }, 400);
 
     return () => window.clearTimeout(saveTimer);
-  }, [device, isReady, snapshot, storage, syncClient, userId]);
+  }, [
+    device,
+    isHydrating,
+    isReady,
+    localLoadFailed,
+    snapshot,
+    storage,
+    syncClient,
+    userId,
+  ]);
 
   useEffect(() => {
     function refreshSyncStatus() {
@@ -359,7 +445,13 @@ export function useMemoSyncRuntime(
   }, [syncClient]);
 
   useEffect(() => {
-    if (!isReady || !device) {
+    if (
+      !isReady ||
+      isHydrating ||
+      localLoadFailed ||
+      remoteSyncBlockedRef.current ||
+      !device
+    ) {
       return;
     }
 
@@ -389,7 +481,15 @@ export function useMemoSyncRuntime(
       isMounted = false;
       window.clearInterval(timerId);
     };
-  }, [device, isReady, snapshot.devices, syncClient, userId]);
+  }, [
+    device,
+    isHydrating,
+    isReady,
+    localLoadFailed,
+    snapshot.devices,
+    syncClient,
+    userId,
+  ]);
 
   useEffect(() => {
     if (visibleNotes.length === 0) {
@@ -422,17 +522,48 @@ export function useMemoSyncRuntime(
 
     try {
       const pulledSnapshot = await syncClient.pull(snapshotRef.current, context);
-      const pushResult = await syncClient.push(pulledSnapshot, context);
-
-      await storage.save(pulledSnapshot);
-
-      replaceSnapshot(pulledSnapshot);
-      setSyncStatus(pushResult.status);
-      setError(
-        pushResult.status.mode === "error" ? pushResult.status.detail : null,
+      const pullStatus = syncClient.getStatus();
+      if (pullStatus.mode === "error") {
+        remoteSyncBlockedRef.current = true;
+        setSyncStatus(pullStatus);
+        setError(pullStatus.detail);
+        setSaveState("error");
+        return;
+      }
+      const rebasedSnapshot = mergeSnapshot(snapshotRef.current, pulledSnapshot);
+      const pushResult = await syncClient.push(rebasedSnapshot, context);
+      const latestLocalSnapshot = mergeSnapshot(
+        snapshotRef.current,
+        rebasedSnapshot,
       );
-      setSaveState(pushResult.status.mode === "error" ? "error" : "saved");
+
+      if (pushResult.status.mode === "error") {
+        remoteSyncBlockedRef.current = true;
+        // Keep the merged pull and any edits made while the request was in
+        // flight durable, while reporting the failed remote write explicitly.
+        await storage.save(latestLocalSnapshot);
+        replaceSnapshot(latestLocalSnapshot);
+        setSyncStatus(pushResult.status);
+        setError(pushResult.status.detail);
+        setSaveState("error");
+        return;
+      }
+
+      // A user can edit while pull or push is in flight. Rebase the result on
+      // the latest ref before replacing React state so that edit is retained.
+      const committedSnapshot = mergeSnapshot(
+        snapshotRef.current,
+        pushResult.snapshot ?? rebasedSnapshot,
+      );
+      await storage.save(committedSnapshot);
+
+      replaceSnapshot(committedSnapshot);
+      remoteSyncBlockedRef.current = false;
+      setSyncStatus(pushResult.status);
+      setError(null);
+      setSaveState("saved");
     } catch (caughtError) {
+      remoteSyncBlockedRef.current = true;
       const message =
         caughtError instanceof Error
           ? caughtError.message
@@ -449,6 +580,18 @@ export function useMemoSyncRuntime(
       setIsManualSyncing(false);
     }
   }, [device, replaceSnapshot, snapshotRef, storage, syncClient, userId]);
+
+  useEffect(() => {
+    if (!isReady || isHydrating || localLoadFailed || !device) {
+      return;
+    }
+
+    const handleOnline = () => {
+      void manualSync();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [device, isHydrating, isReady, localLoadFailed, manualSync]);
 
   const saveSupabaseConfig = useCallback(
     async (config: SupabaseConfigInput) => {
