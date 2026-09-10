@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import {
   getVisibleMealRecords,
@@ -9,6 +9,8 @@ import { getVisibleNotes } from "../features/notes/noteService";
 import { useNoteActions } from "../features/notes/useNoteActions";
 import { getVisibleTasks } from "../features/tasks/taskService";
 import { useTaskActions } from "../features/tasks/useTaskActions";
+import { useDevControlActions } from "../features/dev-control/useDevControlActions";
+import { getVisibleProjects } from "../features/dev-control/devControlService";
 import { localStorageAdapter } from "../lib/storage/localStorageAdapter";
 import type { StorageAdapter } from "../lib/storage/storageAdapter";
 import type { SyncClient } from "../lib/sync/syncTypes";
@@ -46,6 +48,11 @@ export function useLocalSyncMemo(
     () => getVisibleWeightRecords(runtime.snapshot.weightRecords),
     [runtime.snapshot.weightRecords],
   );
+  const visibleProjects = useMemo(
+    () => getVisibleProjects(runtime.snapshot.projects),
+    [runtime.snapshot.projects],
+  );
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const visibleFitnessSummaryProjections = useMemo(
     () =>
       runtime.snapshot.fitnessSummaryProjections
@@ -78,6 +85,12 @@ export function useLocalSyncMemo(
     commitSnapshot: runtime.commitSnapshot,
     device: runtime.device,
   });
+  const devControlActions = useDevControlActions({
+    commitSnapshot: runtime.commitSnapshot,
+    device: runtime.device,
+    selectedProjectId,
+    setSelectedProjectId,
+  });
   return {
     activeDevices: runtime.activeDevices,
     authEmail: runtime.authEmail,
@@ -86,6 +99,11 @@ export function useLocalSyncMemo(
     autostartEnabled: runtime.autostartEnabled,
     autostartSupported: runtime.autostartSupported,
     device: runtime.device,
+    projectActions: runtime.snapshot.projectActions,
+    projectHistory: runtime.snapshot.projectHistory,
+    projectIdeas: runtime.snapshot.projectIdeas,
+    projectMilestones: runtime.snapshot.projectMilestones,
+    projects: visibleProjects,
     error: runtime.error,
     fitnessSummaryProjections: visibleFitnessSummaryProjections,
     isAuthenticated: runtime.isAuthenticated,
@@ -100,6 +118,8 @@ export function useLocalSyncMemo(
     saveSupabaseConfig: runtime.saveSupabaseConfig,
     selectedNote,
     selectedNoteId: runtime.selectedNoteId,
+    selectedProjectId,
+    setSelectedProjectId,
     setAutostartEnabled: runtime.setAutostartEnabled,
     signIn: runtime.signIn,
     signOut: runtime.signOut,
@@ -109,5 +129,6 @@ export function useLocalSyncMemo(
     userId: runtime.userId,
     weightRecords: visibleWeightRecords,
     workoutRecords: visibleWorkoutRecords,
+    ...devControlActions,
   };
 }

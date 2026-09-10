@@ -6,6 +6,7 @@ import {
   HardDrive,
   Monitor,
   NotebookTabs,
+  PanelsTopLeft,
   RefreshCw,
   Settings,
 } from "lucide-react";
@@ -13,7 +14,12 @@ import type { Device } from "../types";
 import type { SyncStatus } from "../lib/sync/syncTypes";
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
-export type HeaderView = "records" | "memo" | "fitness" | "settings";
+export type HeaderView =
+  | "records"
+  | "memo"
+  | "fitness"
+  | "dev-control"
+  | "settings";
 
 interface HeaderBarProps {
   activeView: HeaderView;
@@ -31,6 +37,7 @@ const viewItems: Array<{
   { view: "records", label: "기록", icon: CalendarDays },
   { view: "memo", label: "메모", icon: NotebookTabs },
   { view: "fitness", label: "운동", icon: Dumbbell },
+  { view: "dev-control", label: "개발", icon: PanelsTopLeft },
 ];
 
 function getSaveLabel(saveState: SaveState): string {
@@ -93,7 +100,7 @@ export function HeaderBar({
 
         <div className="flex shrink-0 items-center gap-2">
           <nav
-            className="grid h-9 shrink-0 grid-cols-3 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-950"
+            className="grid h-9 shrink-0 grid-cols-4 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-xs dark:border-neutral-800 dark:bg-neutral-950"
             aria-label="주요 화면"
           >
             {viewItems.map((item) => {
