@@ -969,6 +969,13 @@ begin
   ] loop
     execute format('drop trigger if exists %I on public.%I', table_name || '_lww_guard', table_name);
     execute format('create trigger %I before insert or update on public.%I for each row execute function public.prevent_stale_sync_write()', table_name || '_lww_guard', table_name);
+  end loop;
+end $$;
+
+do $$
+declare table_name text;
+begin
+  foreach table_name in array['projects', 'project_milestones', 'project_actions', 'project_ideas', 'project_history'] loop
     execute format('alter table public.%I enable row level security', table_name);
     execute format('revoke all on table public.%I from anon', table_name);
     execute format('grant select, insert, update on table public.%I to authenticated', table_name);
