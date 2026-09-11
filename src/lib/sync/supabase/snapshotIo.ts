@@ -38,7 +38,10 @@ import type {
   WeightRecordRow,
   WorkoutRecordRow,
 } from "./rows";
-import { mergeSnapshot } from "./snapshotMerge";
+import {
+  mergeAuthoritativeSnapshot,
+  mergeSnapshot,
+} from "./snapshotMerge";
 
 export interface SnapshotQueryResult<Row> {
   data: Row[] | null;
@@ -128,9 +131,8 @@ function throwQueryError(result: { error: unknown | null }): void {
   }
 }
 
-export async function pullSnapshot(
+async function fetchIncomingSnapshot(
   transport: SnapshotTransport,
-  localSnapshot: LocalDataSnapshot,
   userId: string,
 ): Promise<LocalDataSnapshot> {
   const [
@@ -202,7 +204,25 @@ export async function pullSnapshot(
     projectHistory: (projectHistoryResult.data ?? []).map(projectHistoryFromRow),
   };
 
+  return incomingSnapshot;
+}
+
+export async function pullSnapshot(
+  transport: SnapshotTransport,
+  localSnapshot: LocalDataSnapshot,
+  userId: string,
+): Promise<LocalDataSnapshot> {
+  const incomingSnapshot = await fetchIncomingSnapshot(transport, userId);
   return mergeSnapshot(localSnapshot, incomingSnapshot);
+}
+
+export async function pullSnapshotAuthoritative(
+  transport: SnapshotTransport,
+  localSnapshot: LocalDataSnapshot,
+  userId: string,
+): Promise<LocalDataSnapshot> {
+  const incomingSnapshot = await fetchIncomingSnapshot(transport, userId);
+  return mergeAuthoritativeSnapshot(localSnapshot, incomingSnapshot);
 }
 
 export interface PushPayload {

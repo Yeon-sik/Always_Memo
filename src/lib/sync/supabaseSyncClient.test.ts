@@ -182,6 +182,32 @@ describe("SupabaseSyncClient facade", () => {
     expect(fake.select).toHaveBeenCalledTimes(12);
   });
 
+  it("uses the server value for equal-time active rows during reconciliation", async () => {
+    const updatedAt = "2026-08-01T00:00:02.000Z";
+    const fake = createFakeClient({
+      userId: "user-1",
+      rowsByTable: {
+        notes: [
+          noteToRow(
+            makeNote({ content: "server value", updatedAt }),
+            "user-1",
+          ),
+        ],
+      },
+    });
+    const client = createConfiguredClient(fake.client, () => true);
+
+    const result = await client.push(
+      makeSnapshot({
+        notes: [makeNote({ content: "local value", updatedAt })],
+      }),
+      { userId: "user-1", device: makeDevice() },
+    );
+
+    expect(result.status.mode).toBe("synced");
+    expect(result.snapshot?.notes[0].content).toBe("server value");
+  });
+
   it("reports a partial push failure instead of marking sync successful", async () => {
     const writeError = new Error("tasks upsert failed");
     const fake = createFakeClient({

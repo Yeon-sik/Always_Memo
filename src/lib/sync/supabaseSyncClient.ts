@@ -24,6 +24,7 @@ import type { Database, SupabaseClient } from "./supabase/rows";
 import {
   createSupabaseSnapshotTransport,
   pullSnapshot,
+  pullSnapshotAuthoritative,
   pushSnapshot,
   type SnapshotTransport,
 } from "./supabase/snapshotIo";
@@ -436,7 +437,7 @@ export class SupabaseSyncClient implements SyncClient {
       // PostgREST can report a stale LWW upsert as successful because the
       // trigger returns NULL for the rejected UPDATE. Pull the remote rows
       // again so the caller receives the server-authoritative merge result.
-      const reconciledSnapshot = await pullSnapshot(
+      const reconciledSnapshot = await pullSnapshotAuthoritative(
         transport,
         localSnapshot,
         context.userId,
