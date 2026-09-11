@@ -963,8 +963,7 @@ do $$
 declare table_name text;
 begin
   foreach table_name in array array[
-    'notes', 'tasks', 'workout_records', 'fitness_summary_projections_v2',
-    'meal_records', 'weight_records', 'projects', 'project_milestones',
+    'notes', 'tasks', 'projects', 'project_milestones',
     'project_actions', 'project_ideas', 'project_history'
   ] loop
     execute format('drop trigger if exists %I on public.%I', table_name || '_lww_guard', table_name);

@@ -100,6 +100,9 @@ class FakeSyncClient implements SyncClient {
   status: SyncStatus = syncedStatus;
   authState: AuthState = { userId: null, email: null };
   pullSnapshot: LocalDataSnapshot | null = null;
+  pushGate: Promise<void> | null = null;
+  activeRemoteOperations = 0;
+  maxConcurrentRemoteOperations = 0;
   realtimeOptions: RealtimeOptions | null = null;
   realtimeUnsubscribeCount = 0;
   heartbeatUnsubscribeCount = 0;
@@ -145,7 +148,16 @@ class FakeSyncClient implements SyncClient {
     _context: SyncContext,
   ): Promise<LocalDataSnapshot> {
     this.trace.push("pull");
-    return structuredClone(this.pullSnapshot ?? localSnapshot);
+    this.activeRemoteOperations += 1;
+    this.maxConcurrentRemoteOperations = Math.max(
+      this.maxConcurrentRemoteOperations,
+      this.activeRemoteOperations,
+    );
+    try {
+      return structuredClone(this.pullSnapshot ?? localSnapshot);
+    } finally {
+      this.activeRemoteOperations -= 1;
+    }
   }
 
   async push(
@@ -153,8 +165,22 @@ class FakeSyncClient implements SyncClient {
     _context: SyncContext,
   ): Promise<SyncResult> {
     this.trace.push("push");
-    this.pushSnapshots.push(structuredClone(localSnapshot));
-    return { changedRows: 0, status: this.status };
+    this.activeRemoteOperations += 1;
+    this.maxConcurrentRemoteOperations = Math.max(
+      this.maxConcurrentRemoteOperations,
+      this.activeRemoteOperations,
+    );
+    const pushGate = this.pushGate;
+    this.pushGate = null;
+    try {
+      if (pushGate) {
+        await pushGate;
+      }
+      this.pushSnapshots.push(structuredClone(localSnapshot));
+      return { changedRows: 0, status: this.status };
+    } finally {
+      this.activeRemoteOperations -= 1;
+    }
   }
 
   subscribeRealtime(options: RealtimeOptions): RealtimeSubscription {
@@ -379,6 +405,55 @@ describe("useLocalSyncMemo", () => {
     expect(storage.saved).toHaveLength(1);
     expect(syncClient.pushSnapshots).toHaveLength(1);
     expect(syncClient.pushSnapshots[0].notes).toHaveLength(2);
+  });
+
+  it("serializes automatic and manual sync while preserving an edit in flight", async () => {
+    const storage = new MemoryStorage(createEmptySnapshot());
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient);
+    await settleInitialSave();
+    syncClient.trace.length = 0;
+    syncClient.pushSnapshots.length = 0;
+    syncClient.maxConcurrentRemoteOperations = 0;
+
+    let releaseFirstPush!: () => void;
+    syncClient.pushGate = new Promise<void>((resolve) => {
+      releaseFirstPush = resolve;
+    });
+
+    await act(async () => {
+      currentHook.addNote();
+      await vi.advanceTimersByTimeAsync(400);
+      await flushEffects();
+    });
+
+    expect(syncClient.activeRemoteOperations).toBe(1);
+    expect(syncClient.trace).toEqual(["push"]);
+
+    let manualSyncPromise!: Promise<void>;
+    await act(async () => {
+      manualSyncPromise = currentHook.manualSync();
+      await flushEffects();
+    });
+    await act(async () => {
+      currentHook.addNote();
+      await flushEffects();
+    });
+
+    expect(syncClient.activeRemoteOperations).toBe(1);
+    expect(syncClient.maxConcurrentRemoteOperations).toBe(1);
+    expect(syncClient.trace).toEqual(["push"]);
+
+    await act(async () => {
+      releaseFirstPush();
+      await manualSyncPromise;
+      await flushEffects();
+    });
+
+    expect(syncClient.maxConcurrentRemoteOperations).toBe(1);
+    expect(syncClient.trace.slice(0, 3)).toEqual(["push", "pull", "push"]);
+    expect(syncClient.pushSnapshots.at(-1)?.notes).toHaveLength(2);
+    expect(currentHook.notes).toHaveLength(2);
   });
 
   it("keeps offline edits locally and retries pull then push after reconnect", async () => {

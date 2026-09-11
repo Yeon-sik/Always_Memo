@@ -18,6 +18,7 @@ import { getOrCreateDevice, upsertDevice } from "../../lib/device/device";
 import { localStorageAdapter } from "../../lib/storage/localStorageAdapter";
 import type { StorageAdapter } from "../../lib/storage/storageAdapter";
 import { mergeSnapshot } from "../../lib/sync/supabase/snapshotMerge";
+import { createSyncQueue } from "../../lib/sync/syncQueue";
 import {
   createAppSyncClient,
   getConfiguredUserId,
@@ -42,6 +43,41 @@ const initialSyncStatus: SyncStatus = {
   lastSyncedAt: null,
   isConfigured: false,
 };
+
+const snapshotCollections = [
+  "notes",
+  "tasks",
+  "workoutRecords",
+  "fitnessSummaryProjections",
+  "mealRecords",
+  "weightRecords",
+  "projects",
+  "projectMilestones",
+  "projectActions",
+  "projectIdeas",
+  "projectHistory",
+] as const;
+
+function hasEntitySnapshotChanges(
+  current: LocalDataSnapshot,
+  next: LocalDataSnapshot,
+): boolean {
+  return snapshotCollections.some((collection) => {
+    const currentEntities = current[collection];
+    const nextEntities = next[collection];
+
+    if (currentEntities.length !== nextEntities.length) {
+      return true;
+    }
+
+    const currentById = new Map(
+      currentEntities.map((entity) => [entity.id, entity]),
+    );
+    return nextEntities.some(
+      (entity) => currentById.get(entity.id) !== entity,
+    );
+  });
+}
 
 export interface MemoSyncRuntime
   extends Pick<SnapshotStore, "commitSnapshot" | "snapshot"> {
@@ -95,6 +131,9 @@ export function useMemoSyncRuntime(
   const [isHydrating, setIsHydrating] = useState(false);
   const [localLoadFailed, setLocalLoadFailed] = useState(false);
   const remoteSyncBlockedRef = useRef(false);
+  const remoteSyncQueueRef = useRef(createSyncQueue());
+  const pendingRemoteSnapshotRef = useRef<LocalDataSnapshot | null>(null);
+  const activeManualSyncCountRef = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [syncStatus, setSyncStatus] =
@@ -116,6 +155,21 @@ export function useMemoSyncRuntime(
   const visibleNotes = useMemo(
     () => getVisibleNotes(snapshot.notes),
     [snapshot.notes],
+  );
+  const commitLocalSnapshot = useCallback(
+    (updater: Parameters<SnapshotStore["commitSnapshot"]>[0]) => {
+      pendingRemoteSnapshotRef.current = null;
+      commitSnapshot(updater);
+    },
+    [commitSnapshot],
+  );
+
+  const applyRemoteSnapshot = useCallback(
+    (nextSnapshot: LocalDataSnapshot) => {
+      pendingRemoteSnapshotRef.current = nextSnapshot;
+      replaceSnapshot(nextSnapshot);
+    },
+    [replaceSnapshot],
   );
 
   useEffect(() => {
@@ -212,7 +266,9 @@ export function useMemoSyncRuntime(
           device: currentDevice,
           userId: resolvedUserId,
         };
-        const syncedSnapshot = await syncClient.pull(snapshotRef.current, context);
+        const syncedSnapshot = await remoteSyncQueueRef.current.enqueue(() =>
+          syncClient.pull(snapshotRef.current, context),
+        );
         const pullStatus = syncClient.getStatus();
         const mergedSnapshot = mergeSnapshot(snapshotRef.current, syncedSnapshot);
         const nextSnapshot: LocalDataSnapshot = {
@@ -273,7 +329,7 @@ export function useMemoSyncRuntime(
     };
   }, [
     activeRuntimeConfig,
-    commitSnapshot,
+    commitLocalSnapshot,
     injectedUserId,
     isRuntimeConfigReady,
     replaceSnapshot,
@@ -319,7 +375,7 @@ export function useMemoSyncRuntime(
       context,
       getSnapshot: () => snapshotRef.current,
       onSnapshot: (nextSnapshot, status) => {
-        replaceSnapshot(nextSnapshot);
+        applyRemoteSnapshot(nextSnapshot);
         setSyncStatus(status);
         setError(null);
         void storage.save(nextSnapshot).catch((caughtError: unknown) => {
@@ -344,7 +400,7 @@ export function useMemoSyncRuntime(
     isHydrating,
     isReady,
     localLoadFailed,
-    replaceSnapshot,
+    applyRemoteSnapshot,
     snapshotRef,
     storage,
     syncClient,
@@ -371,12 +427,24 @@ export function useMemoSyncRuntime(
     const saveTimer = window.setTimeout(() => {
       storage
         .save(snapshotToSave)
-        .then(() => {
+        .then(async () => {
           if (isHydrating) {
             // Persist edits made while the remote hydration request is still
             // running, but defer the remote write until pull/merge finishes.
             setSaveState("saved");
-            return null;
+            return;
+          }
+          if (pendingRemoteSnapshotRef.current === snapshot) {
+            // The remote merge is already authoritative. Persist it locally,
+            // but do not turn the reconciliation render into another push.
+            pendingRemoteSnapshotRef.current = null;
+            setSaveState("saved");
+            return;
+          }
+          if (pendingRemoteSnapshotRef.current) {
+            // A local edit replaced a previously reconciled snapshot before
+            // its debounce fired, so the edit must be eligible for pushing.
+            pendingRemoteSnapshotRef.current = null;
           }
           // A failed pull must not be hidden by a follow-up push. Keep the
           // local snapshot durable and wait for manual/online retry instead.
@@ -385,29 +453,39 @@ export function useMemoSyncRuntime(
             syncClient.getStatus().mode === "error"
           ) {
             setSaveState("saved");
-            return null;
-          }
-          return syncClient.push(snapshotToSave, context);
-        })
-        .then((result) => {
-          if (!result) {
             return;
           }
-          if (result.status.mode === "error") {
-            remoteSyncBlockedRef.current = true;
-          } else {
-            remoteSyncBlockedRef.current = false;
-          }
-          setSaveState(result.status.mode === "error" ? "error" : "saved");
-          setSyncStatus(result.status);
 
-          if (result.status.mode === "error") {
-            setError(result.status.detail);
-          } else {
+          await remoteSyncQueueRef.current.enqueue(async () => {
+            const result = await syncClient.push(snapshotToSave, context);
+
+            if (result.status.mode === "error") {
+              remoteSyncBlockedRef.current = true;
+              setSaveState("error");
+              setSyncStatus(result.status);
+              setError(result.status.detail);
+              return;
+            }
+
+            // Rebase the authoritative push result on edits that happened
+            // while the remote request was waiting or in flight.
+            const reconciledSnapshot = mergeSnapshot(
+              snapshotRef.current,
+              result.snapshot ?? snapshotToSave,
+            );
+            if (hasEntitySnapshotChanges(snapshotRef.current, reconciledSnapshot)) {
+              await storage.save(reconciledSnapshot);
+              applyRemoteSnapshot(reconciledSnapshot);
+            }
+
+            remoteSyncBlockedRef.current = false;
+            setSaveState("saved");
+            setSyncStatus(result.status);
             setError(null);
-          }
+          });
         })
         .catch((caughtError: unknown) => {
+          remoteSyncBlockedRef.current = true;
           const message =
             caughtError instanceof Error
               ? caughtError.message
@@ -428,6 +506,7 @@ export function useMemoSyncRuntime(
     storage,
     syncClient,
     userId,
+    applyRemoteSnapshot,
   ]);
 
   useEffect(() => {
@@ -510,6 +589,7 @@ export function useMemoSyncRuntime(
       return;
     }
 
+    activeManualSyncCountRef.current += 1;
     setIsManualSyncing(true);
     setSyncStatus({
       ...syncClient.getStatus(),
@@ -521,47 +601,56 @@ export function useMemoSyncRuntime(
     const context: SyncContext = { device, userId };
 
     try {
-      const pulledSnapshot = await syncClient.pull(snapshotRef.current, context);
-      const pullStatus = syncClient.getStatus();
-      if (pullStatus.mode === "error") {
-        remoteSyncBlockedRef.current = true;
-        setSyncStatus(pullStatus);
-        setError(pullStatus.detail);
-        setSaveState("error");
-        return;
-      }
-      const rebasedSnapshot = mergeSnapshot(snapshotRef.current, pulledSnapshot);
-      const pushResult = await syncClient.push(rebasedSnapshot, context);
-      const latestLocalSnapshot = mergeSnapshot(
-        snapshotRef.current,
-        rebasedSnapshot,
-      );
+      await remoteSyncQueueRef.current.enqueue(async () => {
+        const pulledSnapshot = await syncClient.pull(
+          snapshotRef.current,
+          context,
+        );
+        const pullStatus = syncClient.getStatus();
+        if (pullStatus.mode === "error") {
+          remoteSyncBlockedRef.current = true;
+          setSyncStatus(pullStatus);
+          setError(pullStatus.detail);
+          setSaveState("error");
+          return;
+        }
 
-      if (pushResult.status.mode === "error") {
-        remoteSyncBlockedRef.current = true;
-        // Keep the merged pull and any edits made while the request was in
-        // flight durable, while reporting the failed remote write explicitly.
-        await storage.save(latestLocalSnapshot);
-        replaceSnapshot(latestLocalSnapshot);
+        const rebasedSnapshot = mergeSnapshot(
+          snapshotRef.current,
+          pulledSnapshot,
+        );
+        const pushResult = await syncClient.push(rebasedSnapshot, context);
+        const latestLocalSnapshot = mergeSnapshot(
+          snapshotRef.current,
+          rebasedSnapshot,
+        );
+
+        if (pushResult.status.mode === "error") {
+          remoteSyncBlockedRef.current = true;
+          // Keep the merged pull and any edits made while the request is in
+          // flight durable, while reporting the failed remote write explicitly.
+          await storage.save(latestLocalSnapshot);
+          applyRemoteSnapshot(latestLocalSnapshot);
+          setSyncStatus(pushResult.status);
+          setError(pushResult.status.detail);
+          setSaveState("error");
+          return;
+        }
+
+        // A user can edit while pull or push is in flight. Rebase the result on
+        // the latest ref before replacing React state so that edit is retained.
+        const committedSnapshot = mergeSnapshot(
+          snapshotRef.current,
+          pushResult.snapshot ?? rebasedSnapshot,
+        );
+        await storage.save(committedSnapshot);
+
+        applyRemoteSnapshot(committedSnapshot);
+        remoteSyncBlockedRef.current = false;
         setSyncStatus(pushResult.status);
-        setError(pushResult.status.detail);
-        setSaveState("error");
-        return;
-      }
-
-      // A user can edit while pull or push is in flight. Rebase the result on
-      // the latest ref before replacing React state so that edit is retained.
-      const committedSnapshot = mergeSnapshot(
-        snapshotRef.current,
-        pushResult.snapshot ?? rebasedSnapshot,
-      );
-      await storage.save(committedSnapshot);
-
-      replaceSnapshot(committedSnapshot);
-      remoteSyncBlockedRef.current = false;
-      setSyncStatus(pushResult.status);
-      setError(null);
-      setSaveState("saved");
+        setError(null);
+        setSaveState("saved");
+      });
     } catch (caughtError) {
       remoteSyncBlockedRef.current = true;
       const message =
@@ -576,10 +665,21 @@ export function useMemoSyncRuntime(
         label: "error",
         detail: message,
       });
+      setSaveState("error");
     } finally {
-      setIsManualSyncing(false);
+      activeManualSyncCountRef.current -= 1;
+      if (activeManualSyncCountRef.current === 0) {
+        setIsManualSyncing(false);
+      }
     }
-  }, [device, replaceSnapshot, snapshotRef, storage, syncClient, userId]);
+  }, [
+    applyRemoteSnapshot,
+    device,
+    snapshotRef,
+    storage,
+    syncClient,
+    userId,
+  ]);
 
   useEffect(() => {
     if (!isReady || isHydrating || localLoadFailed || !device) {
@@ -675,7 +775,7 @@ export function useMemoSyncRuntime(
     authEmail,
     autostartEnabled,
     autostartSupported,
-    commitSnapshot,
+    commitSnapshot: commitLocalSnapshot,
     device,
     error,
     isAuthenticated: Boolean(authenticatedUserId),

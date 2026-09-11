@@ -61,9 +61,18 @@ export interface SnapshotTransport {
   ): Promise<SnapshotWriteResult>;
 }
 
+export const SNAPSHOT_PAGE_SIZE = 1000;
+
 interface SelectTable<Row> {
   select(columns: string): {
-    eq(column: string, value: string): Promise<SnapshotQueryResult<Row>>;
+    eq(column: string, value: string): {
+      order(
+        column: string,
+        options: { ascending: boolean },
+      ): {
+        range(from: number, to: number): Promise<SnapshotQueryResult<Row>>;
+      };
+    };
   };
 }
 
@@ -78,9 +87,29 @@ export function createSupabaseSnapshotTransport(
   supabase: SupabaseClient,
 ): SnapshotTransport {
   return {
-    selectRows<Row>(tableName: SnapshotTableName, userId: string) {
+    async selectRows<Row>(tableName: SnapshotTableName, userId: string) {
       const table = supabase.from(tableName) as unknown as SelectTable<Row>;
-      return table.select("*").eq("user_id", userId);
+      const rows: Row[] = [];
+
+      for (let pageIndex = 0; ; pageIndex += 1) {
+        const pageStart = pageIndex * SNAPSHOT_PAGE_SIZE;
+        const pageResult = await table
+          .select("*")
+          .eq("user_id", userId)
+          .order("id", { ascending: true })
+          .range(pageStart, pageStart + SNAPSHOT_PAGE_SIZE - 1);
+
+        if (pageResult.error) {
+          return { data: null, error: pageResult.error };
+        }
+
+        const pageRows = pageResult.data ?? [];
+        rows.push(...pageRows);
+
+        if (pageRows.length < SNAPSHOT_PAGE_SIZE) {
+          return { data: rows, error: null };
+        }
+      }
     },
     upsertRows<Row>(
       tableName: SnapshotTableName,

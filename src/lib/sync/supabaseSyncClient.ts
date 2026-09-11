@@ -433,9 +433,17 @@ export class SupabaseSyncClient implements SyncClient {
         context,
         this.nowIso(),
       );
+      // PostgREST can report a stale LWW upsert as successful because the
+      // trigger returns NULL for the rejected UPDATE. Pull the remote rows
+      // again so the caller receives the server-authoritative merge result.
+      const reconciledSnapshot = await pullSnapshot(
+        transport,
+        localSnapshot,
+        context.userId,
+      );
       this.status = this.toConfiguredStatus(
         "synced",
-        "Supabase에 로컬 변경사항을 저장했습니다.",
+        "Supabase에 저장하고 서버 확정값을 반영했습니다.",
         this.nowIso(),
       );
 
@@ -443,8 +451,10 @@ export class SupabaseSyncClient implements SyncClient {
         status: this.status,
         changedRows: result.changedRows,
         snapshot: {
-          ...localSnapshot,
-          devices: mergeDevices(localSnapshot.devices, [result.currentDevice]),
+          ...reconciledSnapshot,
+          devices: mergeDevices(reconciledSnapshot.devices, [
+            result.currentDevice,
+          ]),
         },
       };
     } catch (caughtError) {
