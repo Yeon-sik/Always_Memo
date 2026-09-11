@@ -14,6 +14,16 @@ import type {
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import { createId } from "../../lib/storage/id";
 
+export type DevProjectRepositoryMode = "github" | "text";
+
+export const DEFAULT_PROJECT_BRANCH = "main";
+
+export interface ProjectRepositoryFields {
+  repository: string | null;
+  branch: string | null;
+  error: string | null;
+}
+
 export interface ProjectChanges {
   name?: string;
   repository?: string | null;
@@ -54,6 +64,42 @@ function nowIso(): string {
 function cleanOptional(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? "";
   return normalized || null;
+}
+
+/**
+ * Repository mode is a UI concern, so existing rows derive it from the fields
+ * already in the sync contract. A populated legacy branch keeps the row in
+ * GitHub mode instead of silently discarding it during an edit.
+ */
+export function getProjectRepositoryMode(
+  project: Pick<Project, "repository" | "branch">,
+): DevProjectRepositoryMode {
+  return project.repository?.trim() || project.branch?.trim() ? "github" : "text";
+}
+
+export function normalizeProjectRepositoryFields(
+  mode: DevProjectRepositoryMode,
+  repository: string,
+  branch: string,
+): ProjectRepositoryFields {
+  if (mode === "text") {
+    return { repository: null, branch: null, error: null };
+  }
+
+  const normalizedRepository = repository.trim();
+  if (!normalizedRepository) {
+    return {
+      repository: null,
+      branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
+      error: "GitHub Repository 연결 모드에서는 Repository URL이 필요합니다.",
+    };
+  }
+
+  return {
+    repository: normalizedRepository,
+    branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
+    error: null,
+  };
 }
 
 export function createProject(

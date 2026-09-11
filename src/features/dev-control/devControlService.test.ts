@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  DEFAULT_PROJECT_BRANCH,
   createProject,
   createProjectAction,
   createProjectHistory,
   createProjectIdea,
   createProjectMilestone,
   getOpenNextCount,
+  getProjectRepositoryMode,
   getProjectChildren,
   getProjectLastUpdated,
   getVisibleProjects,
   hasBlockedAction,
+  normalizeProjectRepositoryFields,
   softDeleteProject,
   softDeleteProjectAction,
   softDeleteProjectHistory,
@@ -47,6 +50,26 @@ afterEach(() => {
 });
 
 describe("Dev Control service", () => {
+  it("keeps repository mode out of the persisted project contract", () => {
+    expect(
+      normalizeProjectRepositoryFields("github", "  https://github.com/example/app  ", ""),
+    ).toEqual({
+      repository: "https://github.com/example/app",
+      branch: DEFAULT_PROJECT_BRANCH,
+      error: null,
+    });
+    expect(normalizeProjectRepositoryFields("github", "", "develop").error).toBe(
+      "GitHub Repository 연결 모드에서는 Repository URL이 필요합니다.",
+    );
+    expect(normalizeProjectRepositoryFields("text", "ignored", "ignored")).toEqual({
+      repository: null,
+      branch: null,
+      error: null,
+    });
+    expect(getProjectRepositoryMode({ repository: null, branch: null })).toBe("text");
+    expect(getProjectRepositoryMode({ repository: null, branch: "legacy" })).toBe("github");
+  });
+
   it("supports project and child CRUD while preserving sync metadata", () => {
     const project = createProject(DEVICE_ID, projectInput());
     const milestone = createProjectMilestone(project.id, "v1", DEVICE_ID);
