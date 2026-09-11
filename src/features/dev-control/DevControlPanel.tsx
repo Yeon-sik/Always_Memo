@@ -228,6 +228,8 @@ export function DevControlPanel({
       repositoryMode,
       projectDraft.repository,
       projectDraft.branch,
+      projectDraft.lastVerifiedCommit,
+      toIsoOrNull(projectDraft.lastVerifiedAt),
     );
     if (normalizedRepositoryFields.error) {
       setProjectFormError(normalizedRepositoryFields.error);
@@ -242,8 +244,6 @@ export function DevControlPanel({
       status: projectDraft.status,
       currentSummary: projectDraft.currentSummary,
       targetSummary: projectDraft.targetSummary,
-      lastVerifiedCommit: projectDraft.lastVerifiedCommit.trim() || null,
-      lastVerifiedAt: toIsoOrNull(projectDraft.lastVerifiedAt),
       backfillInput: undefined,
     };
     if (isCreating || !selectedProject) {
@@ -364,7 +364,7 @@ export function DevControlPanel({
               <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
               <Field label={repositoryMode === "text" ? "CURRENT (수동)" : "CURRENT"} value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline />
               <Field label={repositoryMode === "text" ? "TARGET (수동)" : "TARGET"} value={projectDraft.targetSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} multiline />
-              <div className="grid grid-cols-2 gap-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>Last verified at</span><input type="datetime-local" className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.lastVerifiedAt} onChange={(event) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: event.target.value }))} /></label></div>
+              {repositoryMode === "github" ? <div className="grid grid-cols-2 gap-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>Last verified at</span><input type="datetime-local" className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.lastVerifiedAt} onChange={(event) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: event.target.value }))} /></label></div> : null}
               {projectFormError ? <p role="alert" className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{projectFormError}</p> : null}
               <div className="flex gap-2"><button type="submit" className="rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">저장</button>{!isCreating && selectedProject ? <button type="button" onClick={() => deleteProject(selectedProject.id)} className="rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700">프로젝트 삭제</button> : null}</div>
             </form>
