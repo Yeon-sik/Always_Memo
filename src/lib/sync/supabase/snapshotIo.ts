@@ -7,6 +7,16 @@ import {
   mealRecordFromRow,
   noteFromRow,
   noteToRow,
+  projectActionFromRow,
+  projectActionToRow,
+  projectFromRow,
+  projectHistoryFromRow,
+  projectHistoryToRow,
+  projectIdeaFromRow,
+  projectIdeaToRow,
+  projectMilestoneFromRow,
+  projectMilestoneToRow,
+  projectToRow,
   taskFromRow,
   taskToRow,
   weightRecordFromRow,
@@ -17,13 +27,21 @@ import type {
   FitnessSummaryProjectionV2Row,
   MealRecordRow,
   NoteRow,
+  ProjectActionRow,
+  ProjectHistoryRow,
+  ProjectIdeaRow,
+  ProjectMilestoneRow,
+  ProjectRow,
   SnapshotTableName,
   SupabaseClient,
   TaskRow,
   WeightRecordRow,
   WorkoutRecordRow,
 } from "./rows";
-import { mergeSnapshot } from "./snapshotMerge";
+import {
+  mergeAuthoritativeSnapshot,
+  mergeSnapshot,
+} from "./snapshotMerge";
 
 export interface SnapshotQueryResult<Row> {
   data: Row[] | null;
@@ -46,9 +64,18 @@ export interface SnapshotTransport {
   ): Promise<SnapshotWriteResult>;
 }
 
+export const SNAPSHOT_PAGE_SIZE = 1000;
+
 interface SelectTable<Row> {
   select(columns: string): {
-    eq(column: string, value: string): Promise<SnapshotQueryResult<Row>>;
+    eq(column: string, value: string): {
+      order(
+        column: string,
+        options: { ascending: boolean },
+      ): {
+        range(from: number, to: number): Promise<SnapshotQueryResult<Row>>;
+      };
+    };
   };
 }
 
@@ -63,9 +90,29 @@ export function createSupabaseSnapshotTransport(
   supabase: SupabaseClient,
 ): SnapshotTransport {
   return {
-    selectRows<Row>(tableName: SnapshotTableName, userId: string) {
+    async selectRows<Row>(tableName: SnapshotTableName, userId: string) {
       const table = supabase.from(tableName) as unknown as SelectTable<Row>;
-      return table.select("*").eq("user_id", userId);
+      const rows: Row[] = [];
+
+      for (let pageIndex = 0; ; pageIndex += 1) {
+        const pageStart = pageIndex * SNAPSHOT_PAGE_SIZE;
+        const pageResult = await table
+          .select("*")
+          .eq("user_id", userId)
+          .order("id", { ascending: true })
+          .range(pageStart, pageStart + SNAPSHOT_PAGE_SIZE - 1);
+
+        if (pageResult.error) {
+          return { data: null, error: pageResult.error };
+        }
+
+        const pageRows = pageResult.data ?? [];
+        rows.push(...pageRows);
+
+        if (pageRows.length < SNAPSHOT_PAGE_SIZE) {
+          return { data: rows, error: null };
+        }
+      }
     },
     upsertRows<Row>(
       tableName: SnapshotTableName,
@@ -84,9 +131,8 @@ function throwQueryError(result: { error: unknown | null }): void {
   }
 }
 
-export async function pullSnapshot(
+async function fetchIncomingSnapshot(
   transport: SnapshotTransport,
-  localSnapshot: LocalDataSnapshot,
   userId: string,
 ): Promise<LocalDataSnapshot> {
   const [
@@ -97,6 +143,11 @@ export async function pullSnapshot(
     weightRecordsResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
+    projectsResult,
+    projectMilestonesResult,
+    projectActionsResult,
+    projectIdeasResult,
+    projectHistoryResult,
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
     transport.selectRows<TaskRow>("tasks", userId),
@@ -108,6 +159,11 @@ export async function pullSnapshot(
       userId,
     ),
     transport.selectRows<DeviceRow>("devices", userId),
+    transport.selectRows<ProjectRow>("projects", userId),
+    transport.selectRows<ProjectMilestoneRow>("project_milestones", userId),
+    transport.selectRows<ProjectActionRow>("project_actions", userId),
+    transport.selectRows<ProjectIdeaRow>("project_ideas", userId),
+    transport.selectRows<ProjectHistoryRow>("project_history", userId),
   ]);
 
   for (const result of [
@@ -118,6 +174,11 @@ export async function pullSnapshot(
     weightRecordsResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
+    projectsResult,
+    projectMilestonesResult,
+    projectActionsResult,
+    projectIdeasResult,
+    projectHistoryResult,
   ]) {
     throwQueryError(result);
   }
@@ -134,9 +195,34 @@ export async function pullSnapshot(
       fitnessSummaryProjectionV2FromRow,
     ),
     devices: (devicesResult.data ?? []).map(deviceFromRow),
+    projects: (projectsResult.data ?? []).map(projectFromRow),
+    projectMilestones: (projectMilestonesResult.data ?? []).map(
+      projectMilestoneFromRow,
+    ),
+    projectActions: (projectActionsResult.data ?? []).map(projectActionFromRow),
+    projectIdeas: (projectIdeasResult.data ?? []).map(projectIdeaFromRow),
+    projectHistory: (projectHistoryResult.data ?? []).map(projectHistoryFromRow),
   };
 
+  return incomingSnapshot;
+}
+
+export async function pullSnapshot(
+  transport: SnapshotTransport,
+  localSnapshot: LocalDataSnapshot,
+  userId: string,
+): Promise<LocalDataSnapshot> {
+  const incomingSnapshot = await fetchIncomingSnapshot(transport, userId);
   return mergeSnapshot(localSnapshot, incomingSnapshot);
+}
+
+export async function pullSnapshotAuthoritative(
+  transport: SnapshotTransport,
+  localSnapshot: LocalDataSnapshot,
+  userId: string,
+): Promise<LocalDataSnapshot> {
+  const incomingSnapshot = await fetchIncomingSnapshot(transport, userId);
+  return mergeAuthoritativeSnapshot(localSnapshot, incomingSnapshot);
 }
 
 export interface PushPayload {
@@ -144,6 +230,11 @@ export interface PushPayload {
   device: DeviceRow;
   notes: NoteRow[];
   tasks: TaskRow[];
+  projects: ProjectRow[];
+  projectMilestones: ProjectMilestoneRow[];
+  projectActions: ProjectActionRow[];
+  projectIdeas: ProjectIdeaRow[];
+  projectHistory: ProjectHistoryRow[];
 }
 
 export function createPushPayload(
@@ -167,6 +258,21 @@ export function createPushPayload(
     tasks: localSnapshot.tasks
       .filter(isOwnedByCurrentDevice)
       .map((task) => taskToRow(task, context.userId)),
+    projects: localSnapshot.projects
+      .filter(isOwnedByCurrentDevice)
+      .map((project) => projectToRow(project, context.userId)),
+    projectMilestones: localSnapshot.projectMilestones
+      .filter(isOwnedByCurrentDevice)
+      .map((milestone) => projectMilestoneToRow(milestone, context.userId)),
+    projectActions: localSnapshot.projectActions
+      .filter(isOwnedByCurrentDevice)
+      .map((action) => projectActionToRow(action, context.userId)),
+    projectIdeas: localSnapshot.projectIdeas
+      .filter(isOwnedByCurrentDevice)
+      .map((idea) => projectIdeaToRow(idea, context.userId)),
+    projectHistory: localSnapshot.projectHistory
+      .filter(isOwnedByCurrentDevice)
+      .map((history) => projectHistoryToRow(history, context.userId)),
   };
 }
 
@@ -196,8 +302,15 @@ export async function pushSnapshot(
     tableName: SnapshotTableName;
     rows: unknown[];
   }> = [
+    { tableName: "projects", rows: payload.projects },
     { tableName: "notes", rows: payload.notes },
     { tableName: "tasks", rows: payload.tasks },
+    // Parents must arrive before children so the composite ownership FK is
+    // satisfied on every device, including a first sync of a new project.
+    { tableName: "project_milestones", rows: payload.projectMilestones },
+    { tableName: "project_actions", rows: payload.projectActions },
+    { tableName: "project_ideas", rows: payload.projectIdeas },
+    { tableName: "project_history", rows: payload.projectHistory },
   ];
 
   for (const batch of batches) {

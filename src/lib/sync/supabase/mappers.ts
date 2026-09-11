@@ -4,6 +4,11 @@ import type {
   LegacyWorkoutRecordV1,
   MealRecord,
   Note,
+  Project,
+  ProjectAction,
+  ProjectHistory,
+  ProjectIdea,
+  ProjectMilestone,
   Task,
   WeightRecord,
   WorkoutType,
@@ -17,6 +22,11 @@ import type {
   WeightRecordRow,
   WorkoutRecordRow,
   FitnessSummaryProjectionV2Row,
+  ProjectActionRow,
+  ProjectHistoryRow,
+  ProjectIdeaRow,
+  ProjectMilestoneRow,
+  ProjectRow,
 } from "./rows";
 
 export function auditFieldsFromRow(
@@ -184,6 +194,80 @@ export function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
   };
 }
 
+export function projectFromRow(row: ProjectRow): Project {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    name: row.name,
+    repository: row.repository,
+    branch: row.branch,
+    status: row.status,
+    currentSummary: row.current_summary,
+    targetSummary: row.target_summary,
+    lastVerifiedCommit: row.last_verified_commit,
+    lastVerifiedAt: row.last_verified_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function projectMilestoneFromRow(
+  row: ProjectMilestoneRow,
+): ProjectMilestone {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    status: row.status,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function projectActionFromRow(row: ProjectActionRow): ProjectAction {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    type: row.type,
+    status: row.status,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function projectIdeaFromRow(row: ProjectIdeaRow): ProjectIdea {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    projectId: row.project_id,
+    title: row.title,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function projectHistoryFromRow(row: ProjectHistoryRow): ProjectHistory {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    projectId: row.project_id,
+    type: row.type,
+    summary: row.summary,
+    occurredAt: row.occurred_at,
+    githubRef: row.github_ref,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
 export function deviceFromRow(row: DeviceRow): Device {
   return {
     id: row.id,
@@ -288,6 +372,95 @@ export function weightRecordToRow(
     updated_at: record.updatedAt,
     deleted_at: record.deletedAt,
     device_id: record.deviceId,
+  };
+}
+
+export function projectToRow(project: Project, userId: string): ProjectRow {
+  return {
+    ...auditFieldsToRow(project),
+    id: project.id,
+    user_id: userId,
+    name: project.name,
+    repository: project.repository,
+    branch: project.branch,
+    status: project.status,
+    current_summary: project.currentSummary,
+    target_summary: project.targetSummary,
+    last_verified_commit: project.lastVerifiedCommit,
+    last_verified_at: project.lastVerifiedAt,
+    updated_at: project.updatedAt,
+    deleted_at: project.deletedAt,
+    device_id: project.deviceId,
+  };
+}
+
+export function projectMilestoneToRow(
+  milestone: ProjectMilestone,
+  userId: string,
+): ProjectMilestoneRow {
+  return {
+    ...auditFieldsToRow(milestone),
+    id: milestone.id,
+    user_id: userId,
+    project_id: milestone.projectId,
+    title: milestone.title,
+    status: milestone.status,
+    updated_at: milestone.updatedAt,
+    deleted_at: milestone.deletedAt,
+    device_id: milestone.deviceId,
+  };
+}
+
+export function projectActionToRow(
+  action: ProjectAction,
+  userId: string,
+): ProjectActionRow {
+  return {
+    ...auditFieldsToRow(action),
+    id: action.id,
+    user_id: userId,
+    project_id: action.projectId,
+    title: action.title,
+    type: action.type,
+    status: action.status,
+    updated_at: action.updatedAt,
+    deleted_at: action.deletedAt,
+    device_id: action.deviceId,
+  };
+}
+
+export function projectIdeaToRow(
+  idea: ProjectIdea,
+  userId: string,
+): ProjectIdeaRow {
+  return {
+    ...auditFieldsToRow(idea),
+    id: idea.id,
+    user_id: userId,
+    project_id: idea.projectId,
+    title: idea.title,
+    updated_at: idea.updatedAt,
+    deleted_at: idea.deletedAt,
+    device_id: idea.deviceId,
+  };
+}
+
+export function projectHistoryToRow(
+  history: ProjectHistory,
+  userId: string,
+): ProjectHistoryRow {
+  return {
+    ...auditFieldsToRow(history),
+    id: history.id,
+    user_id: userId,
+    project_id: history.projectId,
+    type: history.type,
+    summary: history.summary,
+    occurred_at: history.occurredAt,
+    github_ref: history.githubRef,
+    updated_at: history.updatedAt,
+    deleted_at: history.deletedAt,
+    device_id: history.deviceId,
   };
 }
 

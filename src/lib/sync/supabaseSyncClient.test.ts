@@ -3,27 +3,43 @@ import {
   SupabaseSyncClient,
   createSupabaseSyncClient,
 } from "./supabaseSyncClient";
-import type { SupabaseClient } from "./supabase/rows";
-import { makeDevice, makeSnapshot } from "./supabase/testFixtures";
+import type { SnapshotTableName, SupabaseClient } from "./supabase/rows";
+import { noteToRow } from "./supabase/mappers";
+import {
+  makeDevice,
+  makeNote,
+  makeSnapshot,
+  makeTask,
+} from "./supabase/testFixtures";
 
 interface FakeClientOptions {
   userId?: string | null;
   sessionError?: Error | null;
   selectError?: Error | null;
+  rowsByTable?: Partial<Record<SnapshotTableName, unknown[]>>;
+  upsertErrorsByTable?: Partial<Record<SnapshotTableName, Error>>;
 }
 
 function createFakeClient({
   userId = null,
   sessionError = null,
   selectError = null,
+  rowsByTable = {},
+  upsertErrorsByTable = {},
 }: FakeClientOptions = {}) {
-  const select = vi.fn(() => ({
-    eq: vi.fn(async () => ({ data: [], error: selectError })),
+  const select = vi.fn((tableName: SnapshotTableName) => ({
+    eq: vi.fn(() => ({
+      order: vi.fn(() => ({
+        range: vi.fn(async (from: number, to: number) => ({
+          data: (rowsByTable[tableName] ?? []).slice(from, to + 1),
+          error: selectError,
+        })),
+      })),
+    })),
   }));
-  const table = {
-    select,
-    upsert: vi.fn(async () => ({ error: null })),
-  };
+  const upsert = vi.fn((tableName: SnapshotTableName) =>
+    Promise.resolve({ error: upsertErrorsByTable[tableName] ?? null }),
+  );
   const session = userId
     ? { user: { id: userId, email: `${userId}@example.com` } }
     : null;
@@ -37,12 +53,16 @@ function createFakeClient({
       signInWithPassword: vi.fn(),
       signOut: vi.fn(async () => ({ error: null })),
     },
-    from: vi.fn(() => table),
+    from: vi.fn((tableName: SnapshotTableName) => ({
+      select: () => select(tableName),
+      upsert: () => upsert(tableName),
+    })),
   };
 
   return {
     client: client as unknown as SupabaseClient,
     select,
+    upsert,
     auth: client.auth,
   };
 }
@@ -120,11 +140,93 @@ describe("SupabaseSyncClient facade", () => {
     await expect(
       client.pull(snapshot, { userId: "user-1", device: makeDevice() }),
     ).resolves.toBe(snapshot);
-    expect(fake.select).toHaveBeenCalledTimes(7);
+    expect(fake.select).toHaveBeenCalledTimes(12);
     expect(client.getStatus()).toMatchObject({
       mode: "error",
       detail: "RLS denied",
     });
+  });
+
+  it("pulls the authoritative server value after a stale write is accepted", async () => {
+    const fake = createFakeClient({
+      userId: "user-1",
+      rowsByTable: {
+        notes: [
+          noteToRow(
+            makeNote({
+              content: "server value",
+              updatedAt: "2026-08-01T00:00:02.000Z",
+            }),
+            "user-1",
+          ),
+        ],
+      },
+    });
+    const client = createConfiguredClient(fake.client, () => true);
+    const staleSnapshot = makeSnapshot({
+      notes: [
+        makeNote({
+          content: "stale local value",
+          updatedAt: "2026-08-01T00:00:01.000Z",
+        }),
+      ],
+    });
+
+    const result = await client.push(staleSnapshot, {
+      userId: "user-1",
+      device: makeDevice(),
+    });
+
+    expect(result.status.mode).toBe("synced");
+    expect(result.snapshot?.notes[0].content).toBe("server value");
+    expect(fake.select).toHaveBeenCalledTimes(12);
+  });
+
+  it("uses the server value for equal-time active rows during reconciliation", async () => {
+    const updatedAt = "2026-08-01T00:00:02.000Z";
+    const fake = createFakeClient({
+      userId: "user-1",
+      rowsByTable: {
+        notes: [
+          noteToRow(
+            makeNote({ content: "server value", updatedAt }),
+            "user-1",
+          ),
+        ],
+      },
+    });
+    const client = createConfiguredClient(fake.client, () => true);
+
+    const result = await client.push(
+      makeSnapshot({
+        notes: [makeNote({ content: "local value", updatedAt })],
+      }),
+      { userId: "user-1", device: makeDevice() },
+    );
+
+    expect(result.status.mode).toBe("synced");
+    expect(result.snapshot?.notes[0].content).toBe("server value");
+  });
+
+  it("reports a partial push failure instead of marking sync successful", async () => {
+    const writeError = new Error("tasks upsert failed");
+    const fake = createFakeClient({
+      userId: "user-1",
+      upsertErrorsByTable: { tasks: writeError },
+    });
+    const client = createConfiguredClient(fake.client, () => true);
+
+    const result = await client.push(
+      makeSnapshot({
+        notes: [makeNote()],
+        tasks: [makeTask()],
+      }),
+      { userId: "user-1", device: makeDevice() },
+    );
+
+    expect(result.status.mode).toBe("error");
+    expect(result.snapshot).toBeUndefined();
+    expect(result.status.detail).toBe("tasks upsert failed");
   });
 
   it("propagates auth session errors before remote IO", async () => {

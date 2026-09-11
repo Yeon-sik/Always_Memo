@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SyncContext } from "../syncTypes";
 import { noteToRow } from "./mappers";
 import type { SnapshotTableName } from "./rows";
 import {
   createPushPayload,
+  createSupabaseSnapshotTransport,
   pullSnapshot,
   pushSnapshot,
+  SNAPSHOT_PAGE_SIZE,
   type SnapshotQueryResult,
   type SnapshotTransport,
   type SnapshotWriteResult,
@@ -14,6 +16,11 @@ import {
   makeDevice,
   makeMealRecord,
   makeNote,
+  makeProject,
+  makeProjectAction,
+  makeProjectHistory,
+  makeProjectIdea,
+  makeProjectMilestone,
   makeSnapshot,
   makeTask,
   makeWeightRecord,
@@ -55,7 +62,63 @@ const context: SyncContext = {
 };
 
 describe("Supabase snapshot IO", () => {
-  it("pulls all seven tables and merges mapped rows into the local snapshot", async () => {
+  it("paginates every snapshot table through the common transport", async () => {
+    const ranges = new Map<SnapshotTableName, Array<[number, number]>>();
+    const supabase = {
+      from: vi.fn((tableName: SnapshotTableName) => ({
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            order: vi.fn(() => ({
+              range: vi.fn(async (from: number, to: number) => {
+                const tableRanges = ranges.get(tableName) ?? [];
+                tableRanges.push([from, to]);
+                ranges.set(tableName, tableRanges);
+                const rowCount =
+                  from === 0 ? SNAPSHOT_PAGE_SIZE : 1;
+                return {
+                  data: Array.from({ length: rowCount }, (_, index) => ({
+                    id: `${tableName}-${from + index}`,
+                  })),
+                  error: null,
+                };
+              }),
+            })),
+          })),
+        })),
+      })),
+    };
+    const transport = createSupabaseSnapshotTransport(
+      supabase as never,
+    );
+    const tableNames: SnapshotTableName[] = [
+      "notes",
+      "tasks",
+      "workout_records",
+      "meal_records",
+      "weight_records",
+      "fitness_summary_projections_v2",
+      "devices",
+      "projects",
+      "project_milestones",
+      "project_actions",
+      "project_ideas",
+      "project_history",
+    ];
+
+    for (const tableName of tableNames) {
+      const result = await transport.selectRows(tableName, "user-1");
+      expect(result.data).toHaveLength(SNAPSHOT_PAGE_SIZE + 1);
+    }
+
+    for (const tableName of tableNames) {
+      expect(ranges.get(tableName)).toEqual([
+        [0, SNAPSHOT_PAGE_SIZE - 1],
+        [SNAPSHOT_PAGE_SIZE, SNAPSHOT_PAGE_SIZE * 2 - 1],
+      ]);
+    }
+  });
+
+  it("pulls all snapshot tables and merges mapped rows into the local snapshot", async () => {
     const transport = new FakeSnapshotTransport();
     transport.selectedRows.set("notes", {
       data: [
@@ -88,6 +151,11 @@ describe("Supabase snapshot IO", () => {
       "weight_records",
       "fitness_summary_projections_v2",
       "devices",
+      "projects",
+      "project_milestones",
+      "project_actions",
+      "project_ideas",
+      "project_history",
     ]);
     expect(result.notes[0].content).toBe("remote");
   });
@@ -138,6 +206,11 @@ describe("Supabase snapshot IO", () => {
       workoutRecords: [makeWorkoutRecord()],
       mealRecords: [makeMealRecord()],
       weightRecords: [makeWeightRecord()],
+      projects: [makeProject()],
+      projectMilestones: [makeProjectMilestone()],
+      projectActions: [makeProjectAction()],
+      projectIdeas: [makeProjectIdea()],
+      projectHistory: [makeProjectHistory()],
     });
 
     const result = await pushSnapshot(
@@ -149,15 +222,25 @@ describe("Supabase snapshot IO", () => {
 
     expect(transport.upsertCalls.map((call) => call.tableName)).toEqual([
       "devices",
+      "projects",
       "notes",
       "tasks",
+      "project_milestones",
+      "project_actions",
+      "project_ideas",
+      "project_history",
     ]);
     expect(transport.upsertCalls.map((call) => call.onConflict)).toEqual([
       "user_id,id",
       "id",
       "id",
+      "id",
+      "id",
+      "id",
+      "id",
+      "id",
     ]);
-    expect(result.changedRows).toBe(3);
+    expect(result.changedRows).toBe(8);
     expect(result.currentDevice.lastSeenAt).toBe("2026-08-01T00:00:05.000Z");
   });
 

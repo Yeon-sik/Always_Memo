@@ -100,6 +100,54 @@ export interface WeightRecord extends SyncableEntity, ScopedRecordFields {
   weightKg: number;
 }
 
+export type DevProjectStatus = "PLANNED" | "ACTIVE" | "COMPLETED";
+export type DevMilestoneStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+export type DevActionType = "NEXT" | "LATER" | "BLOCKED";
+export type DevActionStatus = "OPEN" | "DONE";
+export type DevHistoryType =
+  | "STATUS_CHANGE"
+  | "MILESTONE"
+  | "RELEASE"
+  | "NOTE";
+
+/** Project operating state owned by the Dev Control bounded context. */
+export interface Project extends SyncableEntity {
+  name: string;
+  repository: string | null;
+  branch: string | null;
+  status: DevProjectStatus;
+  currentSummary: string;
+  targetSummary: string;
+  lastVerifiedCommit: string | null;
+  lastVerifiedAt: ISODateString | null;
+}
+
+export interface ProjectMilestone extends SyncableEntity {
+  projectId: EntityId;
+  title: string;
+  status: DevMilestoneStatus;
+}
+
+export interface ProjectAction extends SyncableEntity {
+  projectId: EntityId;
+  title: string;
+  type: DevActionType;
+  status: DevActionStatus;
+}
+
+export interface ProjectIdea extends SyncableEntity {
+  projectId: EntityId;
+  title: string;
+}
+
+export interface ProjectHistory extends SyncableEntity {
+  projectId: EntityId;
+  type: DevHistoryType;
+  summary: string;
+  occurredAt: ISODateString;
+  githubRef: string | null;
+}
+
 export interface Device {
   id: EntityId;
   name: string;
@@ -116,4 +164,9 @@ export interface LocalDataSnapshot {
   mealRecords: MealRecord[];
   weightRecords: WeightRecord[];
   devices: Device[];
+  projects: Project[];
+  projectMilestones: ProjectMilestone[];
+  projectActions: ProjectAction[];
+  projectIdeas: ProjectIdea[];
+  projectHistory: ProjectHistory[];
 }
