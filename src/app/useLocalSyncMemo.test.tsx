@@ -100,6 +100,7 @@ class FakeSyncClient implements SyncClient {
   status: SyncStatus = syncedStatus;
   authState: AuthState = { userId: null, email: null };
   pullSnapshot: LocalDataSnapshot | null = null;
+  pushResultSnapshot: LocalDataSnapshot | undefined = undefined;
   pushGate: Promise<void> | null = null;
   activeRemoteOperations = 0;
   maxConcurrentRemoteOperations = 0;
@@ -177,7 +178,11 @@ class FakeSyncClient implements SyncClient {
         await pushGate;
       }
       this.pushSnapshots.push(structuredClone(localSnapshot));
-      return { changedRows: 0, status: this.status };
+      return {
+        changedRows: 0,
+        status: this.status,
+        snapshot: this.pushResultSnapshot,
+      };
     } finally {
       this.activeRemoteOperations -= 1;
     }
@@ -405,6 +410,92 @@ describe("useLocalSyncMemo", () => {
     expect(storage.saved).toHaveLength(1);
     expect(syncClient.pushSnapshots).toHaveLength(1);
     expect(syncClient.pushSnapshots[0].notes).toHaveLength(2);
+  });
+
+  it("applies the authoritative server value to the runtime snapshot", async () => {
+    const equalUpdatedAt = "2026-08-01T00:00:02.000Z";
+    const localNote = {
+      ...createNote("note-1", equalUpdatedAt),
+      content: "local value",
+    };
+    const serverSnapshot = {
+      ...createEmptySnapshot(),
+      notes: [
+        {
+          ...localNote,
+          content: "server value",
+        },
+      ],
+    };
+    const storage = new MemoryStorage({
+      ...createEmptySnapshot(),
+      notes: [localNote],
+    });
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient);
+    await settleInitialSave();
+    syncClient.pushResultSnapshot = serverSnapshot;
+
+    await act(async () => {
+      currentHook.addNote();
+      await vi.advanceTimersByTimeAsync(400);
+      await flushEffects();
+    });
+
+    expect(
+      currentHook.notes.find((note) => note.id === "note-1")?.content,
+    ).toBe("server value");
+  });
+
+  it("keeps a newer local edit made while the push is in flight", async () => {
+    const localNote = {
+      ...createNote("note-1", "2026-08-01T00:00:01.000Z"),
+      content: "initial",
+    };
+    const serverSnapshot = {
+      ...createEmptySnapshot(),
+      notes: [
+        {
+          ...localNote,
+          content: "server value",
+          updatedAt: "2026-08-01T00:00:02.000Z",
+        },
+      ],
+    };
+    const storage = new MemoryStorage({
+      ...createEmptySnapshot(),
+      notes: [localNote],
+    });
+    const syncClient = new FakeSyncClient();
+    await renderHook(storage, syncClient);
+    await settleInitialSave();
+    syncClient.pushResultSnapshot = serverSnapshot;
+    let releasePush!: () => void;
+    syncClient.pushGate = new Promise<void>((resolve) => {
+      releasePush = resolve;
+    });
+
+    vi.setSystemTime(new Date("2026-08-01T00:00:02.000Z"));
+    await act(async () => {
+      currentHook.updateSelectedNoteContent("first push");
+      await vi.advanceTimersByTimeAsync(400);
+      await flushEffects();
+    });
+
+    vi.setSystemTime(new Date("2026-08-01T00:00:03.000Z"));
+    await act(async () => {
+      currentHook.updateSelectedNoteContent("latest local");
+      await flushEffects();
+    });
+
+    await act(async () => {
+      releasePush();
+      await flushEffects();
+    });
+
+    expect(
+      currentHook.notes.find((note) => note.id === "note-1")?.content,
+    ).toBe("latest local");
   });
 
   it("serializes automatic and manual sync while preserving an edit in flight", async () => {

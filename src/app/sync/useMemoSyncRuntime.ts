@@ -17,7 +17,10 @@ import {
 import { getOrCreateDevice, upsertDevice } from "../../lib/device/device";
 import { localStorageAdapter } from "../../lib/storage/localStorageAdapter";
 import type { StorageAdapter } from "../../lib/storage/storageAdapter";
-import { mergeSnapshot } from "../../lib/sync/supabase/snapshotMerge";
+import {
+  mergeAuthoritativeSnapshot,
+  mergeSnapshot,
+} from "../../lib/sync/supabase/snapshotMerge";
 import { createSyncQueue } from "../../lib/sync/syncQueue";
 import {
   createAppSyncClient,
@@ -469,10 +472,12 @@ export function useMemoSyncRuntime(
 
             // Rebase the authoritative push result on edits that happened
             // while the remote request was waiting or in flight.
-            const reconciledSnapshot = mergeSnapshot(
-              snapshotRef.current,
-              result.snapshot ?? snapshotToSave,
-            );
+            const reconciledSnapshot = result.snapshot
+              ? mergeAuthoritativeSnapshot(
+                  snapshotRef.current,
+                  result.snapshot,
+                )
+              : mergeSnapshot(snapshotRef.current, snapshotToSave);
             if (hasEntitySnapshotChanges(snapshotRef.current, reconciledSnapshot)) {
               await storage.save(reconciledSnapshot);
               applyRemoteSnapshot(reconciledSnapshot);
@@ -639,10 +644,12 @@ export function useMemoSyncRuntime(
 
         // A user can edit while pull or push is in flight. Rebase the result on
         // the latest ref before replacing React state so that edit is retained.
-        const committedSnapshot = mergeSnapshot(
-          snapshotRef.current,
-          pushResult.snapshot ?? rebasedSnapshot,
-        );
+        const committedSnapshot = pushResult.snapshot
+          ? mergeAuthoritativeSnapshot(
+              snapshotRef.current,
+              pushResult.snapshot,
+            )
+          : mergeSnapshot(snapshotRef.current, rebasedSnapshot);
         await storage.save(committedSnapshot);
 
         applyRemoteSnapshot(committedSnapshot);
