@@ -196,6 +196,8 @@ describe("Supabase snapshot IO", () => {
       id: "device-a",
       last_seen_at: "2026-08-01T00:00:04.000Z",
     });
+    expect(JSON.stringify(payload)).not.toContain("access_token");
+    expect(JSON.stringify(payload)).not.toContain("refresh_token");
   });
 
   it("pushes device then entity batches with the canonical conflicts", async () => {

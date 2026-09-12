@@ -15,6 +15,7 @@ import type {
   WorkoutType,
 } from "../../types";
 import { normalizeEntityAuditFields } from "../dataTrust/backfillMetadata";
+import { normalizeProjectGitHubIdentity } from "../dataTrust/projectGitHubIdentity";
 import { createEmptySnapshot, type StorageAdapter } from "./storageAdapter";
 
 const STORAGE_KEY = "localsyncmemo:snapshot:v1";
@@ -94,17 +95,27 @@ function normalizeProject(value: unknown): Project | null {
     typeof value.targetSummary !== "string" ||
     !isOptionalNullableString(value.repository) ||
     !isOptionalNullableString(value.branch) ||
+    !isOptionalNullableString(value.githubRepositoryId) ||
+    !isOptionalNullableString(value.githubOwner) ||
+    !isOptionalNullableString(value.githubRepo) ||
     !isOptionalNullableString(value.lastVerifiedCommit) ||
     !isOptionalNullableString(value.lastVerifiedAt)
   ) {
     return null;
   }
 
+  const githubIdentity = normalizeProjectGitHubIdentity(
+    value.githubRepositoryId as string | null | undefined,
+    value.githubOwner as string | null | undefined,
+    value.githubRepo as string | null | undefined,
+  );
+
   return {
     id: value.id as string,
     name: value.name as string,
     repository: (value.repository as string | null | undefined) ?? null,
     branch: (value.branch as string | null | undefined) ?? null,
+    ...githubIdentity,
     status: value.status as (typeof PROJECT_STATUSES)[number],
     currentSummary: value.currentSummary as string,
     targetSummary: value.targetSummary as string,

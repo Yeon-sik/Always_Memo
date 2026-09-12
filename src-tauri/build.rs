@@ -17,6 +17,14 @@ fn main() {
             "db_editor_list_rows",
             "update_db_row",
             "open_db_editor_window",
+            "github_connection_status",
+            "github_device_flow_start",
+            "github_device_flow_poll",
+            "github_device_flow_cancel",
+            "github_disconnect",
+            "github_list_repositories",
+            "github_list_branches",
+            "github_read_repository",
         ]),
     ))
     .expect("failed to build Tauri application manifest");

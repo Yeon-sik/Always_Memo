@@ -115,6 +115,10 @@ export interface Project extends SyncableEntity {
   name: string;
   repository: string | null;
   branch: string | null;
+  /** Canonical GitHub repository identity. GitHub remains the source of truth. */
+  githubRepositoryId: string | null;
+  githubOwner: string | null;
+  githubRepo: string | null;
   status: DevProjectStatus;
   currentSummary: string;
   targetSummary: string;

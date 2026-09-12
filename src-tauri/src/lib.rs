@@ -1,6 +1,7 @@
 use std::{collections::HashMap, env, fs, path::PathBuf, sync::Mutex};
 
 mod db_editor;
+mod github;
 
 #[cfg(desktop)]
 use tauri::{
@@ -355,6 +356,7 @@ pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(QuickCaptureShortcutStatus::unsupported()))
+        .manage(github::GitHubState::default())
         .invoke_handler(tauri::generate_handler![
             load_runtime_config,
             load_persisted_device,
@@ -372,6 +374,14 @@ pub fn run() {
             db_editor::db_editor_list_rows,
             db_editor::update_db_row,
             db_editor::open_db_editor_window,
+            github::github_connection_status,
+            github::github_device_flow_start,
+            github::github_device_flow_poll,
+            github::github_device_flow_cancel,
+            github::github_disconnect,
+            github::github_list_repositories,
+            github::github_list_branches,
+            github::github_read_repository,
         ])
         .setup(|app| {
             #[cfg(desktop)]

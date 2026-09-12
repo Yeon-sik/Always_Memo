@@ -49,6 +49,9 @@ export interface DevControlActions {
     name: string;
     repository: string | null;
     branch: string | null;
+    githubRepositoryId?: string | null;
+    githubOwner?: string | null;
+    githubRepo?: string | null;
     status: DevProjectStatus;
     currentSummary: string;
     targetSummary: string;
