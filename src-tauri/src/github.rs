@@ -114,6 +114,11 @@ struct StoredGitHubCredentialWire {
 
 struct GitHubCredentialStore;
 
+trait GitHubCredentialBackend: Send + Sync {
+    fn get(&self) -> Result<Option<StoredGitHubCredential>, GitHubError>;
+    fn set(&self, credential: &StoredGitHubCredential) -> Result<(), GitHubError>;
+}
+
 impl GitHubCredentialStore {
     fn native() -> Self {
         Self
@@ -187,6 +192,16 @@ impl GitHubCredentialStore {
                 "OS Credential Store에서 GitHub 연결 정보를 삭제하지 못했습니다.",
             )),
         }
+    }
+}
+
+impl GitHubCredentialBackend for GitHubCredentialStore {
+    fn get(&self) -> Result<Option<StoredGitHubCredential>, GitHubError> {
+        GitHubCredentialStore::get(self)
+    }
+
+    fn set(&self, credential: &StoredGitHubCredential) -> Result<(), GitHubError> {
+        GitHubCredentialStore::set(self, credential)
     }
 }
 
@@ -400,7 +415,7 @@ where
         })
     }
 
-    async fn post_oauth<U: DeserializeOwned>(
+    async fn post_oauth(
         &self,
         query: Vec<(String, String)>,
     ) -> Result<GitHubHttpResponse, GitHubError> {
@@ -425,12 +440,9 @@ where
                 ),
             })?;
 
-        serde_json::from_str::<U>(&response.body).map_err(|_| {
-            GitHubError::new(
-                GitHubErrorCode::InvalidResponse,
-                "GitHub Device Flow 응답 형식이 올바르지 않습니다.",
-            )
-        })?;
+        if !(200..300).contains(&response.status) {
+            return Err(map_http_status(&response));
+        }
         Ok(response)
     }
 
@@ -491,7 +503,7 @@ where
         device_code: &SecretString,
     ) -> Result<DeviceTokenPoll, GitHubError> {
         let response = self
-            .post_oauth::<TokenResponseWire>(vec![
+            .post_oauth(vec![
                 ("client_id".to_string(), client_id.to_string()),
                 ("device_code".to_string(), device_code.expose().to_string()),
                 (
@@ -515,7 +527,7 @@ where
         refresh_token: &SecretString,
     ) -> Result<StoredGitHubCredential, GitHubError> {
         let response = self
-            .post_oauth::<TokenResponseWire>(vec![
+            .post_oauth(vec![
                 ("client_id".to_string(), client_id.to_string()),
                 ("grant_type".to_string(), "refresh_token".to_string()),
                 (
@@ -530,13 +542,14 @@ where
                 "GitHub token 갱신 응답 형식이 올바르지 않습니다.",
             )
         })?;
-        match parse_token_response(token)? {
-            DeviceTokenPoll::Authorized(credential) => Ok(credential),
-            DeviceTokenPoll::Pending { .. }
-            | DeviceTokenPoll::Denied
-            | DeviceTokenPoll::Expired => Err(GitHubError::new(
+        match parse_token_response(token) {
+            Ok(DeviceTokenPoll::Authorized(credential)) => Ok(credential),
+            Ok(DeviceTokenPoll::Pending { .. })
+            | Ok(DeviceTokenPoll::Denied)
+            | Ok(DeviceTokenPoll::Expired)
+            | Err(_) => Err(GitHubError::new(
                 GitHubErrorCode::Unauthorized,
-                "GitHub 연결 token을 갱신하지 못했습니다.",
+                "GitHub 연결 token을 갱신하지 못했습니다. 다시 연결하세요.",
             )),
         }
     }
@@ -1205,13 +1218,14 @@ fn disconnected_status(config: &GitHubConfig) -> GitHubConnectionStatus {
     }
 }
 
-async fn access_token<T>(
+async fn access_token<T, B>(
     api: &GitHubApi<T>,
-    store: &GitHubCredentialStore,
+    store: &B,
     config: &GitHubConfig,
 ) -> Result<SecretString, GitHubError>
 where
     T: GitHubTransport,
+    B: GitHubCredentialBackend,
 {
     if config.client_id.is_empty() {
         return Err(GitHubError::new(
@@ -1246,6 +1260,57 @@ where
     Ok(SecretString::new(access_token))
 }
 
+fn connection_error_message(error: &GitHubError) -> String {
+    if error.status == Some(401) || matches!(&error.code, GitHubErrorCode::Unauthorized) {
+        return "GitHub 인증이 만료되었거나 취소되었습니다. 다시 연결하세요.".to_string();
+    }
+
+    if matches!(
+        &error.code,
+        GitHubErrorCode::Network | GitHubErrorCode::Timeout
+    ) {
+        return format!(
+            "GitHub 연결 상태를 확인하지 못했습니다. 네트워크를 확인하세요. ({})",
+            error.message
+        );
+    }
+
+    error.message.clone()
+}
+
+async fn verified_connection_status<T, B>(
+    api: &GitHubApi<T>,
+    store: &B,
+    config: &GitHubConfig,
+) -> GitHubConnectionStatus
+where
+    T: GitHubTransport,
+    B: GitHubCredentialBackend,
+{
+    let mut status = disconnected_status(config);
+    if !status.configured {
+        return status;
+    }
+
+    match access_token(api, store, config).await {
+        Ok(token) => match api.user(&token).await {
+            Ok(user) => {
+                status.connected = true;
+                status.account_login = Some(user.login);
+                status.account_name = user.name;
+            }
+            Err(error) => {
+                status.error = Some(connection_error_message(&error));
+            }
+        },
+        Err(error) => {
+            status.error = Some(connection_error_message(&error));
+        }
+    }
+
+    status
+}
+
 async fn native_api() -> Result<GitHubApi<ReqwestTransport>, GitHubError> {
     Ok(GitHubApi::new(ReqwestTransport::new()?))
 }
@@ -1260,28 +1325,14 @@ pub async fn github_connection_status(
         return Ok(status);
     }
     let store = GitHubCredentialStore::native();
-    let Some(_) = store.get()? else {
-        return Ok(status);
-    };
-    let api = native_api().await?;
-    match access_token(&api, &store, &config).await {
-        Ok(token) => match api.user(&token).await {
-            Ok(user) => {
-                status.connected = true;
-                status.account_login = Some(user.login);
-                status.account_name = user.name;
-            }
-            Err(error) => {
-                status.connected = true;
-                status.error = Some(error.message);
-            }
-        },
+    let api = match native_api().await {
+        Ok(api) => api,
         Err(error) => {
-            status.connected = true;
-            status.error = Some(error.message);
+            status.error = Some(connection_error_message(&error));
+            return Ok(status);
         }
-    }
-    Ok(status)
+    };
+    Ok(verified_connection_status(&api, &store, &config).await)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1396,7 +1447,8 @@ pub async fn github_device_flow_poll(
             })
         }
         DeviceTokenPoll::Authorized(credential) => {
-            GitHubCredentialStore::native().set(&credential)?;
+            let store = GitHubCredentialStore::native();
+            store.set(&credential)?;
             state
                 .pending_device_flow
                 .lock()
@@ -1408,14 +1460,7 @@ pub async fn github_device_flow_poll(
                 })?
                 .take();
             let config = load_github_config(&app);
-            let mut status = disconnected_status(&config);
-            status.connected = true;
-            if let Ok(token) = access_token(&api, &GitHubCredentialStore::native(), &config).await {
-                if let Ok(user) = api.user(&token).await {
-                    status.account_login = Some(user.login);
-                    status.account_name = user.name;
-                }
-            }
+            let status = verified_connection_status(&api, &store, &config).await;
             Ok(DeviceFlowPollResult {
                 status: "authorized".to_string(),
                 retry_after_seconds: None,
@@ -1519,6 +1564,30 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct MemoryCredentialStore {
+        credential: Mutex<Option<StoredGitHubCredential>>,
+    }
+
+    impl MemoryCredentialStore {
+        fn with_credential(credential: StoredGitHubCredential) -> Self {
+            Self {
+                credential: Mutex::new(Some(credential)),
+            }
+        }
+    }
+
+    impl GitHubCredentialBackend for MemoryCredentialStore {
+        fn get(&self) -> Result<Option<StoredGitHubCredential>, GitHubError> {
+            Ok(self.credential.lock().expect("credential lock").clone())
+        }
+
+        fn set(&self, credential: &StoredGitHubCredential) -> Result<(), GitHubError> {
+            *self.credential.lock().expect("credential lock") = Some(credential.clone());
+            Ok(())
+        }
+    }
+
     impl GitHubTransport for FakeTransport {
         fn send<'a>(
             &'a self,
@@ -1540,11 +1609,115 @@ mod tests {
     }
 
     fn response(body: &str) -> GitHubHttpResponse {
+        response_with_status(200, body)
+    }
+
+    fn response_with_status(status: u16, body: &str) -> GitHubHttpResponse {
         GitHubHttpResponse {
-            status: 200,
+            status,
             headers: HashMap::new(),
             body: body.to_string(),
         }
+    }
+
+    fn configured_github() -> GitHubConfig {
+        GitHubConfig {
+            client_id: "public-client-id".to_string(),
+            app_slug: None,
+        }
+    }
+
+    fn valid_credential() -> StoredGitHubCredential {
+        StoredGitHubCredential {
+            access_token: "access-secret".to_string(),
+            refresh_token: None,
+            expires_at_unix: Some(unix_now() + 3_600),
+        }
+    }
+
+    #[tokio::test]
+    async fn connection_status_is_connected_only_after_user_validation() {
+        let store = MemoryCredentialStore::with_credential(valid_credential());
+        let transport = FakeTransport::with_responses(vec![response(
+            r#"{"login":"octocat","name":"Octo Cat"}"#,
+        )]);
+        let api = GitHubApi::new(transport);
+
+        let status = verified_connection_status(&api, &store, &configured_github()).await;
+
+        assert!(status.connected);
+        assert_eq!(status.account_login.as_deref(), Some("octocat"));
+        assert_eq!(status.account_name.as_deref(), Some("Octo Cat"));
+        assert!(status.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn expired_or_revoked_credentials_are_disconnected_with_reconnect_error() {
+        let expired_store = MemoryCredentialStore::with_credential(StoredGitHubCredential {
+            expires_at_unix: Some(0),
+            ..valid_credential()
+        });
+        let expired_api = GitHubApi::new(FakeTransport::default());
+        let expired_status =
+            verified_connection_status(&expired_api, &expired_store, &configured_github()).await;
+
+        assert!(!expired_status.connected);
+        assert!(expired_status
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("다시 연결")));
+
+        let revoked_store = MemoryCredentialStore::with_credential(valid_credential());
+        let revoked_api =
+            GitHubApi::new(FakeTransport::with_responses(vec![response_with_status(
+                401,
+                r#"{"message":"Bad credentials"}"#,
+            )]));
+        let revoked_status =
+            verified_connection_status(&revoked_api, &revoked_store, &configured_github()).await;
+
+        assert!(!revoked_status.connected);
+        assert!(revoked_status
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("다시 연결")));
+    }
+
+    #[tokio::test]
+    async fn refresh_failure_is_disconnected_without_deleting_credential() {
+        let store = MemoryCredentialStore::with_credential(StoredGitHubCredential {
+            refresh_token: Some("refresh-secret".to_string()),
+            expires_at_unix: Some(0),
+            ..valid_credential()
+        });
+        let api = GitHubApi::new(FakeTransport::with_responses(vec![response_with_status(
+            401,
+            r#"{"message":"Bad credentials"}"#,
+        )]));
+
+        let status = verified_connection_status(&api, &store, &configured_github()).await;
+
+        assert!(!status.connected);
+        assert!(status
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("다시 연결")));
+        assert!(store.credential.lock().expect("credential lock").is_some());
+    }
+
+    #[tokio::test]
+    async fn network_failure_keeps_credential_and_reports_connection_error() {
+        let store = MemoryCredentialStore::with_credential(valid_credential());
+        let api = GitHubApi::new(FakeTransport::default());
+
+        let status = verified_connection_status(&api, &store, &configured_github()).await;
+
+        assert!(!status.connected);
+        assert!(status
+            .error
+            .as_deref()
+            .is_some_and(|message| message.contains("네트워크")));
+        assert!(store.credential.lock().expect("credential lock").is_some());
     }
 
     #[tokio::test]

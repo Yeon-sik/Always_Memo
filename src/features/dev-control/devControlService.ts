@@ -12,7 +12,10 @@ import type {
   ProjectMilestone,
 } from "../../types";
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
-import { normalizeProjectGitHubIdentity } from "../../lib/dataTrust/projectGitHubIdentity";
+import {
+  normalizeGitHubCommitForStorage,
+  normalizeProjectGitHubIdentity,
+} from "../../lib/dataTrust/projectGitHubIdentity";
 import { createId } from "../../lib/storage/id";
 
 export type DevProjectRepositoryMode = "github" | "text";
@@ -102,19 +105,9 @@ export function normalizeProjectRepositoryFields(
   branch: string,
   lastVerifiedCommit: string | null | undefined = null,
   lastVerifiedAt: string | null | undefined = null,
-  preserveLegacyFields = false,
+  canonicalCommitCandidates: readonly (string | null | undefined)[] = [],
 ): ProjectRepositoryFields {
   if (mode === "text") {
-    if (preserveLegacyFields) {
-      return {
-        repository: repository.trim() || null,
-        branch: branch.trim() || null,
-        lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
-        lastVerifiedAt: cleanOptional(lastVerifiedAt),
-        error: null,
-      };
-    }
-
     return {
       repository: null,
       branch: null,
@@ -129,7 +122,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: null,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository 연결 모드에서는 Repository URL이 필요합니다.",
     };
@@ -142,7 +138,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: normalizedRepository,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository URL을 https://github.com/owner/repository 형식으로 입력하세요.",
     };
@@ -164,7 +163,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: normalizedRepository,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository URL을 https://github.com/owner/repository 형식으로 입력하세요.",
     };
@@ -173,7 +175,10 @@ export function normalizeProjectRepositoryFields(
   return {
     repository: normalizedRepository,
     branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-    lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+    lastVerifiedCommit: normalizeGitHubCommitForStorage(
+      lastVerifiedCommit,
+      canonicalCommitCandidates,
+    ),
     lastVerifiedAt: cleanOptional(lastVerifiedAt),
     error: null,
   };
@@ -280,7 +285,9 @@ export function createProject(
     status: changes.status,
     currentSummary: changes.currentSummary.trim(),
     targetSummary: changes.targetSummary.trim(),
-    lastVerifiedCommit: cleanOptional(changes.lastVerifiedCommit),
+    lastVerifiedCommit: normalizeGitHubCommitForStorage(
+      changes.lastVerifiedCommit,
+    ),
     lastVerifiedAt: cleanOptional(changes.lastVerifiedAt),
     updatedAt: now,
     deletedAt: null,
@@ -312,7 +319,11 @@ export function updateProject(
       : { targetSummary: changes.targetSummary.trim() }),
     ...(changes.lastVerifiedCommit === undefined
       ? {}
-      : { lastVerifiedCommit: cleanOptional(changes.lastVerifiedCommit) }),
+      : {
+          lastVerifiedCommit: normalizeGitHubCommitForStorage(
+            changes.lastVerifiedCommit,
+          ),
+        }),
     ...(changes.lastVerifiedAt === undefined
       ? {}
       : { lastVerifiedAt: cleanOptional(changes.lastVerifiedAt) }),

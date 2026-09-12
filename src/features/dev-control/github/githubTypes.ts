@@ -1,4 +1,5 @@
 import type { Project } from "../../../types";
+import { isGitHubCommitSha } from "../../../lib/dataTrust/projectGitHubIdentity";
 
 export interface GitHubConnectionStatus {
   configured: boolean;
@@ -144,9 +145,11 @@ export function getRemoteVerificationState(
   remoteError?: string | null,
 ): GitHubRemoteVerificationState {
   if (remoteError) return "remote-error";
-  if (!lastVerifiedCommit?.trim()) return "no-verification";
-  if (!remoteHeadSha) return "remote-error";
-  return remoteHeadSha === lastVerifiedCommit.trim()
+  const verified = lastVerifiedCommit?.trim().toLowerCase() ?? "";
+  if (!verified || !isGitHubCommitSha(verified)) return "no-verification";
+  const remoteHead = remoteHeadSha?.trim().toLowerCase() ?? "";
+  if (!remoteHead || !isGitHubCommitSha(remoteHead)) return "remote-error";
+  return remoteHead === verified || remoteHead.startsWith(verified)
     ? "verified-latest"
     : "changed-since-verification";
 }

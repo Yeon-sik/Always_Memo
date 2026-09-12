@@ -845,6 +845,11 @@ create table if not exists public.projects (
   deleted_at timestamptz,
   device_id text not null,
   constraint projects_user_id_id_key unique (user_id, id),
+  constraint projects_github_identity_complete check (
+    (github_repository_id is null and github_owner is null and github_repo is null)
+    or
+    (github_repository_id is not null and github_owner is not null and github_repo is not null)
+  ),
   constraint projects_device_fk foreign key (user_id, device_id)
     references public.devices(user_id, id)
 );

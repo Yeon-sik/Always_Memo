@@ -287,7 +287,14 @@ export function DevControlPanel({
       projectDraft.branch,
       projectDraft.lastVerifiedCommit,
       toIsoOrNull(projectDraft.lastVerifiedAt),
-      Boolean(selectedProject),
+      selectedGitHubReadState?.model
+        ? [
+            selectedGitHubReadState.model.remoteHead?.sha,
+            ...selectedGitHubReadState.model.recentCommits.map(
+              (commit) => commit.sha,
+            ),
+          ]
+        : [],
     );
     if (normalizedRepositoryFields.error) {
       setProjectFormError(normalizedRepositoryFields.error);

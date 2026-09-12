@@ -7,6 +7,8 @@ import type {
   GitHubIntegrationController,
   GitHubRepositoryOption,
 } from "./github/githubTypes";
+import { getProjectRepositoryMode, updateProject } from "./devControlService";
+import type { Project } from "../../types";
 
 function createActions(): DevControlActions {
   return {
@@ -31,16 +33,18 @@ function createActions(): DevControlActions {
 function renderPanel(
   actions: DevControlActions,
   github?: GitHubIntegrationController,
+  projects: Project[] = [],
+  selectedProjectId: string | null = null,
 ): ReactTestRenderer {
   return create(
     <DevControlPanel
       {...actions}
-      projects={[]}
+      projects={projects}
       projectMilestones={[]}
       projectActions={[]}
       projectIdeas={[]}
       projectHistory={[]}
-      selectedProjectId={null}
+      selectedProjectId={selectedProjectId}
       onSelectProject={vi.fn()}
       github={github}
     />,
@@ -179,5 +183,99 @@ describe("DevControlPanel project modes", () => {
         githubRepo: "repo",
       }),
     );
+  });
+
+  it("saves an explicit GitHub to text-mode transition as a durable disconnect", () => {
+    const actions = createActions();
+    const project: Project = {
+      id: "project-1",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      isBackfilled: false,
+      backfilledAt: null,
+      backfillReason: null,
+      name: "Linked project",
+      repository: "https://github.com/octo/repo",
+      branch: "main",
+      githubRepositoryId: "42",
+      githubOwner: "octo",
+      githubRepo: "repo",
+      status: "ACTIVE",
+      currentSummary: "Current",
+      targetSummary: "Target",
+      lastVerifiedCommit: "a".repeat(40),
+      lastVerifiedAt: "2026-08-01T00:00:00.000Z",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+      deletedAt: null,
+      deviceId: "device-a",
+    };
+    const renderer = renderPanel(actions, undefined, [project], project.id);
+
+    act(() => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) =>
+          button
+            .findAllByType("span")
+            .some((span) => span.children.join("") === "Linked project"),
+        )
+        ?.props.onClick();
+    });
+    act(() => {
+      renderer.root
+        .findAllByType("input")
+        .find((input) => input.props.type === "radio" && input.props.value === "text")
+        ?.props.onChange();
+    });
+
+    const projectForm = renderer.root.findAllByType("form")[0];
+    act(() => {
+      projectForm.props.onSubmit({ preventDefault: vi.fn() });
+    });
+
+    const changes = vi.mocked(actions.updateProject).mock.calls[0]?.[1];
+    expect(changes).toMatchObject({
+      repository: null,
+      branch: null,
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+      lastVerifiedCommit: null,
+      lastVerifiedAt: null,
+    });
+
+    const savedProject = updateProject(project, changes ?? {}, "device-a");
+    expect(getProjectRepositoryMode(savedProject)).toBe("text");
+    expect(savedProject).toMatchObject({
+      repository: null,
+      branch: null,
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+      lastVerifiedCommit: null,
+      lastVerifiedAt: null,
+    });
+
+    const reopenedRenderer = renderPanel(
+      actions,
+      undefined,
+      [savedProject],
+      savedProject.id,
+    );
+    act(() => {
+      reopenedRenderer.root
+        .findAllByType("button")
+        .find((button) =>
+          button
+            .findAllByType("span")
+            .some((span) => span.children.join("") === "Linked project"),
+        )
+        ?.props.onClick();
+    });
+    expect(
+      reopenedRenderer.root
+        .findAllByType("input")
+        .find((input) => input.props.type === "radio" && input.props.value === "text")
+        ?.props.checked,
+    ).toBe(true);
   });
 });
