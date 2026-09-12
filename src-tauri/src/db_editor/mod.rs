@@ -198,7 +198,7 @@ pub async fn update_db_row(
 }
 
 #[tauri::command]
-pub fn open_db_editor_window(
+pub async fn open_db_editor_window(
     window: tauri::WebviewWindow,
     app: AppHandle,
 ) -> Result<(), DbEditorError> {
@@ -206,30 +206,42 @@ pub fn open_db_editor_window(
 
     #[cfg(desktop)]
     {
-        if let Some(window) = app.get_webview_window(DB_EDITOR_WINDOW_LABEL) {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
-            return Ok(());
-        }
+        // WebviewWindowBuilder::build must not run on the synchronous command
+        // path on Windows. WebView2 can create the native shell but leave its
+        // document at about:blank when the builder blocks that path.
+        tauri::async_runtime::spawn_blocking(move || {
+            if let Some(window) = app.get_webview_window(DB_EDITOR_WINDOW_LABEL) {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+                return Ok(());
+            }
 
-        tauri::WebviewWindowBuilder::new(
-            &app,
-            DB_EDITOR_WINDOW_LABEL,
-            tauri::WebviewUrl::App("index.html".into()),
-        )
-        .title("Personal OS — Supabase DB Editor")
-        .inner_size(1400.0, 900.0)
-        .min_inner_size(960.0, 640.0)
-        .resizable(true)
-        .build()
-        .map(|_| ())
+            tauri::WebviewWindowBuilder::new(
+                &app,
+                DB_EDITOR_WINDOW_LABEL,
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Personal OS — Supabase DB Editor")
+            .inner_size(1400.0, 900.0)
+            .min_inner_size(960.0, 640.0)
+            .resizable(true)
+            .build()
+            .map(|_| ())
+            .map_err(|_| {
+                DbEditorError::new(
+                    DbEditorErrorCode::NativeWindow,
+                    "DB Editor 창을 열지 못했습니다.",
+                )
+            })
+        })
+        .await
         .map_err(|_| {
             DbEditorError::new(
                 DbEditorErrorCode::NativeWindow,
                 "DB Editor 창을 열지 못했습니다.",
             )
-        })
+        })?
     }
 
     #[cfg(not(desktop))]
@@ -244,8 +256,12 @@ pub fn open_db_editor_window(
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+
     use super::{authorize_db_editor_window, authorize_main_window};
     use crate::db_editor::error::DbEditorErrorCode;
+    use crate::db_editor::open_db_editor_window;
+    use tauri::AppHandle;
 
     #[test]
     fn blocks_privileged_commands_from_main_window() {
@@ -263,5 +279,17 @@ mod tests {
     fn only_main_window_can_open_db_editor() {
         authorize_main_window("main").expect("main must be allowed");
         assert!(authorize_main_window("db-editor").is_err());
+    }
+
+    #[test]
+    fn opens_db_editor_from_an_async_command() {
+        fn assert_async_command<F, Fut>(_command: F)
+        where
+            F: Fn(tauri::WebviewWindow, AppHandle) -> Fut,
+            Fut: Future<Output = Result<(), super::DbEditorError>>,
+        {
+        }
+
+        assert_async_command(open_db_editor_window);
     }
 }

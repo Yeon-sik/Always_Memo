@@ -12,11 +12,15 @@ import type {
   ProjectMilestone,
 } from "../../types";
 import {
+  DEFAULT_PROJECT_BRANCH,
+  getProjectRepositoryMode,
   getOpenNextCount,
   getProjectChildren,
   getProjectLastUpdated,
   hasBlockedAction,
+  normalizeProjectRepositoryFields,
 } from "./devControlService";
+import type { DevProjectRepositoryMode } from "./devControlService";
 import type { DevControlActions } from "./useDevControlActions";
 
 export interface DevControlPanelProps extends DevControlActions {
@@ -122,10 +126,12 @@ export function DevControlPanel({
 }: DevControlPanelProps) {
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const [isCreating, setIsCreating] = useState(false);
+  const [repositoryMode, setRepositoryMode] = useState<DevProjectRepositoryMode>("github");
+  const [projectFormError, setProjectFormError] = useState<string | null>(null);
   const [projectDraft, setProjectDraft] = useState(() => ({
     name: "",
     repository: "",
-    branch: "",
+    branch: DEFAULT_PROJECT_BRANCH,
     status: "PLANNED" as DevProjectStatus,
     currentSummary: "",
     targetSummary: "",
@@ -169,40 +175,75 @@ export function DevControlPanel({
     setProjectDraft({
       name: "",
       repository: "",
-      branch: "",
+      branch: DEFAULT_PROJECT_BRANCH,
       status: "PLANNED",
       currentSummary: "",
       targetSummary: "",
       lastVerifiedCommit: "",
       lastVerifiedAt: "",
     });
+    setRepositoryMode("github");
+    setProjectFormError(null);
     setIsCreating(true);
     onSelectProject(null);
   }
 
   function startEdit(project: Project) {
+    const nextRepositoryMode = getProjectRepositoryMode(project);
     setProjectDraft({
       name: project.name,
       repository: project.repository ?? "",
-      branch: project.branch ?? "",
+      branch:
+        project.branch ??
+        (nextRepositoryMode === "github" ? DEFAULT_PROJECT_BRANCH : ""),
       status: project.status,
       currentSummary: project.currentSummary,
       targetSummary: project.targetSummary,
       lastVerifiedCommit: project.lastVerifiedCommit ?? "",
       lastVerifiedAt: toDateTimeLocal(project.lastVerifiedAt),
     });
+    setRepositoryMode(nextRepositoryMode);
+    setProjectFormError(null);
     setIsCreating(false);
+  }
+
+  function handleRepositoryModeChange(mode: DevProjectRepositoryMode) {
+    setRepositoryMode(mode);
+    setProjectFormError(null);
+    if (mode === "github") {
+      setProjectDraft((draft) => ({
+        ...draft,
+        branch: draft.branch.trim() || DEFAULT_PROJECT_BRANCH,
+      }));
+    }
   }
 
   function submitProject(event: FormEvent) {
     event.preventDefault();
-    if (!projectDraft.name.trim()) return;
+    if (!projectDraft.name.trim()) {
+      setProjectFormError("프로젝트 이름을 입력하세요.");
+      return;
+    }
+    const normalizedRepositoryFields = normalizeProjectRepositoryFields(
+      repositoryMode,
+      projectDraft.repository,
+      projectDraft.branch,
+      projectDraft.lastVerifiedCommit,
+      toIsoOrNull(projectDraft.lastVerifiedAt),
+    );
+    if (normalizedRepositoryFields.error) {
+      setProjectFormError(normalizedRepositoryFields.error);
+      return;
+    }
+    const { error: _repositoryError, ...repositoryFields } =
+      normalizedRepositoryFields;
+    setProjectFormError(null);
     const input = {
-      ...projectDraft,
-      repository: projectDraft.repository.trim() || null,
-      branch: projectDraft.branch.trim() || null,
-      lastVerifiedCommit: projectDraft.lastVerifiedCommit.trim() || null,
-      lastVerifiedAt: toIsoOrNull(projectDraft.lastVerifiedAt),
+      name: projectDraft.name,
+      ...repositoryFields,
+      status: projectDraft.status,
+      currentSummary: projectDraft.currentSummary,
+      targetSummary: projectDraft.targetSummary,
       backfillInput: undefined,
     };
     if (isCreating || !selectedProject) {
@@ -284,11 +325,47 @@ export function DevControlPanel({
           <Section title={isCreating ? "새 프로젝트" : "CURRENT / TARGET / GITHUB"}>
             <form className="grid gap-2" onSubmit={submitProject}>
               <Field label="이름" value={projectDraft.name} onChange={(value) => setProjectDraft((draft) => ({ ...draft, name: value }))} />
-              <div className="grid grid-cols-2 gap-2"><Field label="Repository URL" value={projectDraft.repository} onChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value }))} placeholder="https://github.com/..." /><Field label="Branch" value={projectDraft.branch} onChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} placeholder="main" /></div>
+              <fieldset className="grid gap-2 rounded border border-slate-200 p-2 dark:border-neutral-800">
+                <legend className="px-1 text-[11px] font-semibold text-slate-600 dark:text-neutral-300">프로젝트 연결 방식</legend>
+                <div className="grid gap-1.5 text-xs text-slate-700 dark:text-neutral-200">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="dev-project-repository-mode"
+                      value="github"
+                      checked={repositoryMode === "github"}
+                      onChange={() => handleRepositoryModeChange("github")}
+                    />
+                    GitHub Repository 연결
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="dev-project-repository-mode"
+                      value="text"
+                      checked={repositoryMode === "text"}
+                      onChange={() => handleRepositoryModeChange("text")}
+                    />
+                    텍스트 전용
+                  </label>
+                </div>
+                <p className="text-[11px] leading-4 text-slate-500 dark:text-neutral-400">
+                  {repositoryMode === "github"
+                    ? "Repository URL이 필요하며 Branch를 비우면 main으로 저장합니다."
+                    : "Repository와 Branch 없이 CURRENT / TARGET 상태를 직접 관리합니다."}
+                </p>
+              </fieldset>
+              {repositoryMode === "github" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <Field label="Repository URL" value={projectDraft.repository} onChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value }))} placeholder="https://github.com/..." />
+                  <Field label="Branch" value={projectDraft.branch} onChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} placeholder={DEFAULT_PROJECT_BRANCH} />
+                </div>
+              ) : null}
               <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
-              <Field label="CURRENT" value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline />
-              <Field label="TARGET" value={projectDraft.targetSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} multiline />
-              <div className="grid grid-cols-2 gap-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>Last verified at</span><input type="datetime-local" className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.lastVerifiedAt} onChange={(event) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: event.target.value }))} /></label></div>
+              <Field label={repositoryMode === "text" ? "CURRENT (수동)" : "CURRENT"} value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline />
+              <Field label={repositoryMode === "text" ? "TARGET (수동)" : "TARGET"} value={projectDraft.targetSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} multiline />
+              {repositoryMode === "github" ? <div className="grid grid-cols-2 gap-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>Last verified at</span><input type="datetime-local" className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.lastVerifiedAt} onChange={(event) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: event.target.value }))} /></label></div> : null}
+              {projectFormError ? <p role="alert" className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{projectFormError}</p> : null}
               <div className="flex gap-2"><button type="submit" className="rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">저장</button>{!isCreating && selectedProject ? <button type="button" onClick={() => deleteProject(selectedProject.id)} className="rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700">프로젝트 삭제</button> : null}</div>
             </form>
           </Section>
