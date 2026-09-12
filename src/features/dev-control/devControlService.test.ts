@@ -13,6 +13,8 @@ import {
   getVisibleProjects,
   hasBlockedAction,
   normalizeProjectRepositoryFields,
+  normalizeProjectGitHubFields,
+  parseGitHubRepositoryUrl,
   softDeleteProject,
   softDeleteProjectAction,
   softDeleteProjectHistory,
@@ -24,6 +26,7 @@ import {
   updateProjectIdea,
   updateProjectMilestone,
 } from "./devControlService";
+import { normalizeGitHubCommitForStorage } from "../../lib/dataTrust/projectGitHubIdentity";
 
 const DEVICE_ID = "device-a";
 
@@ -99,6 +102,15 @@ describe("Dev Control service", () => {
     ).toContain("https://github.com/owner/repository");
     expect(getProjectRepositoryMode({ repository: null, branch: null })).toBe("text");
     expect(getProjectRepositoryMode({ repository: null, branch: "legacy" })).toBe("github");
+    expect(
+      getProjectRepositoryMode({
+        repository: null,
+        branch: null,
+        githubRepositoryId: "42",
+        githubOwner: "octo",
+        githubRepo: "repo",
+      }),
+    ).toBe("github");
   });
 
   it("supports project and child CRUD while preserving sync metadata", () => {
@@ -151,6 +163,107 @@ describe("Dev Control service", () => {
     expect(updatedAction.status).toBe("DONE");
     expect(updatedIdea.title).toContain("후보");
     expect(updatedHistory.summary).toContain("검증");
+  });
+
+  it("normalizes explicit GitHub identity without making it the project name", () => {
+    expect(
+      normalizeProjectGitHubFields("github", "  123  ", " octo ", " repo "),
+    ).toEqual({
+      githubRepositoryId: "123",
+      githubOwner: "octo",
+      githubRepo: "repo",
+    });
+    expect(normalizeProjectGitHubFields("github", "123", "octo", null)).toEqual({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+    expect(normalizeProjectGitHubFields("text", "123", "octo", "repo")).toEqual({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+
+    const project = createProject(DEVICE_ID, {
+      ...projectInput(),
+      name: "내 운영 프로젝트",
+      githubRepositoryId: "123",
+      githubOwner: "octo",
+      githubRepo: "repo",
+    });
+    expect(project.name).toBe("내 운영 프로젝트");
+    expect(project.githubRepositoryId).toBe("123");
+    expect(
+      createProject(DEVICE_ID, {
+        ...projectInput(),
+        githubRepositoryId: "123",
+        githubOwner: "octo",
+      }),
+    ).toMatchObject({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+    expect(
+      updateProject(project, { currentSummary: "remote 조회 완료" }, DEVICE_ID),
+    ).toMatchObject({
+      name: "내 운영 프로젝트",
+      githubRepositoryId: "123",
+      githubOwner: "octo",
+      githubRepo: "repo",
+    });
+    expect(updateProject(project, { githubRepo: null }, DEVICE_ID)).toMatchObject({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+  });
+
+  it("normalizes verified commits without destroying invalid legacy values", () => {
+    const canonicalSha = "ABCDEF".repeat(6) + "ABCD";
+    const abbreviatedSha = canonicalSha.slice(0, 7);
+
+    expect(normalizeGitHubCommitForStorage(abbreviatedSha, [canonicalSha])).toBe(
+      canonicalSha.toLowerCase(),
+    );
+    expect(normalizeGitHubCommitForStorage(canonicalSha)).toBe(
+      canonicalSha.toLowerCase(),
+    );
+    expect(normalizeGitHubCommitForStorage("not-a-sha")).toBe("not-a-sha");
+    expect(
+      normalizeProjectRepositoryFields(
+        "github",
+        "https://github.com/octo/repo",
+        "main",
+        abbreviatedSha,
+        null,
+        [canonicalSha],
+      ).lastVerifiedCommit,
+    ).toBe(canonicalSha.toLowerCase());
+
+    const project = createProject(DEVICE_ID, {
+      ...projectInput(),
+      githubRepositoryId: "123",
+      githubOwner: "octo",
+      githubRepo: "repo",
+      lastVerifiedCommit: canonicalSha,
+    });
+    expect(
+      updateProject(project, { lastVerifiedCommit: "not-a-sha" }, DEVICE_ID)
+        .lastVerifiedCommit,
+    ).toBe("not-a-sha");
+  });
+
+  it("parses URL-only projects for an explicit identity upgrade", () => {
+    expect(parseGitHubRepositoryUrl("https://github.com/octo/repo")).toEqual({
+      owner: "octo",
+      repo: "repo",
+    });
+    expect(parseGitHubRepositoryUrl("https://github.com/octo/repo.git")).toEqual({
+      owner: "octo",
+      repo: "repo",
+    });
+    expect(parseGitHubRepositoryUrl("https://github.com/octo/repo/issues")).toBeNull();
   });
 
   it("derives card state and hides children after a parent tombstone", () => {

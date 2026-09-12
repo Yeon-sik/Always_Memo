@@ -829,6 +829,9 @@ create table if not exists public.projects (
   name text not null,
   repository text,
   branch text,
+  github_repository_id text,
+  github_owner text,
+  github_repo text,
   status text not null check (status in ('PLANNED', 'ACTIVE', 'COMPLETED')),
   current_summary text not null default '',
   target_summary text not null default '',
@@ -842,6 +845,11 @@ create table if not exists public.projects (
   deleted_at timestamptz,
   device_id text not null,
   constraint projects_user_id_id_key unique (user_id, id),
+  constraint projects_github_identity_complete check (
+    (github_repository_id is null and github_owner is null and github_repo is null)
+    or
+    (github_repository_id is not null and github_owner is not null and github_repo is not null)
+  ),
   constraint projects_device_fk foreign key (user_id, device_id)
     references public.devices(user_id, id)
 );
@@ -926,6 +934,9 @@ create table if not exists public.project_history (
 
 create index if not exists projects_user_updated_at_idx on public.projects(user_id, updated_at desc);
 create index if not exists projects_user_deleted_at_idx on public.projects(user_id, deleted_at);
+create index if not exists projects_user_github_repository_id_idx
+  on public.projects(user_id, github_repository_id)
+  where github_repository_id is not null;
 create index if not exists project_milestones_user_project_updated_at_idx on public.project_milestones(user_id, project_id, updated_at desc);
 create index if not exists project_actions_user_project_updated_at_idx on public.project_actions(user_id, project_id, updated_at desc);
 create index if not exists project_ideas_user_project_updated_at_idx on public.project_ideas(user_id, project_id, updated_at desc);

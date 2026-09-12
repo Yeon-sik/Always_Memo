@@ -98,6 +98,57 @@ describe("Supabase row mappers", () => {
     });
   });
 
+  it("reads pre-identity rows as URL-only Projects without changing legacy fields", () => {
+    const row = projectToRow(
+      makeProject({
+        repository: "https://github.com/octo/repo",
+        branch: "develop",
+        githubRepositoryId: null,
+        githubOwner: null,
+        githubRepo: null,
+      }),
+      USER_ID,
+    );
+    delete row.github_repository_id;
+    delete row.github_owner;
+    delete row.github_repo;
+
+    expect(projectFromRow(row)).toMatchObject({
+      repository: "https://github.com/octo/repo",
+      branch: "develop",
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+  });
+
+  it("normalizes partial GitHub identity tuples at the sync boundary", () => {
+    const partial = makeProject({
+      githubRepositoryId: "42",
+      githubOwner: "octo",
+      githubRepo: null,
+    });
+    const row = projectToRow(partial, USER_ID);
+
+    expect(row).toMatchObject({
+      github_repository_id: null,
+      github_owner: null,
+      github_repo: null,
+    });
+    expect(
+      projectFromRow({
+        ...row,
+        github_repository_id: "42",
+        github_owner: "octo",
+        github_repo: null,
+      }),
+    ).toMatchObject({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+  });
+
   it("normalizes legacy workout contract values and nullable metrics", () => {
     const row: WorkoutRecordRow = {
       ...workoutRecordToRow(makeWorkoutRecord(), USER_ID),

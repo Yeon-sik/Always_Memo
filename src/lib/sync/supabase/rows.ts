@@ -108,6 +108,10 @@ export interface ProjectRow extends EntityAuditRow {
   name: string;
   repository: string | null;
   branch: string | null;
+  /** Optional at the wire boundary so rows from pre-migration schemas remain readable. */
+  github_repository_id?: string | null;
+  github_owner?: string | null;
+  github_repo?: string | null;
   status: "PLANNED" | "ACTIVE" | "COMPLETED";
   current_summary: string;
   target_summary: string;

@@ -12,11 +12,13 @@ import { useQuickCapture } from "../features/quick-capture/useQuickCapture";
 import { RecordsPanel } from "../features/records/RecordsPanel";
 import { ChecklistPanel } from "../features/tasks/ChecklistPanel";
 import { DevControlPanel } from "../features/dev-control/DevControlPanel";
+import { useGitHubIntegration } from "../features/dev-control/github/useGitHubIntegration";
 import { useLocalSyncMemo } from "./useLocalSyncMemo";
 import { useThemeMode } from "./useThemeMode";
 
 export function App() {
   const memo = useLocalSyncMemo();
+  const github = useGitHubIntegration();
   const { setThemeMode, themeMode } = useThemeMode();
   const [activeView, setActiveView] = useState<HeaderView>("records");
   const [selectedDate, setSelectedDate] = useState(formatLocalDate());
@@ -132,6 +134,7 @@ export function App() {
               projectHistory={memo.projectHistory}
               selectedProjectId={memo.selectedProjectId}
               onSelectProject={memo.setSelectedProjectId}
+              github={github}
               addProject={memo.addProject}
               updateProject={memo.updateProject}
               deleteProject={memo.deleteProject}

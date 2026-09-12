@@ -12,6 +12,10 @@ import type {
   ProjectMilestone,
 } from "../../types";
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
+import {
+  normalizeGitHubCommitForStorage,
+  normalizeProjectGitHubIdentity,
+} from "../../lib/dataTrust/projectGitHubIdentity";
 import { createId } from "../../lib/storage/id";
 
 export type DevProjectRepositoryMode = "github" | "text";
@@ -26,10 +30,19 @@ export interface ProjectRepositoryFields {
   error: string | null;
 }
 
+export interface ProjectGitHubFields {
+  githubRepositoryId: string | null;
+  githubOwner: string | null;
+  githubRepo: string | null;
+}
+
 export interface ProjectChanges {
   name?: string;
   repository?: string | null;
   branch?: string | null;
+  githubRepositoryId?: string | null;
+  githubOwner?: string | null;
+  githubRepo?: string | null;
   status?: DevProjectStatus;
   currentSummary?: string;
   targetSummary?: string;
@@ -74,9 +87,16 @@ function cleanOptional(value: string | null | undefined): string | null {
  * GitHub mode instead of silently discarding it during an edit.
  */
 export function getProjectRepositoryMode(
-  project: Pick<Project, "repository" | "branch">,
+  project: Pick<Project, "repository" | "branch"> &
+    Partial<Pick<Project, "githubRepositoryId" | "githubOwner" | "githubRepo">>,
 ): DevProjectRepositoryMode {
-  return project.repository?.trim() || project.branch?.trim() ? "github" : "text";
+  const hasCanonicalIdentity =
+    project.githubRepositoryId?.trim() &&
+    project.githubOwner?.trim() &&
+    project.githubRepo?.trim();
+  return hasCanonicalIdentity || project.repository?.trim() || project.branch?.trim()
+    ? "github"
+    : "text";
 }
 
 export function normalizeProjectRepositoryFields(
@@ -85,6 +105,7 @@ export function normalizeProjectRepositoryFields(
   branch: string,
   lastVerifiedCommit: string | null | undefined = null,
   lastVerifiedAt: string | null | undefined = null,
+  canonicalCommitCandidates: readonly (string | null | undefined)[] = [],
 ): ProjectRepositoryFields {
   if (mode === "text") {
     return {
@@ -101,7 +122,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: null,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository 연결 모드에서는 Repository URL이 필요합니다.",
     };
@@ -114,7 +138,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: normalizedRepository,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository URL을 https://github.com/owner/repository 형식으로 입력하세요.",
     };
@@ -136,7 +163,10 @@ export function normalizeProjectRepositoryFields(
     return {
       repository: normalizedRepository,
       branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-      lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+      lastVerifiedCommit: normalizeGitHubCommitForStorage(
+        lastVerifiedCommit,
+        canonicalCommitCandidates,
+      ),
       lastVerifiedAt: cleanOptional(lastVerifiedAt),
       error: "GitHub Repository URL을 https://github.com/owner/repository 형식으로 입력하세요.",
     };
@@ -145,10 +175,81 @@ export function normalizeProjectRepositoryFields(
   return {
     repository: normalizedRepository,
     branch: branch.trim() || DEFAULT_PROJECT_BRANCH,
-    lastVerifiedCommit: cleanOptional(lastVerifiedCommit),
+    lastVerifiedCommit: normalizeGitHubCommitForStorage(
+      lastVerifiedCommit,
+      canonicalCommitCandidates,
+    ),
     lastVerifiedAt: cleanOptional(lastVerifiedAt),
     error: null,
   };
+}
+
+/**
+ * Normalize the nullable GitHub identity without making Project dependent on
+ * a remote observation. Legacy URL-only rows intentionally remain identity
+ * null until the user explicitly upgrades them from the repository picker.
+ */
+export function normalizeProjectGitHubFields(
+  mode: DevProjectRepositoryMode,
+  githubRepositoryId: string | null | undefined,
+  githubOwner: string | null | undefined,
+  githubRepo: string | null | undefined,
+): ProjectGitHubFields {
+  if (mode === "text") {
+    return {
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    };
+  }
+
+  return normalizeProjectGitHubIdentity(
+    githubRepositoryId,
+    githubOwner,
+    githubRepo,
+  );
+}
+
+function getNormalizedProjectGitHubFields(
+  project: Pick<Project, "githubRepositoryId" | "githubOwner" | "githubRepo">,
+  changes: ProjectChanges,
+): ProjectGitHubFields {
+  return normalizeProjectGitHubFields(
+    "github",
+    changes.githubRepositoryId === undefined
+      ? project.githubRepositoryId
+      : changes.githubRepositoryId,
+    changes.githubOwner === undefined ? project.githubOwner : changes.githubOwner,
+    changes.githubRepo === undefined ? project.githubRepo : changes.githubRepo,
+  );
+}
+
+export function parseGitHubRepositoryUrl(
+  repository: string | null | undefined,
+): { owner: string; repo: string } | null {
+  if (!repository?.trim()) return null;
+
+  try {
+    const parsed = new URL(repository.trim());
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const repo = segments[1]?.replace(/\.git$/i, "");
+    if (
+      parsed.protocol !== "https:" ||
+      !["github.com", "www.github.com"].includes(parsed.hostname.toLowerCase()) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      segments.length !== 2 ||
+      !segments[0] ||
+      !repo
+    ) {
+      return null;
+    }
+    return { owner: segments[0], repo };
+  } catch {
+    return null;
+  }
 }
 
 export function createProject(
@@ -163,20 +264,30 @@ export function createProject(
     | "targetSummary"
     | "lastVerifiedCommit"
     | "lastVerifiedAt"
-  >,
+  > &
+    Partial<Pick<Project, "githubRepositoryId" | "githubOwner" | "githubRepo">>,
   backfillInput?: BackfillInput,
 ): Project {
   const now = nowIso();
+  const githubFields = normalizeProjectGitHubFields(
+    "github",
+    changes.githubRepositoryId,
+    changes.githubOwner,
+    changes.githubRepo,
+  );
   return {
     ...createEntityAuditFields(backfillInput, now),
     id: createId(),
     name: changes.name.trim(),
     repository: cleanOptional(changes.repository),
     branch: cleanOptional(changes.branch),
+    ...githubFields,
     status: changes.status,
     currentSummary: changes.currentSummary.trim(),
     targetSummary: changes.targetSummary.trim(),
-    lastVerifiedCommit: cleanOptional(changes.lastVerifiedCommit),
+    lastVerifiedCommit: normalizeGitHubCommitForStorage(
+      changes.lastVerifiedCommit,
+    ),
     lastVerifiedAt: cleanOptional(changes.lastVerifiedAt),
     updatedAt: now,
     deletedAt: null,
@@ -189,6 +300,8 @@ export function updateProject(
   changes: ProjectChanges,
   deviceId: string,
 ): Project {
+  const githubFields = getNormalizedProjectGitHubFields(project, changes);
+
   return {
     ...project,
     ...(changes.name === undefined ? {} : { name: changes.name.trim() }),
@@ -196,6 +309,7 @@ export function updateProject(
       ? {}
       : { repository: cleanOptional(changes.repository) }),
     ...(changes.branch === undefined ? {} : { branch: cleanOptional(changes.branch) }),
+    ...githubFields,
     ...(changes.status === undefined ? {} : { status: changes.status }),
     ...(changes.currentSummary === undefined
       ? {}
@@ -205,7 +319,11 @@ export function updateProject(
       : { targetSummary: changes.targetSummary.trim() }),
     ...(changes.lastVerifiedCommit === undefined
       ? {}
-      : { lastVerifiedCommit: cleanOptional(changes.lastVerifiedCommit) }),
+      : {
+          lastVerifiedCommit: normalizeGitHubCommitForStorage(
+            changes.lastVerifiedCommit,
+          ),
+        }),
     ...(changes.lastVerifiedAt === undefined
       ? {}
       : { lastVerifiedAt: cleanOptional(changes.lastVerifiedAt) }),

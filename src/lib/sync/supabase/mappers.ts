@@ -13,6 +13,7 @@ import type {
   WeightRecord,
   WorkoutType,
 } from "../../../types";
+import { normalizeProjectGitHubIdentity } from "../../dataTrust/projectGitHubIdentity";
 import type {
   DeviceRow,
   EntityAuditRow,
@@ -195,12 +196,18 @@ export function weightRecordFromRow(row: WeightRecordRow): WeightRecord {
 }
 
 export function projectFromRow(row: ProjectRow): Project {
+  const githubIdentity = normalizeProjectGitHubIdentity(
+    row.github_repository_id,
+    row.github_owner,
+    row.github_repo,
+  );
   return {
     ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     name: row.name,
     repository: row.repository,
     branch: row.branch,
+    ...githubIdentity,
     status: row.status,
     currentSummary: row.current_summary,
     targetSummary: row.target_summary,
@@ -376,6 +383,11 @@ export function weightRecordToRow(
 }
 
 export function projectToRow(project: Project, userId: string): ProjectRow {
+  const githubIdentity = normalizeProjectGitHubIdentity(
+    project.githubRepositoryId,
+    project.githubOwner,
+    project.githubRepo,
+  );
   return {
     ...auditFieldsToRow(project),
     id: project.id,
@@ -383,6 +395,9 @@ export function projectToRow(project: Project, userId: string): ProjectRow {
     name: project.name,
     repository: project.repository,
     branch: project.branch,
+    github_repository_id: githubIdentity.githubRepositoryId,
+    github_owner: githubIdentity.githubOwner,
+    github_repo: githubIdentity.githubRepo,
     status: project.status,
     current_summary: project.currentSummary,
     target_summary: project.targetSummary,

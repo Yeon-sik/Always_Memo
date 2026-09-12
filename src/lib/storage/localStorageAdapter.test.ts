@@ -112,6 +112,78 @@ describe("LocalStorageAdapter", () => {
     });
   });
 
+  it("keeps URL-only Project rows readable and adds nullable GitHub identity fields", async () => {
+    const updatedAt = "2026-07-31T10:00:00.000Z";
+    browserStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        projects: [
+          {
+            id: "project-legacy",
+            name: "Legacy project",
+            repository: "https://github.com/octo/repo",
+            branch: "develop",
+            status: "PLANNED",
+            currentSummary: "current",
+            targetSummary: "target",
+            lastVerifiedCommit: "old-sha",
+            lastVerifiedAt: "2026-07-30T00:00:00.000Z",
+            updatedAt,
+            deletedAt: null,
+            deviceId: "device-a",
+          },
+        ],
+      }),
+    );
+
+    const snapshot = await new LocalStorageAdapter().load();
+
+    expect(snapshot.projects[0]).toMatchObject({
+      repository: "https://github.com/octo/repo",
+      branch: "develop",
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+      lastVerifiedCommit: "old-sha",
+    });
+  });
+
+  it("drops partial GitHub identity values while loading a snapshot", async () => {
+    const updatedAt = "2026-07-31T10:00:00.000Z";
+    browserStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        projects: [
+          {
+            id: "project-partial",
+            name: "Partial project",
+            repository: null,
+            branch: null,
+            githubRepositoryId: "42",
+            githubOwner: "octo",
+            githubRepo: null,
+            status: "PLANNED",
+            currentSummary: "current",
+            targetSummary: "target",
+            lastVerifiedCommit: null,
+            lastVerifiedAt: null,
+            updatedAt,
+            deletedAt: null,
+            deviceId: "device-a",
+          },
+        ],
+      }),
+    );
+
+    const snapshot = await new LocalStorageAdapter().load();
+
+    expect(snapshot.projects[0]).toMatchObject({
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
+    });
+  });
+
   it("writes the versioned envelope and restores it", async () => {
     const adapter = new LocalStorageAdapter();
     const snapshot: LocalDataSnapshot = {

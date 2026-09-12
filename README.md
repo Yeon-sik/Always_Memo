@@ -260,6 +260,7 @@ src-tauri/target/release/bundle/nsis/Yeonsik_Note_1.0.0_x64-setup.exe
 - DB 운영: [supabase/README.codex.md](supabase/README.codex.md)
 - Fitness 공유 계약: [docs/FITNESS_RECORD_CONTRACT_V1.md](docs/FITNESS_RECORD_CONTRACT_V1.md)
 - 배포 gate: [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md)
+- Dev Control GitHub read-only 설정: [docs/specs/dev-control-github-readonly.md](docs/specs/dev-control-github-readonly.md)
 - 외부 소개 문서: `docs/Project_Intro.md`, `docs/Project_Detail.md`
 
 Git Markdown가 문서 원본이고 Notion은 생성 mirror입니다. 완료된 prompt, handoff, 상태 snapshot은 active tree에 계속 쌓지 않습니다. 아직 끝나지 않은 작업은 GitHub issue, 지속되는 결정은 ADR, 동작 보장은 test/CI가 소유합니다.

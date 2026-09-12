@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import type {
   DevActionStatus,
   DevActionType,
@@ -18,10 +18,19 @@ import {
   getProjectChildren,
   getProjectLastUpdated,
   hasBlockedAction,
+  normalizeProjectGitHubFields,
   normalizeProjectRepositoryFields,
 } from "./devControlService";
 import type { DevProjectRepositoryMode } from "./devControlService";
 import type { DevControlActions } from "./useDevControlActions";
+import { GitHubConnectionBar } from "./github/GitHubConnectionBar";
+import { GitHubRepositoryPicker } from "./github/GitHubRepositoryPicker";
+import { GitHubRepositoryObservation } from "./github/GitHubRepositoryObservation";
+import {
+  unavailableGitHubIntegration,
+  type GitHubIntegrationController,
+  type GitHubRepositoryOption,
+} from "./github/githubTypes";
 
 export interface DevControlPanelProps extends DevControlActions {
   projects: Project[];
@@ -31,6 +40,7 @@ export interface DevControlPanelProps extends DevControlActions {
   projectHistory: ProjectHistory[];
   selectedProjectId: string | null;
   onSelectProject: (id: string | null) => void;
+  github?: GitHubIntegrationController;
 }
 
 const PROJECT_STATUSES: DevProjectStatus[] = ["ACTIVE", "PLANNED", "COMPLETED"];
@@ -123,6 +133,7 @@ export function DevControlPanel({
   addProjectHistory,
   updateProjectHistory,
   deleteProjectHistory,
+  github = unavailableGitHubIntegration,
 }: DevControlPanelProps) {
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? null;
   const [isCreating, setIsCreating] = useState(false);
@@ -132,6 +143,9 @@ export function DevControlPanel({
     name: "",
     repository: "",
     branch: DEFAULT_PROJECT_BRANCH,
+    githubRepositoryId: null as string | null,
+    githubOwner: null as string | null,
+    githubRepo: null as string | null,
     status: "PLANNED" as DevProjectStatus,
     currentSummary: "",
     targetSummary: "",
@@ -171,11 +185,31 @@ export function DevControlPanel({
     [projectHistory, projects, selectedProject],
   );
 
+  const selectedGitHubReadState = selectedProject
+    ? github.readStates[selectedProject.id]
+    : undefined;
+
+  useEffect(() => {
+    if (
+      !selectedProject ||
+      !github.status.connected ||
+      !selectedProject.githubOwner ||
+      !selectedProject.githubRepo ||
+      !selectedProject.branch
+    ) {
+      return;
+    }
+    void github.refreshProject(selectedProject);
+  }, [github.refreshProject, github.status.connected, selectedProject]);
+
   function startCreate() {
     setProjectDraft({
       name: "",
       repository: "",
       branch: DEFAULT_PROJECT_BRANCH,
+      githubRepositoryId: null,
+      githubOwner: null,
+      githubRepo: null,
       status: "PLANNED",
       currentSummary: "",
       targetSummary: "",
@@ -196,6 +230,9 @@ export function DevControlPanel({
       branch:
         project.branch ??
         (nextRepositoryMode === "github" ? DEFAULT_PROJECT_BRANCH : ""),
+      githubRepositoryId: project.githubRepositoryId,
+      githubOwner: project.githubOwner,
+      githubRepo: project.githubRepo,
       status: project.status,
       currentSummary: project.currentSummary,
       targetSummary: project.targetSummary,
@@ -215,7 +252,27 @@ export function DevControlPanel({
         ...draft,
         branch: draft.branch.trim() || DEFAULT_PROJECT_BRANCH,
       }));
+    } else {
+      setProjectDraft((draft) => ({
+        ...draft,
+        githubRepositoryId: null,
+        githubOwner: null,
+        githubRepo: null,
+      }));
     }
+  }
+
+  function handleRepositorySelection(option: GitHubRepositoryOption) {
+    setProjectDraft((draft) => ({
+      ...draft,
+      repository: option.htmlUrl,
+      branch: option.defaultBranch,
+      githubRepositoryId: option.id,
+      githubOwner: option.owner,
+      githubRepo: option.name,
+      // Repository name is a suggestion only; never overwrite a user's name.
+      name: draft.name.trim() ? draft.name : option.name,
+    }));
   }
 
   function submitProject(event: FormEvent) {
@@ -230,6 +287,14 @@ export function DevControlPanel({
       projectDraft.branch,
       projectDraft.lastVerifiedCommit,
       toIsoOrNull(projectDraft.lastVerifiedAt),
+      selectedGitHubReadState?.model
+        ? [
+            selectedGitHubReadState.model.remoteHead?.sha,
+            ...selectedGitHubReadState.model.recentCommits.map(
+              (commit) => commit.sha,
+            ),
+          ]
+        : [],
     );
     if (normalizedRepositoryFields.error) {
       setProjectFormError(normalizedRepositoryFields.error);
@@ -237,10 +302,17 @@ export function DevControlPanel({
     }
     const { error: _repositoryError, ...repositoryFields } =
       normalizedRepositoryFields;
+    const normalizedGitHubFields = normalizeProjectGitHubFields(
+      repositoryMode,
+      projectDraft.githubRepositoryId,
+      projectDraft.githubOwner,
+      projectDraft.githubRepo,
+    );
     setProjectFormError(null);
     const input = {
       name: projectDraft.name,
       ...repositoryFields,
+      ...normalizedGitHubFields,
       status: projectDraft.status,
       currentSummary: projectDraft.currentSummary,
       targetSummary: projectDraft.targetSummary,
@@ -290,6 +362,7 @@ export function DevControlPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-auto pr-1">
+      <GitHubConnectionBar integration={github} />
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-950 dark:text-neutral-50">Dev Control</h2>
@@ -346,20 +419,37 @@ export function DevControlPanel({
                       checked={repositoryMode === "text"}
                       onChange={() => handleRepositoryModeChange("text")}
                     />
-                    텍스트 전용
+                    GitHub 미연결 프로젝트
                   </label>
                 </div>
                 <p className="text-[11px] leading-4 text-slate-500 dark:text-neutral-400">
                   {repositoryMode === "github"
-                    ? "Repository URL이 필요하며 Branch를 비우면 main으로 저장합니다."
-                    : "Repository와 Branch 없이 CURRENT / TARGET 상태를 직접 관리합니다."}
+                    ? "접근 가능한 Repository를 선택하고 이 Project에서 추적할 branch를 지정합니다."
+                    : "GitHub 연결 없이 CURRENT / TARGET 상태를 직접 관리합니다."}
                 </p>
               </fieldset>
               {repositoryMode === "github" ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <Field label="Repository URL" value={projectDraft.repository} onChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value }))} placeholder="https://github.com/..." />
-                  <Field label="Branch" value={projectDraft.branch} onChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} placeholder={DEFAULT_PROJECT_BRANCH} />
-                </div>
+                <GitHubRepositoryPicker
+                  integration={github}
+                  repository={projectDraft.repository}
+                  branch={projectDraft.branch}
+                  githubRepositoryId={projectDraft.githubRepositoryId}
+                  githubOwner={projectDraft.githubOwner}
+                  githubRepo={projectDraft.githubRepo}
+                  onRepositoryChange={(value) =>
+                    setProjectDraft((draft) => ({
+                      ...draft,
+                      repository: value,
+                      githubRepositoryId: null,
+                      githubOwner: null,
+                      githubRepo: null,
+                    }))
+                  }
+                  onBranchChange={(value) =>
+                    setProjectDraft((draft) => ({ ...draft, branch: value }))
+                  }
+                  onIdentityChange={handleRepositorySelection}
+                />
               ) : null}
               <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status}>{status}</option>)}</select></label>
               <Field label={repositoryMode === "text" ? "CURRENT (수동)" : "CURRENT"} value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline />
@@ -372,6 +462,11 @@ export function DevControlPanel({
 
           {selectedProject ? (
             <>
+              <GitHubRepositoryObservation
+                project={selectedProject}
+                readState={selectedGitHubReadState}
+                onRefresh={() => void github.refreshProject(selectedProject)}
+              />
               <Section title="MILESTONES"><form className="mb-2 flex gap-2" onSubmit={submitMilestone}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="마일스톤 추가" value={milestoneTitle} onChange={(event) => setMilestoneTitle(event.target.value)} /><button type="submit" className="rounded bg-slate-800 px-2 text-xs text-white">추가</button></form><div className="grid gap-1">{selectedMilestones.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => updateProjectMilestone(item.id, { title: event.target.value })} /><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.status} onChange={(event) => updateProjectMilestone(item.id, { status: event.target.value as DevMilestoneStatus })}>{MILESTONE_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><button type="button" onClick={() => deleteProjectMilestone(item.id)} className="text-rose-600">삭제</button></div>)}</div></Section>
               <Section title="NEXT"><form className="mb-2 flex gap-2" onSubmit={submitAction}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="다음 작업 추가" value={actionTitle} onChange={(event) => setActionTitle(event.target.value)} /><select className="rounded border border-slate-300 bg-transparent text-[10px] dark:border-neutral-700" value={actionType} onChange={(event) => setActionType(event.target.value as DevActionType)}>{ACTION_TYPES.map((type) => <option key={type}>{type}</option>)}</select><button type="submit" className="rounded bg-slate-800 px-2 text-xs text-white">추가</button></form><div className="grid gap-1">{selectedActions.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => updateProjectAction(item.id, { title: event.target.value })} /><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.type} onChange={(event) => updateProjectAction(item.id, { type: event.target.value as DevActionType })}>{ACTION_TYPES.map((type) => <option key={type}>{type}</option>)}</select><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.status} onChange={(event) => updateProjectAction(item.id, { status: event.target.value as DevActionStatus })}>{ACTION_STATUSES.map((status) => <option key={status}>{status}</option>)}</select><button type="button" onClick={() => deleteProjectAction(item.id)} className="text-rose-600">삭제</button></div>)}</div></Section>
               <Section title="IDEAS"><form className="mb-2 flex gap-2" onSubmit={submitIdea}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="아이디어 추가" value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} /><button type="submit" className="rounded bg-slate-800 px-2 text-xs text-white">추가</button></form><div className="grid gap-1">{selectedIdeas.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => updateProjectIdea(item.id, { title: event.target.value })} /><button type="button" onClick={() => deleteProjectIdea(item.id)} className="text-rose-600">삭제</button></div>)}</div></Section>
