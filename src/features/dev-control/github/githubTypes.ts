@@ -102,6 +102,7 @@ export interface GitHubIntegrationController {
   repositories: GitHubRepositoryOption[];
   branches: GitHubBranchOption[];
   readStates: Readonly<Record<string, GitHubProjectReadState>>;
+  statusCheckError: string | null;
   error: string | null;
   busy: boolean;
   connect: () => Promise<void>;
@@ -128,6 +129,7 @@ export const unavailableGitHubIntegration: GitHubIntegrationController = {
   repositories: [],
   branches: [],
   readStates: {},
+  statusCheckError: null,
   error: null,
   busy: false,
   connect: async () => undefined,

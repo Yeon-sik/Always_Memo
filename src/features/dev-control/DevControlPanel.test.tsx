@@ -136,6 +136,7 @@ describe("DevControlPanel project modes", () => {
       repositories: [repository],
       branches: [{ name: "trunk", protected: true }],
       readStates: {},
+      statusCheckError: null,
       error: null,
       busy: false,
       connect: vi.fn(),

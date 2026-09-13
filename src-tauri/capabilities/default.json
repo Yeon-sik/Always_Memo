@@ -11,6 +11,14 @@
     "allow-save-persisted-device",
     "allow-quick-capture-shortcut-status",
     "allow-show-quick-capture",
-    "allow-open-db-editor-window"
+    "allow-open-db-editor-window",
+    "allow-github-connection-status",
+    "allow-github-device-flow-start",
+    "allow-github-device-flow-poll",
+    "allow-github-device-flow-cancel",
+    "allow-github-disconnect",
+    "allow-github-list-repositories",
+    "allow-github-list-branches",
+    "allow-github-read-repository"
   ]
 }

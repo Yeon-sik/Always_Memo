@@ -27,16 +27,22 @@ export function useGitHubIntegration(
   const [repositories, setRepositories] = useState<GitHubIntegrationController["repositories"]>([]);
   const [branches, setBranches] = useState<GitHubIntegrationController["branches"]>([]);
   const [readStates, setReadStates] = useState<Record<string, GitHubProjectReadState>>({});
+  const [statusCheckError, setStatusCheckError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     try {
-      setStatus(await service.getStatus());
-      setError(null);
+      const nextStatus = await service.getStatus();
+      setStatus(nextStatus);
+      const nextStatusError = nextStatus.configured ? nextStatus.error : null;
+      setStatusCheckError(nextStatusError);
+      setError(nextStatusError);
     } catch (statusError) {
+      const message = errorMessage(statusError, "GitHub 연결 상태를 확인하지 못했습니다.");
       setStatus(disconnectedGitHubStatus);
-      setError(errorMessage(statusError, "GitHub 연결 상태를 확인하지 못했습니다."));
+      setStatusCheckError(message);
+      setError(message);
     }
   }, [service]);
 
@@ -170,6 +176,7 @@ export function useGitHubIntegration(
     repositories,
     branches,
     readStates,
+    statusCheckError,
     error,
     busy,
     connect,

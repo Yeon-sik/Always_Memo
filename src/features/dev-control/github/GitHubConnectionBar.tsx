@@ -5,8 +5,11 @@ export function GitHubConnectionBar({
 }: {
   integration: GitHubIntegrationController;
 }) {
-  const { status, deviceFlow, busy, error } = integration;
+  const { status, statusCheckError, deviceFlow, busy, error } = integration;
   const accountLabel = status.accountName || status.accountLogin;
+  const displayError = statusCheckError
+    ? `GitHub 연결 상태 확인 실패: ${statusCheckError}`
+    : status.error || error;
 
   return (
     <section className="grid gap-2 rounded-lg border border-slate-300 bg-slate-50 p-3 dark:border-neutral-800 dark:bg-neutral-950">
@@ -14,7 +17,9 @@ export function GitHubConnectionBar({
         <div>
           <p className="text-xs font-bold tracking-wide text-slate-700 dark:text-neutral-200">GitHub</p>
           <p className="text-[11px] text-slate-500 dark:text-neutral-400">
-            {status.connected
+            {statusCheckError
+              ? "GitHub 연결 상태 확인 실패"
+              : status.connected
               ? `연결됨${accountLabel ? ` · ${accountLabel}` : ""}`
               : status.configured
                 ? "연결되지 않음"
@@ -65,7 +70,7 @@ export function GitHubConnectionBar({
         </div>
       ) : null}
 
-      {!status.configured ? (
+      {!status.configured && !statusCheckError ? (
         <p className="text-[11px] leading-4 text-slate-500 dark:text-neutral-400">
           앱 설정 파일에 공개 GitHub Client ID를 추가하면 Device Flow를 사용할 수 있습니다.
         </p>
@@ -106,9 +111,9 @@ export function GitHubConnectionBar({
         </div>
       ) : null}
 
-      {status.error || error ? (
+      {displayError ? (
         <p role="alert" className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
-          {status.error || error}
+          {displayError}
         </p>
       ) : null}
     </section>

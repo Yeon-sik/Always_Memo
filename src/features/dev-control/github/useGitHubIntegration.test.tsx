@@ -2,6 +2,7 @@ import { act, create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  disconnectedGitHubStatus,
   type GitHubConnectionStatus,
   type GitHubIntegrationController,
   type GitHubIntegrationService,
@@ -32,6 +33,38 @@ function createService(overrides: Partial<GitHubIntegrationService> = {}) {
 }
 
 describe("useGitHubIntegration", () => {
+  it("keeps status lookup failures distinct from a successful not-configured status", async () => {
+    let current: GitHubIntegrationController | undefined;
+    const failingService = createService({
+      getStatus: vi.fn().mockRejectedValue("Command github_connection_status not allowed by ACL"),
+    });
+    function FailingHarness() {
+      current = useGitHubIntegration(failingService);
+      return null;
+    }
+
+    create(<FailingHarness />);
+    await act(async () => undefined);
+
+    expect(current?.statusCheckError).toBe("Command github_connection_status not allowed by ACL");
+    expect(current?.status.configured).toBe(false);
+
+    const notConfiguredService = createService({
+      getStatus: vi.fn().mockResolvedValue(disconnectedGitHubStatus),
+    });
+    let notConfiguredCurrent: GitHubIntegrationController | undefined;
+    function NotConfiguredHarness() {
+      notConfiguredCurrent = useGitHubIntegration(notConfiguredService);
+      return null;
+    }
+
+    create(<NotConfiguredHarness />);
+    await act(async () => undefined);
+
+    expect(notConfiguredCurrent?.statusCheckError).toBeNull();
+    expect(notConfiguredCurrent?.status.configured).toBe(false);
+  });
+
   it("keeps a failed remote read in runtime state without mutating Project state", async () => {
     const service = createService({
       readRepository: vi.fn().mockRejectedValue(new Error("offline")),
