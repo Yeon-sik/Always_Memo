@@ -91,6 +91,7 @@ export function App() {
               }
               quickCaptureShortcutStatus={quickCapture.shortcutStatus}
               onManualSync={memo.manualSync}
+              onRefreshGitHubStatus={github.refreshStatus}
               onRefreshQuickCaptureShortcutStatus={
                 quickCapture.refreshShortcutStatus
               }

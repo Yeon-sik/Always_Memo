@@ -10,6 +10,26 @@ export interface GitHubConnectionStatus {
   error: string | null;
 }
 
+export type GitHubConfigSource = "local-settings" | "env" | "file" | "none";
+
+export interface GitHubConfigStatus {
+  clientId: string;
+  configured: boolean;
+  appSlug: string | null;
+  source: GitHubConfigSource;
+}
+
+export interface GitHubConfigInput {
+  clientId: string;
+  appSlug: string | null;
+}
+
+export interface GitHubConfigService {
+  getConfigStatus(): Promise<GitHubConfigStatus>;
+  saveConfig(input: GitHubConfigInput): Promise<GitHubConfigStatus>;
+  deleteConfig(): Promise<GitHubConfigStatus>;
+}
+
 export interface GitHubDeviceFlowStart {
   userCode: string;
   verificationUri: string;
@@ -105,6 +125,7 @@ export interface GitHubIntegrationController {
   statusCheckError: string | null;
   error: string | null;
   busy: boolean;
+  refreshStatus: () => Promise<void>;
   connect: () => Promise<void>;
   pollDeviceFlow: () => Promise<void>;
   cancelDeviceFlow: () => Promise<void>;
@@ -132,6 +153,7 @@ export const unavailableGitHubIntegration: GitHubIntegrationController = {
   statusCheckError: null,
   error: null,
   busy: false,
+  refreshStatus: async () => undefined,
   connect: async () => undefined,
   pollDeviceFlow: async () => undefined,
   cancelDeviceFlow: async () => undefined,

@@ -1,5 +1,8 @@
 import type {
   GitHubBranchOption,
+  GitHubConfigInput,
+  GitHubConfigService,
+  GitHubConfigStatus,
   GitHubConnectionStatus,
   GitHubDeviceFlowPollResult,
   GitHubDeviceFlowStart,
@@ -18,6 +21,21 @@ async function getInvoke(): Promise<TauriInvoke> {
 }
 
 export const githubApi = {
+  async getConfigStatus(): Promise<GitHubConfigStatus> {
+    return (await getInvoke())<GitHubConfigStatus>("github_config_status");
+  },
+
+  async saveConfig(input: GitHubConfigInput): Promise<GitHubConfigStatus> {
+    return (await getInvoke())<GitHubConfigStatus>("github_save_config", {
+      clientId: input.clientId,
+      appSlug: input.appSlug,
+    });
+  },
+
+  async deleteConfig(): Promise<GitHubConfigStatus> {
+    return (await getInvoke())<GitHubConfigStatus>("github_delete_config");
+  },
+
   async getStatus(): Promise<GitHubConnectionStatus> {
     return (await getInvoke())<GitHubConnectionStatus>("github_connection_status");
   },

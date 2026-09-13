@@ -3,7 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     env, fmt, fs,
     future::Future,
-    path::PathBuf,
+    path::{Path, PathBuf},
     pin::Pin,
     sync::Mutex,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -17,6 +17,7 @@ const REQUEST_TIMEOUT_SECONDS: u64 = 20;
 const DEFAULT_DEVICE_POLL_INTERVAL_SECONDS: u64 = 5;
 const CREDENTIAL_SERVICE: &str = "com.yeonsik.note.github";
 const CREDENTIAL_USERNAME: &str = "github-device-flow";
+const GITHUB_CONFIG_FILE_NAME: &str = "github-config.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -822,6 +823,22 @@ struct GitHubConfig {
     app_slug: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GitHubConfigFile {
+    client_id: String,
+    app_slug: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubConfigStatus {
+    pub client_id: String,
+    pub configured: bool,
+    pub app_slug: Option<String>,
+    pub source: String,
+}
+
 #[derive(Deserialize)]
 struct DeviceCodeWire {
     device_code: String,
@@ -1166,34 +1183,198 @@ fn github_env_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
     candidates
 }
 
-fn load_github_config(app: &tauri::AppHandle) -> GitHubConfig {
-    let mut values = HashMap::new();
+fn github_config_path(app: &tauri::AppHandle) -> Result<PathBuf, GitHubError> {
+    app.path()
+        .app_config_dir()
+        .map(|config_dir| config_dir.join(GITHUB_CONFIG_FILE_NAME))
+        .map_err(|error| {
+            GitHubError::new(
+                GitHubErrorCode::InvalidResponse,
+                format!("GitHub 설정 저장 위치를 확인하지 못했습니다: {error}"),
+            )
+        })
+}
+
+fn normalize_github_config(
+    client_id: String,
+    app_slug: Option<String>,
+) -> Result<GitHubConfig, GitHubError> {
+    let client_id = client_id.trim().to_string();
+    if client_id.is_empty() {
+        return Err(GitHubError::new(
+            GitHubErrorCode::InvalidInput,
+            "GitHub Client ID를 입력하세요.",
+        ));
+    }
+
+    Ok(GitHubConfig {
+        client_id,
+        app_slug: app_slug
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+    })
+}
+
+fn read_github_config_file(path: &Path) -> Result<Option<GitHubConfig>, GitHubError> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+
+    let contents = fs::read_to_string(path).map_err(|error| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정을 읽지 못했습니다: {error}"),
+        )
+    })?;
+    let stored = serde_json::from_str::<GitHubConfigFile>(&contents).map_err(|error| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정 형식이 올바르지 않습니다: {error}"),
+        )
+    })?;
+
+    normalize_github_config(stored.client_id, stored.app_slug).map(Some)
+}
+
+fn write_github_config_file(path: &Path, config: &GitHubConfig) -> Result<(), GitHubError> {
+    let parent = path.parent().ok_or_else(|| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            "GitHub 설정 저장 위치에 상위 디렉터리가 없습니다.",
+        )
+    })?;
+    fs::create_dir_all(parent).map_err(|error| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정 디렉터리를 만들지 못했습니다: {error}"),
+        )
+    })?;
+
+    let stored = GitHubConfigFile {
+        client_id: config.client_id.clone(),
+        app_slug: config.app_slug.clone(),
+    };
+    let contents = serde_json::to_string_pretty(&stored).map_err(|error| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정을 직렬화하지 못했습니다: {error}"),
+        )
+    })?;
+    fs::write(path, contents).map_err(|error| {
+        GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정을 저장하지 못했습니다: {error}"),
+        )
+    })
+}
+
+fn delete_github_config_file(path: &Path) -> Result<(), GitHubError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(GitHubError::new(
+            GitHubErrorCode::InvalidResponse,
+            format!("GitHub 설정을 삭제하지 못했습니다: {error}"),
+        )),
+    }
+}
+
+fn non_empty_config_value(values: &HashMap<String, String>, keys: &[&str]) -> String {
+    keys.iter()
+        .find_map(|key| values.get(*key))
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_default()
+}
+
+fn resolve_github_config_values(
+    local: Option<GitHubConfig>,
+    environment: &HashMap<String, String>,
+    file: &HashMap<String, String>,
+) -> (GitHubConfig, String) {
+    if let Some(config) = local {
+        return (config, "local-settings".to_string());
+    }
+
+    let environment_client_id = non_empty_config_value(environment, &["GITHUB_CLIENT_ID"]);
+    let has_environment_client_id = !environment_client_id.is_empty();
+    let file_client_id =
+        non_empty_config_value(file, &["GITHUB_CLIENT_ID", "VITE_GITHUB_CLIENT_ID"]);
+    let environment_app_slug = non_empty_config_value(environment, &["GITHUB_APP_SLUG"]);
+    let client_id = if !environment_client_id.is_empty() {
+        environment_client_id
+    } else {
+        file_client_id.clone()
+    };
+    let app_slug = if !environment_app_slug.is_empty() {
+        Some(environment_app_slug)
+    } else {
+        let value = non_empty_config_value(file, &["GITHUB_APP_SLUG", "VITE_GITHUB_APP_SLUG"]);
+        (!value.is_empty()).then_some(value)
+    };
+    let source = if !client_id.is_empty() {
+        if has_environment_client_id {
+            "env"
+        } else {
+            "file"
+        }
+    } else {
+        "none"
+    };
+
+    (
+        GitHubConfig {
+            client_id,
+            app_slug,
+        },
+        source.to_string(),
+    )
+}
+
+fn github_environment_values() -> HashMap<String, String> {
+    ["GITHUB_CLIENT_ID", "GITHUB_APP_SLUG"]
+        .into_iter()
+        .filter_map(|key| env::var(key).ok().map(|value| (key.to_string(), value)))
+        .collect()
+}
+
+fn github_file_environment_values(app: &tauri::AppHandle) -> HashMap<String, String> {
     for candidate in github_env_candidates(app) {
         if candidate.is_file() {
             if let Ok(contents) = fs::read_to_string(candidate) {
-                values.extend(parse_env(&contents));
-                break;
+                return parse_env(&contents);
             }
         }
     }
-    let client_id = env::var("GITHUB_CLIENT_ID")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| values.get("GITHUB_CLIENT_ID").cloned())
-        .or_else(|| values.get("VITE_GITHUB_CLIENT_ID").cloned())
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-    let app_slug = env::var("GITHUB_APP_SLUG")
-        .ok()
-        .or_else(|| values.get("GITHUB_APP_SLUG").cloned())
-        .or_else(|| values.get("VITE_GITHUB_APP_SLUG").cloned())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty());
-    GitHubConfig {
-        client_id,
-        app_slug,
-    }
+    HashMap::new()
+}
+
+fn resolve_github_config(app: &tauri::AppHandle) -> Result<(GitHubConfig, String), GitHubError> {
+    let local = read_github_config_file(&github_config_path(app)?)?;
+    Ok(resolve_github_config_values(
+        local,
+        &github_environment_values(),
+        &github_file_environment_values(app),
+    ))
+}
+
+fn load_github_config(app: &tauri::AppHandle) -> GitHubConfig {
+    resolve_github_config(app)
+        .map(|(config, _)| config)
+        .unwrap_or_else(|_| GitHubConfig {
+            client_id: String::new(),
+            app_slug: None,
+        })
+}
+
+fn current_github_config_status(app: &tauri::AppHandle) -> Result<GitHubConfigStatus, GitHubError> {
+    let (config, source) = resolve_github_config(app)?;
+    Ok(GitHubConfigStatus {
+        configured: !config.client_id.is_empty(),
+        client_id: config.client_id,
+        app_slug: config.app_slug,
+        source,
+    })
 }
 
 fn management_url(config: &GitHubConfig) -> Option<String> {
@@ -1313,6 +1494,29 @@ where
 
 async fn native_api() -> Result<GitHubApi<ReqwestTransport>, GitHubError> {
     Ok(GitHubApi::new(ReqwestTransport::new()?))
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn github_config_status(app: tauri::AppHandle) -> Result<GitHubConfigStatus, GitHubError> {
+    current_github_config_status(&app)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn github_save_config(
+    app: tauri::AppHandle,
+    client_id: String,
+    app_slug: Option<String>,
+) -> Result<GitHubConfigStatus, GitHubError> {
+    let config = normalize_github_config(client_id, app_slug)?;
+    let path = github_config_path(&app)?;
+    write_github_config_file(&path, &config)?;
+    current_github_config_status(&app)
+}
+
+#[tauri::command(rename_all = "camelCase")]
+pub fn github_delete_config(app: tauri::AppHandle) -> Result<GitHubConfigStatus, GitHubError> {
+    delete_github_config_file(&github_config_path(&app)?)?;
+    current_github_config_status(&app)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1625,6 +1829,77 @@ mod tests {
             client_id: "public-client-id".to_string(),
             app_slug: None,
         }
+    }
+
+    #[test]
+    fn github_config_resolution_prefers_local_settings_then_environment_then_file() {
+        let mut environment = HashMap::new();
+        environment.insert("GITHUB_CLIENT_ID".to_string(), "env-client-id".to_string());
+        environment.insert("GITHUB_APP_SLUG".to_string(), "env-app".to_string());
+        let mut file = HashMap::new();
+        file.insert("GITHUB_CLIENT_ID".to_string(), "file-client-id".to_string());
+        file.insert("GITHUB_APP_SLUG".to_string(), "file-app".to_string());
+
+        let (local_config, local_source) = resolve_github_config_values(
+            Some(GitHubConfig {
+                client_id: "local-client-id".to_string(),
+                app_slug: Some("local-app".to_string()),
+            }),
+            &environment,
+            &file,
+        );
+        assert_eq!(local_config.client_id, "local-client-id");
+        assert_eq!(local_config.app_slug.as_deref(), Some("local-app"));
+        assert_eq!(local_source, "local-settings");
+
+        let (environment_config, environment_source) =
+            resolve_github_config_values(None, &environment, &file);
+        assert_eq!(environment_config.client_id, "env-client-id");
+        assert_eq!(environment_config.app_slug.as_deref(), Some("env-app"));
+        assert_eq!(environment_source, "env");
+
+        let (file_config, file_source) = resolve_github_config_values(None, &HashMap::new(), &file);
+        assert_eq!(file_config.client_id, "file-client-id");
+        assert_eq!(file_config.app_slug.as_deref(), Some("file-app"));
+        assert_eq!(file_source, "file");
+
+        let (empty_config, empty_source) =
+            resolve_github_config_values(None, &HashMap::new(), &HashMap::new());
+        assert!(empty_config.client_id.is_empty());
+        assert_eq!(empty_config.app_slug, None);
+        assert_eq!(empty_source, "none");
+    }
+
+    #[test]
+    fn github_config_file_save_load_delete_round_trip() {
+        let directory = std::env::temp_dir().join(format!(
+            "personalos-github-config-test-{}",
+            std::process::id()
+        ));
+        let path = directory.join(GITHUB_CONFIG_FILE_NAME);
+        let config = GitHubConfig {
+            client_id: "public-client-id".to_string(),
+            app_slug: Some("personal-os".to_string()),
+        };
+
+        write_github_config_file(&path, &config).expect("config should save");
+        let serialized = fs::read_to_string(&path).expect("config should be readable");
+        assert!(serialized.contains("clientId"));
+        assert!(serialized.contains("appSlug"));
+        assert!(!serialized.contains("access_token"));
+        assert!(!serialized.contains("refresh_token"));
+
+        let loaded = read_github_config_file(&path)
+            .expect("config should load")
+            .expect("config should exist");
+        assert_eq!(loaded.client_id, config.client_id);
+        assert_eq!(loaded.app_slug, config.app_slug);
+
+        delete_github_config_file(&path).expect("config should delete");
+        assert!(read_github_config_file(&path)
+            .expect("missing config should be readable")
+            .is_none());
+        let _ = fs::remove_dir_all(directory);
     }
 
     fn valid_credential() -> StoredGitHubCredential {

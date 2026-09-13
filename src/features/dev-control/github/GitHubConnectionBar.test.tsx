@@ -31,6 +31,7 @@ function createIntegration(
     loadBranches: vi.fn(),
     refreshProject: vi.fn(),
     ...overrides,
+    refreshStatus: overrides.refreshStatus ?? vi.fn(),
   };
 }
 

@@ -139,6 +139,7 @@ describe("DevControlPanel project modes", () => {
       statusCheckError: null,
       error: null,
       busy: false,
+      refreshStatus: vi.fn(),
       connect: vi.fn(),
       pollDeviceFlow: vi.fn(),
       cancelDeviceFlow: vi.fn(),

@@ -10,6 +10,7 @@ import type { Device } from "../types";
 import { ActiveDevicesSettingsSection } from "./settings/ActiveDevicesSettingsSection";
 import { AppearanceSettingsSection } from "./settings/AppearanceSettingsSection";
 import { DesktopIntegrationSettingsSection } from "./settings/DesktopIntegrationSettingsSection";
+import { GitHubSettingsSection } from "./settings/GitHubSettingsSection";
 import { SupabaseSettingsSection } from "./settings/SupabaseSettingsSection";
 import { DbEditorLauncher } from "../features/db-editor/DbEditorLauncher";
 
@@ -30,6 +31,7 @@ interface SettingsPanelProps {
   quickCaptureShortcutStatus: DesktopQuickCaptureShortcutStatus;
   onChangeThemeMode: (themeMode: ThemeMode) => void;
   onManualSync: () => Promise<void>;
+  onRefreshGitHubStatus: () => Promise<void>;
   onRefreshQuickCaptureShortcutStatus: () => Promise<void>;
   onSaveSupabaseConfig: (config: SupabaseConfigInput) => Promise<void>;
   onSignIn: (email: string, password: string) => Promise<void>;
@@ -55,6 +57,7 @@ export function SettingsPanel({
   quickCaptureShortcutStatus,
   onChangeThemeMode,
   onManualSync,
+  onRefreshGitHubStatus,
   onRefreshQuickCaptureShortcutStatus,
   onSaveSupabaseConfig,
   onSignIn,
@@ -91,6 +94,7 @@ export function SettingsPanel({
           onSignIn={onSignIn}
           onSignOut={onSignOut}
         />
+        <GitHubSettingsSection onRefreshGitHubStatus={onRefreshGitHubStatus} />
         <DesktopIntegrationSettingsSection
           autostartEnabled={autostartEnabled}
           autostartSupported={autostartSupported}

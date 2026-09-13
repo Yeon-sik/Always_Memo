@@ -179,6 +179,7 @@ export function useGitHubIntegration(
     statusCheckError,
     error,
     busy,
+    refreshStatus,
     connect,
     pollDeviceFlow,
     cancelDeviceFlow,
