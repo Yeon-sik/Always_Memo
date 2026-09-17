@@ -5,6 +5,7 @@ import { getVisibleNotes } from "../../features/notes/noteService";
 import {
   bindSupabaseUser,
   emptyRuntimeConfig,
+  isManagedSupabaseConfig,
   loadRuntimeConfig,
   saveSupabaseConfig as persistSupabaseConfig,
   type RuntimeConfig,
@@ -703,7 +704,15 @@ export function useMemoSyncRuntime(
   const saveSupabaseConfig = useCallback(
     async (config: SupabaseConfigInput) => {
       try {
-        const nextRuntimeConfig = persistSupabaseConfig(config);
+        if (isManagedSupabaseConfig(activeRuntimeConfig)) {
+          throw new Error(
+            "앱에서 관리되는 Supabase 연결은 설정 화면에서 변경할 수 없습니다.",
+          );
+        }
+        const nextRuntimeConfig = persistSupabaseConfig(
+          config,
+          activeRuntimeConfig,
+        );
         const nextSyncClient = createAppSyncClient(nextRuntimeConfig);
 
         setRuntimeConfig(nextRuntimeConfig);
@@ -721,7 +730,7 @@ export function useMemoSyncRuntime(
         throw caughtError;
       }
     },
-    [],
+    [activeRuntimeConfig],
   );
 
   const signIn = useCallback(

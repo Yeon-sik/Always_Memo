@@ -161,17 +161,30 @@ hydrate가 끝난 뒤 발생한 pull/push 오류는 편집 자체를 직접 막�
 
 Supabase를 사용하지 않으면 별도 설정 없이 local-only mode로 실행할 수 있습니다.
 
-동기화를 사용하려면 다음 중 하나로 Project URL과 anon/publishable key를 제공합니다.
+동기화를 사용하려면 Project URL과 anon/publishable key를 다음 순서로
+제공합니다.
 
-1. 앱의 설정 화면에서 연결 정보를 저장합니다.
-2. Tauri runtime env 파일에 값을 둡니다.
+1. 완전한 Vite build-managed config: `VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_ANON_KEY`
+2. 완전한 Tauri runtime env config: `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY` (`VITE_SUPABASE_*`도 runtime 파일에서 호환 지원)
+3. 위 두 managed config가 없거나 불완전할 때 설정 화면의 local manual fallback
+
+Vite build-managed config 또는 Tauri runtime env config가 활성화되면 설정 화면에서
+URL/key 입력을 숨기고 앱이 관리하는 연결로 표시합니다. 이때 backend만 공통으로
+사용하며, 각 사용자는 자신의 이메일과 비밀번호로 사용자별 Supabase Auth account에
+로그인합니다. 수동 `USER_ID`는 지원하지 않으며, row의 `user_id`는 인증 세션의
+`auth.users.id`를 문자열로 저장합니다.
 
 ```env
+# Tauri runtime env
 SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
-```
 
-기존 개발 설정 호환을 위해 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`도 읽습니다. 수동 `USER_ID`는 지원하지 않습니다. 설정 후 이메일과 비밀번호로 Supabase Auth에 로그인하며, row의 `user_id`는 인증 세션의 `auth.users.id`를 문자열로 저장합니다.
+# Vite build-managed env
+VITE_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_ANON_OR_PUBLISHABLE_KEY
+```
 
 Tauri runtime env 탐색 순서는 다음과 같습니다.
 
@@ -182,7 +195,10 @@ Tauri runtime env 탐색 순서는 다음과 같습니다.
 5. 실행 파일 폴더의 `yeonsik-note.env`
 6. 현재 작업 폴더의 `.env`
 
-앱 설정 화면에서 저장한 값이 있으면 해당 로컬 설정을 우선합니다. 동일 로컬 데이터는 최초 연결된 Auth 계정에 binding되며, 다른 계정으로 자동 전환하지 않습니다.
+동일 로컬 데이터는 최초 연결된 Auth 계정에 binding되며, 다른 계정으로 자동
+전환하지 않습니다. 저장된 binding은 managed/manual config의 canonical Supabase
+project URL 또는 project ref가 같을 때만 승계합니다. 같은 project에서 anon key만
+교체된 경우에는 binding을 유지하고, 다른 project로 바뀌면 binding을 제거합니다.
 
 DB 변경 절차, migration 순서와 RLS 검증은 [Supabase 운영 문서](supabase/README.codex.md)를 따르세요. `supabase/schema.sql`은 현재 개발 스키마 snapshot이고 `supabase/migrations/*.sql`이 변경 이력의 기준입니다. 저장소에 migration이 있다는 사실만으로 특정 원격 프로젝트에 적용되었다고 판단하면 안 됩니다.
 

@@ -14,6 +14,7 @@ export type SupabaseConfigInput = Pick<
 const SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v2";
 const LEGACY_SUPABASE_CONFIG_STORAGE_KEY = "localsyncmemo:supabase-config:v1";
 const LOCAL_SETTINGS_SOURCE = "local settings";
+const BUILD_ENV_SOURCE = "build environment";
 
 interface StoredSupabaseConfigEnvelope {
   version: 2;
@@ -39,6 +40,14 @@ function normalizeSupabaseConfigInput(
     supabaseUrl: value?.supabaseUrl?.trim() ?? "",
     supabaseAnonKey: value?.supabaseAnonKey?.trim() ?? "",
   };
+}
+
+function isHttpsUrl(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function normalizeRuntimeConfig(value: Partial<RuntimeConfig> | null): RuntimeConfig {
@@ -109,7 +118,12 @@ export function loadSavedSupabaseConfig(): RuntimeConfig | null {
 
 export function saveSupabaseConfig(
   config: SupabaseConfigInput,
+  activeRuntimeConfig?: RuntimeConfig | null,
 ): RuntimeConfig {
+  if (activeRuntimeConfig && isManagedSupabaseConfig(activeRuntimeConfig)) {
+    throw new Error("앱에서 관리되는 Supabase 연결은 설정 화면에서 변경할 수 없습니다.");
+  }
+
   const normalizedConfig = normalizeSupabaseConfigInput(config);
   if (normalizedConfig.supabaseUrl) {
     let parsedUrl: URL;
@@ -124,9 +138,13 @@ export function saveSupabaseConfig(
   }
   const storage = getBrowserLocalStorage();
   const current = loadSavedSupabaseConfig();
+  const boundUserId =
+    current && isSameSupabaseBackend(current, normalizedConfig)
+      ? current.boundUserId
+      : "";
   const savedConfig = toLocalSettingsRuntimeConfig({
     ...normalizedConfig,
-    boundUserId: current?.boundUserId ?? "",
+    boundUserId,
   });
 
   if (!storage) {
@@ -147,19 +165,85 @@ export function saveSupabaseConfig(
   return savedConfig;
 }
 
+export function isCompleteSupabaseConfig(
+  config: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+): boolean {
+  const normalizedConfig = normalizeSupabaseConfigInput(config);
+  return Boolean(
+    normalizedConfig.supabaseUrl &&
+      normalizedConfig.supabaseAnonKey &&
+      isHttpsUrl(normalizedConfig.supabaseUrl),
+  );
+}
+
+export function isManagedSupabaseConfig(
+  config: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey"> &
+  Partial<Pick<RuntimeConfig, "loaded" | "sourcePath">>,
+): boolean {
+  return (
+    config.loaded === true &&
+    config.sourcePath !== LOCAL_SETTINGS_SOURCE &&
+    isCompleteSupabaseConfig(config)
+  );
+}
+
+export function getSupabaseProjectIdentity(
+  supabaseUrl: string,
+): string | null {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(supabaseUrl.trim());
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.protocol !== "https:") {
+    return null;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase().replace(/\.$/, "");
+  const supabaseHostSuffix = ".supabase.co";
+  const projectRef = hostname.endsWith(supabaseHostSuffix)
+    ? hostname.slice(0, -supabaseHostSuffix.length)
+    : "";
+
+  if (/^[a-z0-9][a-z0-9-]*$/.test(projectRef)) {
+    return `ref:${projectRef}`;
+  }
+
+  return `url:${parsedUrl.origin.toLowerCase()}`;
+}
+
+export function isSameSupabaseBackend(
+  left: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+  right: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+): boolean {
+  const leftIdentity = getSupabaseProjectIdentity(left.supabaseUrl);
+  const rightIdentity = getSupabaseProjectIdentity(right.supabaseUrl);
+
+  return leftIdentity !== null && leftIdentity === rightIdentity;
+}
+
 export function bindSupabaseUser(
   userId: string,
-  fallbackConfig?: Pick<RuntimeConfig, "supabaseUrl" | "supabaseAnonKey">,
+  activeConfig?: RuntimeConfig | SupabaseConfigInput,
 ): RuntimeConfig {
-  const current = loadSavedSupabaseConfig() ?? fallbackConfig;
-  if (!current?.supabaseUrl || !current.supabaseAnonKey) {
+  const savedConfig = loadSavedSupabaseConfig();
+  const current =
+    activeConfig && isCompleteSupabaseConfig(activeConfig)
+      ? activeConfig
+      : savedConfig;
+  if (!current || !isCompleteSupabaseConfig(current)) {
     throw new Error("Supabase 연결 설정을 먼저 저장하세요.");
   }
-  const nextConfig = toLocalSettingsRuntimeConfig({
-    supabaseUrl: current.supabaseUrl,
-    supabaseAnonKey: current.supabaseAnonKey,
-    boundUserId: userId,
-  });
+  const nextConfig = isManagedSupabaseConfig(current)
+    ? normalizeRuntimeConfig({ ...current, boundUserId: userId })
+    : toLocalSettingsRuntimeConfig({
+        supabaseUrl: current.supabaseUrl,
+        supabaseAnonKey: current.supabaseAnonKey,
+        boundUserId: userId,
+      });
   const storage = getBrowserLocalStorage();
   if (storage) {
     const envelope = {
@@ -186,12 +270,88 @@ async function loadRuntimeEnvConfig(): Promise<RuntimeConfig> {
   }
 }
 
-export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
-  const savedConfig = loadSavedSupabaseConfig();
+function loadBuildEnvConfig(): RuntimeConfig {
+  const config = normalizeRuntimeConfig({
+    supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+    supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+    loaded: true,
+    sourcePath: BUILD_ENV_SOURCE,
+  });
 
-  if (savedConfig) {
-    return savedConfig;
+  return isCompleteSupabaseConfig(config) ? config : emptyRuntimeConfig;
+}
+
+export function selectManagedSupabaseConfig(
+  buildConfig: RuntimeConfig,
+  runtimeConfig: RuntimeConfig,
+): RuntimeConfig {
+  if (isCompleteSupabaseConfig(buildConfig)) {
+    return buildConfig;
   }
 
-  return loadRuntimeEnvConfig();
+  if (isCompleteSupabaseConfig(runtimeConfig)) {
+    return runtimeConfig;
+  }
+
+  return emptyRuntimeConfig;
+}
+
+function resolveSelectedRuntimeConfig(
+  managedConfig: RuntimeConfig,
+  savedConfig: RuntimeConfig | null,
+): RuntimeConfig {
+  if (!isCompleteSupabaseConfig(managedConfig)) {
+    return savedConfig ?? managedConfig;
+  }
+
+  return {
+    ...managedConfig,
+    boundUserId:
+      savedConfig && isSameSupabaseBackend(managedConfig, savedConfig)
+        ? savedConfig.boundUserId
+        : "",
+  };
+}
+
+export function resolveRuntimeConfig(
+  managedConfig: RuntimeConfig,
+  savedConfig: RuntimeConfig | null,
+): RuntimeConfig;
+export function resolveRuntimeConfig(
+  buildConfig: RuntimeConfig,
+  runtimeConfig: RuntimeConfig,
+  savedConfig: RuntimeConfig | null,
+): RuntimeConfig;
+export function resolveRuntimeConfig(
+  buildOrManagedConfig: RuntimeConfig,
+  runtimeOrSavedConfig: RuntimeConfig | null,
+  savedConfig?: RuntimeConfig | null,
+): RuntimeConfig {
+  if (savedConfig !== undefined) {
+    return resolveSelectedRuntimeConfig(
+      selectManagedSupabaseConfig(
+        buildOrManagedConfig,
+        runtimeOrSavedConfig ?? emptyRuntimeConfig,
+      ),
+      savedConfig,
+    );
+  }
+
+  return resolveSelectedRuntimeConfig(
+    buildOrManagedConfig,
+    runtimeOrSavedConfig,
+  );
+}
+
+export async function loadRuntimeConfig(): Promise<RuntimeConfig> {
+  const buildConfig = loadBuildEnvConfig();
+  const savedConfig = loadSavedSupabaseConfig();
+
+  if (isCompleteSupabaseConfig(buildConfig)) {
+    return resolveRuntimeConfig(buildConfig, savedConfig);
+  }
+
+  const runtimeConfig = await loadRuntimeEnvConfig();
+
+  return resolveRuntimeConfig(buildConfig, runtimeConfig, savedConfig);
 }
