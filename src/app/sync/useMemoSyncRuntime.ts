@@ -730,7 +730,7 @@ export function useMemoSyncRuntime(
         throw caughtError;
       }
     },
-    [],
+    [activeRuntimeConfig],
   );
 
   const signIn = useCallback(
