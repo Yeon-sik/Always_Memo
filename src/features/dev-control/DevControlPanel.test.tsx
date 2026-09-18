@@ -187,6 +187,82 @@ describe("DevControlPanel project modes", () => {
     );
   });
 
+  it("searches repositories without submitting the new project form", async () => {
+    const actions = createActions();
+    const github: GitHubIntegrationController = {
+      status: {
+        configured: true,
+        connected: true,
+        accountLogin: "octo",
+        accountName: null,
+        managementUrl: "https://github.com/apps/personal-os/installations/new",
+        error: null,
+      },
+      deviceFlow: null,
+      repositories: [],
+      branches: [],
+      readStates: {},
+      statusCheckError: null,
+      error: null,
+      busy: false,
+      refreshStatus: vi.fn(),
+      connect: vi.fn(),
+      pollDeviceFlow: vi.fn(),
+      cancelDeviceFlow: vi.fn(),
+      disconnect: vi.fn(),
+      loadRepositories: vi.fn().mockResolvedValue(undefined),
+      loadBranches: vi.fn().mockResolvedValue(undefined),
+      refreshProject: vi.fn().mockResolvedValue(undefined),
+    };
+    const renderer = renderPanel(actions, github);
+
+    act(() => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "새 프로젝트")
+        ?.props.onClick();
+    });
+    await act(async () => {
+      renderer.root
+        .findAllByType("button")
+        .find((button) => button.children.join("") === "저장소 선택/권한 관리")
+        ?.props.onClick();
+    });
+
+    expect(renderer.root.findAllByType("form")).toHaveLength(1);
+    vi.mocked(github.loadRepositories).mockClear();
+
+    const searchInput = renderer.root
+      .findAllByType("input")
+      .find((input) => input.props.placeholder === "owner/repository 검색");
+    act(() => {
+      searchInput?.props.onChange({ target: { value: "octo/query" } });
+    });
+
+    const searchButton = renderer.root
+      .findAllByType("button")
+      .find((button) => button.children.join("") === "검색");
+    expect(searchButton?.props.type).toBe("button");
+    act(() => {
+      searchButton?.props.onClick();
+    });
+    expect(github.loadRepositories).toHaveBeenCalledTimes(1);
+    expect(github.loadRepositories).toHaveBeenCalledWith("octo/query");
+    expect(actions.addProject).not.toHaveBeenCalled();
+    expect(actions.updateProject).not.toHaveBeenCalled();
+
+    vi.mocked(github.loadRepositories).mockClear();
+    const preventDefault = vi.fn();
+    act(() => {
+      searchInput?.props.onKeyDown({ key: "Enter", preventDefault });
+    });
+
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(github.loadRepositories).toHaveBeenCalledWith("octo/query");
+    expect(actions.addProject).not.toHaveBeenCalled();
+    expect(actions.updateProject).not.toHaveBeenCalled();
+  });
+
   it("saves an explicit GitHub to text-mode transition as a durable disconnect", () => {
     const actions = createActions();
     const project: Project = {

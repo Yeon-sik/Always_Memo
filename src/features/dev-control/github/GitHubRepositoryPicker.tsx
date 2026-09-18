@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type KeyboardEvent } from "react";
 
 import { parseGitHubRepositoryUrl } from "../devControlService";
 import type {
@@ -41,9 +41,14 @@ export function GitHubRepositoryPicker({
     void integration.loadRepositories(nextSearch);
   }
 
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
+  function loadSearchResults() {
     void integration.loadRepositories(search);
+  }
+
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    loadSearchResults();
   }
 
   function selectRepository(option: GitHubRepositoryOption) {
@@ -119,15 +124,16 @@ export function GitHubRepositoryPicker({
 
       {isOpen ? (
         <div className="grid gap-2 rounded border border-slate-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-950">
-          <form className="flex gap-2" onSubmit={submitSearch}>
+          <div className="flex gap-2">
             <input
               autoFocus
               className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-900"
               value={search}
               placeholder="owner/repository 검색"
               onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={handleSearchKeyDown}
             />
-            <button type="submit" className="rounded bg-slate-800 px-2 py-1 text-[11px] text-white">
+            <button type="button" onClick={loadSearchResults} className="rounded bg-slate-800 px-2 py-1 text-[11px] text-white">
               검색
             </button>
             <button
@@ -137,7 +143,7 @@ export function GitHubRepositoryPicker({
             >
               닫기
             </button>
-          </form>
+          </div>
           <div className="grid max-h-48 gap-1 overflow-auto">
             {integration.repositories.length === 0 ? (
               <p className="p-2 text-[11px] text-slate-500">접근 가능한 Repository가 없습니다.</p>
