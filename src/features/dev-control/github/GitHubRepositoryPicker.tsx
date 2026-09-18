@@ -3,6 +3,7 @@ import { useState, type KeyboardEvent } from "react";
 import { parseGitHubRepositoryUrl } from "../devControlService";
 import type {
   GitHubIntegrationController,
+  GitHubRepositoryListDiagnostic,
   GitHubRepositoryOption,
 } from "./githubTypes";
 
@@ -18,6 +19,19 @@ interface GitHubRepositoryPickerProps {
   onIdentityChange: (repository: GitHubRepositoryOption) => void;
 }
 
+function formatStatuses(statuses: readonly number[]): string {
+  return statuses.length > 0 ? statuses.join(", ") : "-";
+}
+
+function formatDiagnostic(diagnostic: GitHubRepositoryListDiagnostic): string {
+  const repositoryRequests = diagnostic.installationRepositories.length > 0
+    ? diagnostic.installationRepositories
+      .map((installation) => `${formatStatuses(installation.statuses)} (${installation.repositoryCount})`)
+      .join(", ")
+    : "-";
+  return `/user ${diagnostic.userStatus ?? "-"} (${diagnostic.userCount}) · /user/installations ${formatStatuses(diagnostic.installationStatuses)} (${diagnostic.installationCount}) · installation repositories ${repositoryRequests}`;
+}
+
 export function GitHubRepositoryPicker({
   integration,
   repository,
@@ -31,6 +45,8 @@ export function GitHubRepositoryPicker({
 }: GitHubRepositoryPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const repositoryLoadState = integration.repositoryLoadState;
+  const repositoryDiagnostic = repositoryLoadState.diagnostic;
   const legacyRepository = !githubRepositoryId
     ? parseGitHubRepositoryUrl(repository)
     : null;
@@ -145,8 +161,20 @@ export function GitHubRepositoryPicker({
             </button>
           </div>
           <div className="grid max-h-48 gap-1 overflow-auto">
-            {integration.repositories.length === 0 ? (
-              <p className="p-2 text-[11px] text-slate-500">접근 가능한 Repository가 없습니다.</p>
+            {repositoryLoadState.loading ? (
+              <p aria-live="polite" className="p-2 text-[11px] text-slate-500">저장소를 불러오는 중...</p>
+            ) : repositoryLoadState.error || repositoryDiagnostic?.state === "api-error" ? (
+              <p role="alert" className="p-2 text-[11px] text-rose-700 dark:text-rose-300">
+                GitHub API 오류: {repositoryLoadState.error ?? repositoryDiagnostic?.error?.message ?? "Repository 목록을 불러오지 못했습니다."}
+              </p>
+            ) : repositoryDiagnostic?.state === "no-installations" ? (
+              <p className="p-2 text-[11px] text-slate-500">GitHub App installation이 없습니다. App을 설치하고 Repository 접근 권한을 부여하세요.</p>
+            ) : repositoryDiagnostic?.state === "no-repositories" ? (
+              <p className="p-2 text-[11px] text-slate-500">GitHub App installation은 있지만 현재 사용자에게 허용된 Repository가 없습니다.</p>
+            ) : repositoryDiagnostic?.state === "no-search-results" ? (
+              <p className="p-2 text-[11px] text-slate-500">접근 가능한 Repository는 있지만 현재 검색어와 일치하는 결과가 없습니다.</p>
+            ) : integration.repositories.length === 0 ? (
+              <p className="p-2 text-[11px] text-slate-500">저장소 검색을 시작하세요.</p>
             ) : (
               integration.repositories.map((option) => (
                 <button
@@ -164,6 +192,11 @@ export function GitHubRepositoryPicker({
               ))
             )}
           </div>
+          {repositoryDiagnostic ? (
+            <p className="text-[10px] text-slate-500 dark:text-neutral-400">
+              API 진단: {formatDiagnostic(repositoryDiagnostic)}
+            </p>
+          ) : null}
         </div>
       ) : null}
     </div>

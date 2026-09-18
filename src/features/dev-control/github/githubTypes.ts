@@ -56,6 +56,49 @@ export interface GitHubRepositoryOption {
   description: string | null;
 }
 
+export type GitHubRepositoryListState =
+  | "ready"
+  | "no-installations"
+  | "no-repositories"
+  | "no-search-results"
+  | "api-error";
+
+export interface GitHubRepositoryApiError {
+  code: string;
+  message: string;
+  status: number | null;
+}
+
+export interface GitHubInstallationRepositoryDiagnostic {
+  appSlug: string | null;
+  statuses: number[];
+  repositoryCount: number;
+}
+
+export interface GitHubRepositoryListDiagnostic {
+  state: GitHubRepositoryListState;
+  userStatus: number | null;
+  userCount: number;
+  installationStatuses: number[];
+  installationCount: number;
+  installationRepositories: GitHubInstallationRepositoryDiagnostic[];
+  accessibleRepositoryCount: number;
+  matchingRepositoryCount: number;
+  installedAppSlugs: string[];
+  error: GitHubRepositoryApiError | null;
+}
+
+export interface GitHubRepositoryListResult {
+  repositories: GitHubRepositoryOption[];
+  diagnostic: GitHubRepositoryListDiagnostic;
+}
+
+export interface GitHubRepositoryLoadState {
+  loading: boolean;
+  diagnostic: GitHubRepositoryListDiagnostic | null;
+  error: string | null;
+}
+
 export interface GitHubBranchOption {
   name: string;
   protected: boolean;
@@ -107,7 +150,7 @@ export interface GitHubIntegrationService {
   pollDeviceFlow(): Promise<GitHubDeviceFlowPollResult>;
   cancelDeviceFlow(): Promise<void>;
   disconnect(): Promise<GitHubConnectionStatus>;
-  listRepositories(search?: string): Promise<GitHubRepositoryOption[]>;
+  listRepositories(search?: string): Promise<GitHubRepositoryListResult>;
   listBranches(owner: string, repository: string): Promise<GitHubBranchOption[]>;
   readRepository(
     owner: string,
@@ -120,6 +163,7 @@ export interface GitHubIntegrationController {
   status: GitHubConnectionStatus;
   deviceFlow: GitHubDeviceFlowStart | null;
   repositories: GitHubRepositoryOption[];
+  repositoryLoadState: GitHubRepositoryLoadState;
   branches: GitHubBranchOption[];
   readStates: Readonly<Record<string, GitHubProjectReadState>>;
   statusCheckError: string | null;
@@ -148,6 +192,7 @@ export const unavailableGitHubIntegration: GitHubIntegrationController = {
   status: disconnectedGitHubStatus,
   deviceFlow: null,
   repositories: [],
+  repositoryLoadState: { loading: false, diagnostic: null, error: null },
   branches: [],
   readStates: {},
   statusCheckError: null,

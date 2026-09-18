@@ -6,6 +6,7 @@ import {
   type GitHubConnectionStatus,
   type GitHubIntegrationController,
   type GitHubIntegrationService,
+  type GitHubRepositoryListResult,
 } from "./githubTypes";
 import { useGitHubIntegration } from "./useGitHubIntegration";
 
@@ -18,6 +19,22 @@ const connectedStatus: GitHubConnectionStatus = {
   error: null,
 };
 
+const emptyRepositoryListResult: GitHubRepositoryListResult = {
+  repositories: [],
+  diagnostic: {
+    state: "no-installations",
+    userStatus: 200,
+    userCount: 1,
+    installationStatuses: [200],
+    installationCount: 0,
+    installationRepositories: [],
+    accessibleRepositoryCount: 0,
+    matchingRepositoryCount: 0,
+    installedAppSlugs: [],
+    error: null,
+  },
+};
+
 function createService(overrides: Partial<GitHubIntegrationService> = {}) {
   return {
     getStatus: vi.fn().mockResolvedValue(connectedStatus),
@@ -25,7 +42,7 @@ function createService(overrides: Partial<GitHubIntegrationService> = {}) {
     pollDeviceFlow: vi.fn(),
     cancelDeviceFlow: vi.fn(),
     disconnect: vi.fn().mockResolvedValue(connectedStatus),
-    listRepositories: vi.fn().mockResolvedValue([]),
+    listRepositories: vi.fn().mockResolvedValue(emptyRepositoryListResult),
     listBranches: vi.fn().mockResolvedValue([]),
     readRepository: vi.fn(),
     ...overrides,
@@ -63,6 +80,43 @@ describe("useGitHubIntegration", () => {
 
     expect(notConfiguredCurrent?.statusCheckError).toBeNull();
     expect(notConfiguredCurrent?.status.configured).toBe(false);
+  });
+
+  it("keeps repository API diagnostics distinct from an empty repository result", async () => {
+    const service = createService({
+      listRepositories: vi.fn().mockResolvedValue({
+        repositories: [],
+        diagnostic: {
+          ...emptyRepositoryListResult.diagnostic,
+          state: "api-error",
+          installationCount: 1,
+          error: {
+            code: "forbidden",
+            message: "GitHub Repository를 조회할 권한이 없습니다.",
+            status: 403,
+          },
+        },
+      } satisfies GitHubRepositoryListResult),
+    });
+    let current: GitHubIntegrationController | undefined;
+    function Harness() {
+      current = useGitHubIntegration(service);
+      return null;
+    }
+
+    create(<Harness />);
+    await act(async () => undefined);
+    await act(async () => {
+      await current?.loadRepositories("Always_Memo");
+    });
+
+    expect(service.listRepositories).toHaveBeenCalledWith("Always_Memo");
+    expect(current?.repositories).toEqual([]);
+    expect(current?.repositoryLoadState).toMatchObject({
+      loading: false,
+      diagnostic: { state: "api-error", error: { status: 403 } },
+      error: "GitHub Repository를 조회할 권한이 없습니다.",
+    });
   });
 
   it("keeps a failed remote read in runtime state without mutating Project state", async () => {

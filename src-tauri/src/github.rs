@@ -398,6 +398,17 @@ where
         path: impl Into<String>,
         query: Vec<(String, String)>,
     ) -> Result<U, GitHubError> {
+        self.get_json_with_status(token, path, query)
+            .await
+            .map(|(value, _)| value)
+    }
+
+    async fn get_json_with_status<U: DeserializeOwned>(
+        &self,
+        token: &SecretString,
+        path: impl Into<String>,
+        query: Vec<(String, String)>,
+    ) -> Result<(U, u16), GitHubError> {
         let path = path.into();
         let response = self
             .send(GitHubHttpRequest {
@@ -408,12 +419,15 @@ where
                 bearer_token: Some(token.clone()),
             })
             .await?;
-        serde_json::from_str::<U>(&response.body).map_err(|error| {
-            GitHubError::new(
-                GitHubErrorCode::InvalidResponse,
-                format!("GitHub API 응답 형식이 올바르지 않습니다: {path} ({error})"),
-            )
-        })
+        let status = response.status;
+        serde_json::from_str::<U>(&response.body)
+            .map(|value| (value, status))
+            .map_err(|error| {
+                GitHubError::new(
+                    GitHubErrorCode::InvalidResponse,
+                    format!("GitHub API 응답 형식이 올바르지 않습니다: {path} ({error})"),
+                )
+            })
     }
 
     async fn post_oauth(
@@ -563,20 +577,63 @@ where
         })
     }
 
-    async fn list_repositories(
+    async fn list_repositories_with_diagnostic(
         &self,
         token: &SecretString,
         search: Option<&str>,
-    ) -> Result<Vec<GitHubRepository>, GitHubError> {
-        let installations = self.list_installations(token).await?;
-        let mut repositories = Vec::new();
+    ) -> GitHubRepositoryListResult {
+        let mut diagnostic = GitHubRepositoryListDiagnostic::initial();
+        let (_, user_status): (UserWire, u16) =
+            match self.get_json_with_status(token, "/user", Vec::new()).await {
+                Ok(result) => result,
+                Err(error) => {
+                    diagnostic.user_status = error.status;
+                    return GitHubRepositoryListResult::api_error(diagnostic, error);
+                }
+            };
+        diagnostic.user_status = Some(user_status);
+        diagnostic.user_count = 1;
+
+        let (installations, installation_statuses) =
+            match self.list_installations_with_status(token).await {
+                Ok(result) => result,
+                Err(error) => {
+                    if let Some(status) = error.status {
+                        diagnostic.installation_statuses.push(status);
+                    }
+                    return GitHubRepositoryListResult::api_error(diagnostic, error);
+                }
+            };
+        diagnostic.installation_statuses = installation_statuses;
+        diagnostic.installation_count = installations.len();
+        diagnostic.installed_app_slugs = installations
+            .iter()
+            .filter_map(|installation| installation.app_slug.clone())
+            .collect();
+        diagnostic.installed_app_slugs.sort();
+        diagnostic.installed_app_slugs.dedup();
+
+        if installations.is_empty() {
+            diagnostic.state = GitHubRepositoryListState::NoInstallations;
+            return GitHubRepositoryListResult {
+                repositories: Vec::new(),
+                diagnostic,
+            };
+        }
+
+        let mut accessible_repositories = Vec::new();
         let mut seen = HashSet::new();
 
         for installation in installations {
+            let mut installation_diagnostic = GitHubInstallationRepositoryDiagnostic {
+                app_slug: installation.app_slug.clone(),
+                statuses: Vec::new(),
+                repository_count: 0,
+            };
             let mut page = 1u32;
             loop {
-                let response: InstallationRepositoriesWire = self
-                    .get_json(
+                let (response, status): (InstallationRepositoriesWire, u16) = match self
+                    .get_json_with_status(
                         token,
                         format!("/user/installations/{}/repositories", installation.id),
                         vec![
@@ -584,37 +641,78 @@ where
                             ("page".to_string(), page.to_string()),
                         ],
                     )
-                    .await?;
+                    .await
+                {
+                    Ok(result) => result,
+                    Err(error) => {
+                        if let Some(status) = error.status {
+                            installation_diagnostic.statuses.push(status);
+                        }
+                        diagnostic
+                            .installation_repositories
+                            .push(installation_diagnostic);
+                        return GitHubRepositoryListResult::api_error(diagnostic, error);
+                    }
+                };
+                installation_diagnostic.statuses.push(status);
                 let page_count = response.repositories.len();
+                installation_diagnostic.repository_count += page_count;
                 for repository in response.repositories {
                     if !seen.insert(repository.id) {
                         continue;
                     }
-                    let option = repository.into_repository()?;
-                    if matches_repository_search(&option, search) {
-                        repositories.push(option);
-                    }
+                    let option = match repository.into_repository() {
+                        Ok(option) => option,
+                        Err(error) => {
+                            diagnostic
+                                .installation_repositories
+                                .push(installation_diagnostic);
+                            return GitHubRepositoryListResult::api_error(diagnostic, error);
+                        }
+                    };
+                    accessible_repositories.push(option);
                 }
                 if page_count < 100 {
                     break;
                 }
                 page += 1;
             }
+            diagnostic
+                .installation_repositories
+                .push(installation_diagnostic);
         }
 
+        let mut repositories = accessible_repositories
+            .iter()
+            .filter(|repository| matches_repository_search(repository, search))
+            .cloned()
+            .collect::<Vec<_>>();
         repositories.sort_by(|first, second| first.full_name.cmp(&second.full_name));
-        Ok(repositories)
+        diagnostic.accessible_repository_count = accessible_repositories.len();
+        diagnostic.matching_repository_count = repositories.len();
+        diagnostic.state = if accessible_repositories.is_empty() {
+            GitHubRepositoryListState::NoRepositories
+        } else if repositories.is_empty() {
+            GitHubRepositoryListState::NoSearchResults
+        } else {
+            GitHubRepositoryListState::Ready
+        };
+        GitHubRepositoryListResult {
+            repositories,
+            diagnostic,
+        }
     }
 
-    async fn list_installations(
+    async fn list_installations_with_status(
         &self,
         token: &SecretString,
-    ) -> Result<Vec<InstallationWire>, GitHubError> {
+    ) -> Result<(Vec<InstallationWire>, Vec<u16>), GitHubError> {
         let mut installations = Vec::new();
+        let mut statuses = Vec::new();
         let mut page = 1u32;
         loop {
-            let response: InstallationsWire = self
-                .get_json(
+            let (response, status): (InstallationsWire, u16) = self
+                .get_json_with_status(
                     token,
                     "/user/installations",
                     vec![
@@ -623,10 +721,11 @@ where
                     ],
                 )
                 .await?;
+            statuses.push(status);
             let page_count = response.installations.len();
             installations.extend(response.installations);
             if page_count < 100 {
-                return Ok(installations);
+                return Ok((installations, statuses));
             }
             page += 1;
         }
@@ -763,6 +862,86 @@ pub struct GitHubRepository {
     pub description: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GitHubRepositoryListState {
+    Ready,
+    NoInstallations,
+    NoRepositories,
+    NoSearchResults,
+    ApiError,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRepositoryApiError {
+    pub code: GitHubErrorCode,
+    pub message: String,
+    pub status: Option<u16>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubInstallationRepositoryDiagnostic {
+    pub app_slug: Option<String>,
+    pub statuses: Vec<u16>,
+    pub repository_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRepositoryListDiagnostic {
+    pub state: GitHubRepositoryListState,
+    pub user_status: Option<u16>,
+    pub user_count: usize,
+    pub installation_statuses: Vec<u16>,
+    pub installation_count: usize,
+    pub installation_repositories: Vec<GitHubInstallationRepositoryDiagnostic>,
+    pub accessible_repository_count: usize,
+    pub matching_repository_count: usize,
+    pub installed_app_slugs: Vec<String>,
+    pub error: Option<GitHubRepositoryApiError>,
+}
+
+impl GitHubRepositoryListDiagnostic {
+    fn initial() -> Self {
+        Self {
+            state: GitHubRepositoryListState::Ready,
+            user_status: None,
+            user_count: 0,
+            installation_statuses: Vec::new(),
+            installation_count: 0,
+            installation_repositories: Vec::new(),
+            accessible_repository_count: 0,
+            matching_repository_count: 0,
+            installed_app_slugs: Vec::new(),
+            error: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubRepositoryListResult {
+    pub repositories: Vec<GitHubRepository>,
+    pub diagnostic: GitHubRepositoryListDiagnostic,
+}
+
+impl GitHubRepositoryListResult {
+    fn api_error(mut diagnostic: GitHubRepositoryListDiagnostic, error: GitHubError) -> Self {
+        diagnostic.state = GitHubRepositoryListState::ApiError;
+        diagnostic.error = Some(GitHubRepositoryApiError {
+            code: error.code,
+            message: error.message,
+            status: error.status,
+        });
+        Self {
+            repositories: Vec::new(),
+            diagnostic,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitHubBranch {
@@ -883,6 +1062,8 @@ struct InstallationsWire {
 #[derive(Debug, Deserialize)]
 struct InstallationWire {
     id: u64,
+    #[serde(default)]
+    app_slug: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1712,12 +1893,21 @@ pub fn github_disconnect(
 pub async fn github_list_repositories(
     app: tauri::AppHandle,
     search: Option<String>,
-) -> Result<Vec<GitHubRepository>, GitHubError> {
+) -> Result<GitHubRepositoryListResult, GitHubError> {
     let config = load_github_config(&app);
-    let api = native_api().await?;
+    let diagnostic = GitHubRepositoryListDiagnostic::initial();
+    let api = match native_api().await {
+        Ok(api) => api,
+        Err(error) => return Ok(GitHubRepositoryListResult::api_error(diagnostic, error)),
+    };
     let store = GitHubCredentialStore::native();
-    let token = access_token(&api, &store, &config).await?;
-    api.list_repositories(&token, search.as_deref()).await
+    let token = match access_token(&api, &store, &config).await {
+        Ok(token) => token,
+        Err(error) => return Ok(GitHubRepositoryListResult::api_error(diagnostic, error)),
+    };
+    Ok(api
+        .list_repositories_with_diagnostic(&token, search.as_deref())
+        .await)
 }
 
 #[tauri::command(rename_all = "camelCase")]
@@ -1993,6 +2183,100 @@ mod tests {
             .as_deref()
             .is_some_and(|message| message.contains("네트워크")));
         assert!(store.credential.lock().expect("credential lock").is_some());
+    }
+
+    #[tokio::test]
+    async fn repository_list_diagnostic_records_successful_api_steps_and_counts() {
+        let transport = FakeTransport::with_responses(vec![
+            response(
+                r#"{"repositories":[{"id":42,"name":"Always_Memo","full_name":"octo/Always_Memo","html_url":"https://github.com/octo/Always_Memo","default_branch":"main","private":true,"description":null,"owner":{"login":"octo"}}]}"#,
+            ),
+            response(r#"{"installations":[{"id":7,"app_slug":"personal-os"}]}"#),
+            response(r#"{"login":"octo","name":"Octo Cat"}"#),
+        ]);
+        let request_log = transport.requests.clone();
+        let api = GitHubApi::new(transport);
+
+        let result = api
+            .list_repositories_with_diagnostic(&SecretString::new("access-secret"), Some("always"))
+            .await;
+
+        assert_eq!(result.diagnostic.state, GitHubRepositoryListState::Ready);
+        assert_eq!(result.diagnostic.user_status, Some(200));
+        assert_eq!(result.diagnostic.user_count, 1);
+        assert_eq!(result.diagnostic.installation_statuses, vec![200]);
+        assert_eq!(result.diagnostic.installation_count, 1);
+        assert_eq!(result.diagnostic.installed_app_slugs, vec!["personal-os"]);
+        assert_eq!(result.diagnostic.accessible_repository_count, 1);
+        assert_eq!(result.diagnostic.matching_repository_count, 1);
+        assert_eq!(
+            result.diagnostic.installation_repositories[0].statuses,
+            vec![200]
+        );
+        assert_eq!(
+            result.diagnostic.installation_repositories[0].repository_count,
+            1
+        );
+        assert_eq!(result.repositories[0].full_name, "octo/Always_Memo");
+        assert!(result.diagnostic.error.is_none());
+
+        let requests = request_log.lock().expect("request log");
+        assert_eq!(requests[0].path, "/user");
+        assert_eq!(requests[1].path, "/user/installations");
+        assert_eq!(requests[2].path, "/user/installations/7/repositories");
+        assert!(!format!("{:?}", requests[2]).contains("access-secret"));
+    }
+
+    #[tokio::test]
+    async fn repository_list_diagnostic_distinguishes_no_installations() {
+        let api = GitHubApi::new(FakeTransport::with_responses(vec![
+            response(r#"{"installations":[]}"#),
+            response(r#"{"login":"octo","name":null}"#),
+        ]));
+
+        let result = api
+            .list_repositories_with_diagnostic(&SecretString::new("access-secret"), None)
+            .await;
+
+        assert_eq!(
+            result.diagnostic.state,
+            GitHubRepositoryListState::NoInstallations
+        );
+        assert_eq!(result.diagnostic.user_status, Some(200));
+        assert_eq!(result.diagnostic.installation_statuses, vec![200]);
+        assert_eq!(result.diagnostic.installation_count, 0);
+        assert!(result.repositories.is_empty());
+    }
+
+    #[tokio::test]
+    async fn repository_list_diagnostic_preserves_repository_api_error_status() {
+        let api = GitHubApi::new(FakeTransport::with_responses(vec![
+            response_with_status(404, r#"{"message":"Not Found"}"#),
+            response(r#"{"installations":[{"id":7,"app_slug":"personal-os"}]}"#),
+            response(r#"{"login":"octo","name":null}"#),
+        ]));
+
+        let result = api
+            .list_repositories_with_diagnostic(&SecretString::new("access-secret"), None)
+            .await;
+
+        assert_eq!(result.diagnostic.state, GitHubRepositoryListState::ApiError);
+        assert_eq!(result.diagnostic.user_status, Some(200));
+        assert_eq!(result.diagnostic.installation_statuses, vec![200]);
+        assert_eq!(result.diagnostic.installation_count, 1);
+        assert_eq!(
+            result.diagnostic.installation_repositories[0].statuses,
+            vec![404]
+        );
+        assert_eq!(
+            result
+                .diagnostic
+                .error
+                .as_ref()
+                .and_then(|error| error.status),
+            Some(404)
+        );
+        assert!(result.repositories.is_empty());
     }
 
     #[tokio::test]
