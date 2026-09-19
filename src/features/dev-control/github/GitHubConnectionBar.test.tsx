@@ -18,6 +18,7 @@ function createIntegration(
     },
     deviceFlow: null,
     repositories: [],
+    repositoryLoadState: { loading: false, diagnostic: null, error: null },
     branches: [],
     readStates: {},
     statusCheckError: null,

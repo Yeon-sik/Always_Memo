@@ -6,7 +6,7 @@ import type {
   GitHubConnectionStatus,
   GitHubDeviceFlowPollResult,
   GitHubDeviceFlowStart,
-  GitHubRepositoryOption,
+  GitHubRepositoryListResult,
   GitHubRepositoryReadModel,
 } from "./githubTypes";
 
@@ -56,8 +56,8 @@ export const githubApi = {
     return (await getInvoke())<GitHubConnectionStatus>("github_disconnect");
   },
 
-  async listRepositories(search?: string): Promise<GitHubRepositoryOption[]> {
-    return (await getInvoke())<GitHubRepositoryOption[]>("github_list_repositories", {
+  async listRepositories(search?: string): Promise<GitHubRepositoryListResult> {
+    return (await getInvoke())<GitHubRepositoryListResult>("github_list_repositories", {
       search: search?.trim() || null,
     });
   },

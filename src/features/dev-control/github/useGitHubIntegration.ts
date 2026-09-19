@@ -7,6 +7,7 @@ import {
   type GitHubIntegrationController,
   type GitHubIntegrationService,
   type GitHubProjectReadState,
+  type GitHubRepositoryLoadState,
 } from "./githubTypes";
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -19,12 +20,21 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+const idleRepositoryLoadState: GitHubRepositoryLoadState = {
+  loading: false,
+  diagnostic: null,
+  error: null,
+};
+
 export function useGitHubIntegration(
   service: GitHubIntegrationService = githubApi,
 ): GitHubIntegrationController {
   const [status, setStatus] = useState(disconnectedGitHubStatus);
   const [deviceFlow, setDeviceFlow] = useState<GitHubIntegrationController["deviceFlow"]>(null);
   const [repositories, setRepositories] = useState<GitHubIntegrationController["repositories"]>([]);
+  const [repositoryLoadState, setRepositoryLoadState] = useState<GitHubRepositoryLoadState>(
+    idleRepositoryLoadState,
+  );
   const [branches, setBranches] = useState<GitHubIntegrationController["branches"]>([]);
   const [readStates, setReadStates] = useState<Record<string, GitHubProjectReadState>>({});
   const [statusCheckError, setStatusCheckError] = useState<string | null>(null);
@@ -104,6 +114,7 @@ export function useGitHubIntegration(
       setStatus(await service.disconnect());
       setDeviceFlow(null);
       setRepositories([]);
+      setRepositoryLoadState(idleRepositoryLoadState);
       setBranches([]);
       setReadStates({});
     } catch (disconnectError) {
@@ -116,10 +127,26 @@ export function useGitHubIntegration(
   const loadRepositories = useCallback(async (search?: string) => {
     setBusy(true);
     setError(null);
+    setRepositories([]);
+    setRepositoryLoadState({ loading: true, diagnostic: null, error: null });
     try {
-      setRepositories(await service.listRepositories(search));
+      const result = await service.listRepositories(search);
+      const diagnosticError = result.diagnostic.error?.message ?? null;
+      setRepositories(result.repositories);
+      setRepositoryLoadState({
+        loading: false,
+        diagnostic: result.diagnostic,
+        error: diagnosticError,
+      });
+      setError(diagnosticError);
     } catch (repositoryError) {
-      setError(errorMessage(repositoryError, "접근 가능한 GitHub Repository를 불러오지 못했습니다."));
+      const message = errorMessage(
+        repositoryError,
+        "접근 가능한 GitHub Repository를 불러오지 못했습니다.",
+      );
+      setRepositories([]);
+      setRepositoryLoadState({ loading: false, diagnostic: null, error: message });
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -174,6 +201,7 @@ export function useGitHubIntegration(
     status,
     deviceFlow,
     repositories,
+    repositoryLoadState,
     branches,
     readStates,
     statusCheckError,
