@@ -114,6 +114,12 @@ export async function resolveRoot() {
       const { DbEditorApp } = await import("./features/db-editor/DbEditorApp");
       return <DbEditorApp />;
     }
+    if (getCurrentWindow().label === "project-workspace") {
+      const { ProjectWorkspaceApp } = await import(
+        "./features/dev-control/workspace/ProjectWorkspaceApp"
+      );
+      return <ProjectWorkspaceApp />;
+    }
   }
 
   const { App } = await import("./app/App");

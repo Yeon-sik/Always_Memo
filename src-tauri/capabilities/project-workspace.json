@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "project-workspace",
+  "description": "Project Workspace event bridge permissions",
+  "windows": ["project-workspace"],
+  "permissions": ["core:default", "opener:default"]
+}

@@ -2,6 +2,7 @@ use std::{collections::HashMap, env, fs, path::PathBuf, sync::Mutex};
 
 mod db_editor;
 mod github;
+mod project_workspace;
 
 #[cfg(desktop)]
 use tauri::{
@@ -374,6 +375,7 @@ pub fn run() {
             db_editor::db_editor_list_rows,
             db_editor::update_db_row,
             db_editor::open_db_editor_window,
+            project_workspace::open_project_workspace_window,
             github::github_config_status,
             github::github_save_config,
             github::github_delete_config,

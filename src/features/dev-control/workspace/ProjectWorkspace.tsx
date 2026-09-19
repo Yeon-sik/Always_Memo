@@ -1,0 +1,359 @@
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+
+import type {
+  DevActionStatus,
+  DevActionType,
+  DevHistoryType,
+  DevMilestoneStatus,
+  DevProjectStatus,
+  Project,
+  ProjectAction,
+  ProjectHistory,
+  ProjectIdea,
+  ProjectMilestone,
+} from "../../../types";
+import {
+  DEFAULT_PROJECT_BRANCH,
+  getProjectChildren,
+  getProjectRepositoryMode,
+  normalizeProjectGitHubFields,
+  normalizeProjectRepositoryFields,
+} from "../devControlService";
+import type { DevControlActions } from "../useDevControlActions";
+import { GitHubConnectionBar } from "../github/GitHubConnectionBar";
+import { GitHubRepositoryObservation } from "../github/GitHubRepositoryObservation";
+import { GitHubRepositoryPicker } from "../github/GitHubRepositoryPicker";
+import {
+  unavailableGitHubIntegration,
+  type GitHubIntegrationController,
+  type GitHubRepositoryOption,
+} from "../github/githubTypes";
+import type { ProjectWorkspaceMode } from "./projectWorkspaceBridge";
+
+type WorkspaceTab = "overview" | "github" | "plan" | "history";
+
+const PROJECT_STATUSES: DevProjectStatus[] = ["ACTIVE", "PLANNED", "COMPLETED"];
+const MILESTONE_STATUSES: DevMilestoneStatus[] = ["PLANNED", "IN_PROGRESS", "COMPLETED"];
+const ACTION_TYPES: DevActionType[] = ["NEXT", "LATER", "BLOCKED"];
+const ACTION_STATUSES: DevActionStatus[] = ["OPEN", "DONE"];
+const HISTORY_TYPES: DevHistoryType[] = ["STATUS_CHANGE", "MILESTONE", "RELEASE", "NOTE"];
+
+const statusLabels: Record<DevProjectStatus, string> = {
+  ACTIVE: "진행 중",
+  PLANNED: "예정",
+  COMPLETED: "완료",
+};
+
+function formatTimestamp(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function toDateTimeLocal(value: string | null): string {
+  if (!value) return "";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 16);
+}
+
+function toIsoOrNull(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+}) {
+  const className = "w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-teal-500 dark:border-neutral-700 dark:bg-neutral-950";
+  return (
+    <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300">
+      <span>{label}</span>
+      {multiline ? (
+        <textarea className={`${className} min-h-16 resize-y`} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      ) : (
+        <input className={className} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      )}
+    </label>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+      <h3 className="mb-2 text-xs font-bold tracking-wide text-slate-700 dark:text-neutral-200">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+export interface ProjectWorkspaceProps {
+  mode: ProjectWorkspaceMode;
+  project: Project | null;
+  projects: Project[];
+  projectMilestones: ProjectMilestone[];
+  projectActions: ProjectAction[];
+  projectIdeas: ProjectIdea[];
+  projectHistory: ProjectHistory[];
+  actions: DevControlActions;
+  github?: GitHubIntegrationController;
+}
+
+export function ProjectWorkspace({
+  mode,
+  project,
+  projects,
+  projectMilestones,
+  projectActions,
+  projectIdeas,
+  projectHistory,
+  actions,
+  github = unavailableGitHubIntegration,
+}: ProjectWorkspaceProps) {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
+  const [repositoryMode, setRepositoryMode] = useState<"github" | "text">("github");
+  const [projectFormError, setProjectFormError] = useState<string | null>(null);
+  const [projectDraft, setProjectDraft] = useState({
+    name: "",
+    repository: "",
+    branch: DEFAULT_PROJECT_BRANCH,
+    githubRepositoryId: null as string | null,
+    githubOwner: null as string | null,
+    githubRepo: null as string | null,
+    status: "PLANNED" as DevProjectStatus,
+    currentSummary: "",
+    targetSummary: "",
+    lastVerifiedCommit: "",
+    lastVerifiedAt: "",
+  });
+  const [milestoneTitle, setMilestoneTitle] = useState("");
+  const [actionTitle, setActionTitle] = useState("");
+  const [actionType, setActionType] = useState<DevActionType>("NEXT");
+  const [ideaTitle, setIdeaTitle] = useState("");
+  const [historyDraft, setHistoryDraft] = useState({
+    summary: "",
+    type: "NOTE" as DevHistoryType,
+    occurredAt: "",
+    githubRef: "",
+  });
+
+  useEffect(() => {
+    setActiveTab("overview");
+    setProjectFormError(null);
+    if (mode === "create" || !project) {
+      setRepositoryMode("github");
+      setProjectDraft({
+        name: "",
+        repository: "",
+        branch: DEFAULT_PROJECT_BRANCH,
+        githubRepositoryId: null,
+        githubOwner: null,
+        githubRepo: null,
+        status: "PLANNED",
+        currentSummary: "",
+        targetSummary: "",
+        lastVerifiedCommit: "",
+        lastVerifiedAt: "",
+      });
+      return;
+    }
+
+    const nextRepositoryMode = getProjectRepositoryMode(project);
+    setRepositoryMode(nextRepositoryMode);
+    setProjectDraft({
+      name: project.name,
+      repository: project.repository ?? "",
+      branch: project.branch ?? (nextRepositoryMode === "github" ? DEFAULT_PROJECT_BRANCH : ""),
+      githubRepositoryId: project.githubRepositoryId,
+      githubOwner: project.githubOwner,
+      githubRepo: project.githubRepo,
+      status: project.status,
+      currentSummary: project.currentSummary,
+      targetSummary: project.targetSummary,
+      lastVerifiedCommit: project.lastVerifiedCommit ?? "",
+      lastVerifiedAt: toDateTimeLocal(project.lastVerifiedAt),
+    });
+  }, [mode, project?.id]);
+
+  const selectedMilestones = useMemo(
+    () => (project ? getProjectChildren(project.id, projects, projectMilestones) : []),
+    [project, projectMilestones, projects],
+  );
+  const selectedActions = useMemo(
+    () => (project ? getProjectChildren(project.id, projects, projectActions) : []),
+    [project, projectActions, projects],
+  );
+  const selectedIdeas = useMemo(
+    () => (project ? getProjectChildren(project.id, projects, projectIdeas) : []),
+    [project, projectIdeas, projects],
+  );
+  const selectedHistory = useMemo(
+    () => (project ? getProjectChildren(project.id, projects, projectHistory).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)) : []),
+    [project, projectHistory, projects],
+  );
+  const readState = project ? github.readStates[project.id] : undefined;
+
+  function handleRepositoryModeChange(nextMode: "github" | "text") {
+    setRepositoryMode(nextMode);
+    setProjectFormError(null);
+    if (nextMode === "github") {
+      setProjectDraft((draft) => ({ ...draft, branch: draft.branch.trim() || DEFAULT_PROJECT_BRANCH }));
+    } else {
+      setProjectDraft((draft) => ({ ...draft, githubRepositoryId: null, githubOwner: null, githubRepo: null }));
+    }
+  }
+
+  function handleRepositorySelection(option: GitHubRepositoryOption) {
+    setProjectDraft((draft) => ({
+      ...draft,
+      repository: option.htmlUrl,
+      branch: option.defaultBranch,
+      githubRepositoryId: option.id,
+      githubOwner: option.owner,
+      githubRepo: option.name,
+      name: draft.name.trim() ? draft.name : option.name,
+    }));
+  }
+
+  function submitProject(event: FormEvent) {
+    event.preventDefault();
+    if (!projectDraft.name.trim()) {
+      setProjectFormError("프로젝트 이름을 입력하세요.");
+      return;
+    }
+
+    const repositoryFields = normalizeProjectRepositoryFields(
+      repositoryMode,
+      projectDraft.repository,
+      projectDraft.branch,
+      projectDraft.lastVerifiedCommit,
+      toIsoOrNull(projectDraft.lastVerifiedAt),
+      readState?.model ? [readState.model.remoteHead?.sha, ...readState.model.recentCommits.map((commit) => commit.sha)] : [],
+    );
+    if (repositoryFields.error) {
+      setProjectFormError(repositoryFields.error);
+      return;
+    }
+
+    const { error: _error, ...normalizedRepositoryFields } = repositoryFields;
+    setProjectFormError(null);
+    const input = {
+      name: projectDraft.name,
+      ...normalizedRepositoryFields,
+      ...normalizeProjectGitHubFields(repositoryMode, projectDraft.githubRepositoryId, projectDraft.githubOwner, projectDraft.githubRepo),
+      status: projectDraft.status,
+      currentSummary: projectDraft.currentSummary,
+      targetSummary: projectDraft.targetSummary,
+      backfillInput: undefined,
+    };
+    if (mode === "create" || !project) {
+      actions.addProject(input);
+    } else {
+      actions.updateProject(project.id, input);
+    }
+  }
+
+  function submitMilestone(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !milestoneTitle.trim()) return;
+    actions.addProjectMilestone(project.id, milestoneTitle, "PLANNED");
+    setMilestoneTitle("");
+  }
+
+  function submitAction(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !actionTitle.trim()) return;
+    actions.addProjectAction(project.id, actionTitle, actionType, "OPEN");
+    setActionTitle("");
+  }
+
+  function submitIdea(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !ideaTitle.trim()) return;
+    actions.addProjectIdea(project.id, ideaTitle);
+    setIdeaTitle("");
+  }
+
+  function submitHistory(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !historyDraft.summary.trim()) return;
+    actions.addProjectHistory(project.id, historyDraft.summary, historyDraft.type, toIsoOrNull(historyDraft.occurredAt) ?? undefined, historyDraft.githubRef.trim() || null);
+    setHistoryDraft({ summary: "", type: "NOTE", occurredAt: "", githubRef: "" });
+  }
+
+  if (mode === "view" && !project) {
+    return <div className="flex h-full items-center justify-center p-6 text-sm text-slate-500">프로젝트를 선택하세요.</div>;
+  }
+
+  return (
+    <div className="app-shell flex w-full min-w-0 justify-center bg-slate-200 text-slate-900 dark:bg-black dark:text-neutral-100">
+      <div className="flex h-full min-h-0 w-full min-w-0 max-w-[1100px] flex-col bg-slate-100 p-4 dark:bg-black">
+        <header className="mb-3 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold tracking-[0.18em] text-teal-700 dark:text-teal-300">PROJECT WORKSPACE</p>
+            <h1 className="truncate text-xl font-semibold text-slate-950 dark:text-neutral-50">{mode === "create" ? "새 프로젝트" : project?.name}</h1>
+            <p className="text-xs text-slate-500 dark:text-neutral-400">상세 프로젝트 관리 · Source of Truth는 Personal OS Project 데이터입니다.</p>
+          </div>
+          {project ? <span className="rounded-full border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300">{statusLabels[project.status]}</span> : null}
+        </header>
+
+        <nav className="mb-3 grid grid-cols-2 gap-1 rounded-lg border border-slate-200 bg-white p-1 dark:border-neutral-800 dark:bg-neutral-950 sm:grid-cols-4">
+          {(["overview", "github", "plan", "history"] as const).map((tab) => (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)} className={`rounded px-2 py-1.5 text-xs font-semibold transition ${activeTab === tab ? "bg-slate-900 text-white dark:bg-white dark:text-black" : "text-slate-500 hover:bg-slate-100 dark:text-neutral-400 dark:hover:bg-neutral-900"}`}>
+              {tab === "overview" ? "Overview" : tab === "github" ? "GitHub" : tab === "plan" ? "Plan" : "History"}
+            </button>
+          ))}
+        </nav>
+
+        <main className="min-h-0 flex-1 overflow-auto pr-1">
+          {activeTab === "overview" ? (
+            <div className="grid gap-3">
+              <Section title="PROJECT OVERVIEW">
+                <form className="grid gap-2" onSubmit={submitProject}>
+                  <Field label="이름" value={projectDraft.name} onChange={(value) => setProjectDraft((draft) => ({ ...draft, name: value }))} />
+                  <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>
+                  <fieldset className="grid gap-2 rounded border border-slate-200 p-2 dark:border-neutral-800"><legend className="px-1 text-[11px] font-semibold text-slate-600 dark:text-neutral-300">Repository 연결</legend><div className="flex flex-wrap gap-3 text-xs"><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "github"} onChange={() => handleRepositoryModeChange("github")} />GitHub Repository</label><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "text"} onChange={() => handleRepositoryModeChange("text")} />GitHub 미연결</label></div>{repositoryMode === "github" ? <GitHubRepositoryPicker integration={github} repository={projectDraft.repository} branch={projectDraft.branch} githubRepositoryId={projectDraft.githubRepositoryId} githubOwner={projectDraft.githubOwner} githubRepo={projectDraft.githubRepo} onRepositoryChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value, githubRepositoryId: null, githubOwner: null, githubRepo: null }))} onBranchChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} onIdentityChange={handleRepositorySelection} /> : <p className="text-[11px] text-slate-500">GitHub 연결 없이 상태를 관리합니다.</p>}</fieldset>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="CURRENT" value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline /><Field label="TARGET" value={projectDraft.targetSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} multiline /></div>
+                  {repositoryMode === "github" ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><Field label="Last verified time" value={projectDraft.lastVerifiedAt} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: value }))} /></div> : null}
+                  {projectFormError ? <p role="alert" className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{projectFormError}</p> : null}
+                  <div className="flex flex-wrap gap-2"><button type="submit" className="rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">저장</button>{project ? <button type="button" onClick={() => actions.deleteProject(project.id)} className="rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700">프로젝트 삭제</button> : null}</div>
+                </form>
+              </Section>
+              {project ? <Section title="VERIFICATION"><div className="grid grid-cols-1 gap-2 text-xs text-slate-600 dark:text-neutral-300 md:grid-cols-2"><p>Repository: <strong>{project.repository || "-"}</strong></p><p>tracked branch: <strong>{project.branch || "-"}</strong></p><p>Last verified commit: <strong className="font-mono">{project.lastVerifiedCommit || "-"}</strong></p><p>Last verified time: <strong>{project.lastVerifiedAt ? formatTimestamp(project.lastVerifiedAt) : "-"}</strong></p></div></Section> : null}
+            </div>
+          ) : null}
+
+          {activeTab === "github" ? (
+            <div className="grid gap-3">
+              <GitHubConnectionBar integration={github} />
+              {project ? <GitHubRepositoryObservation project={project} readState={readState} onRefresh={() => void github.refreshProject(project)} /> : <Section title="GITHUB"><p className="text-xs text-slate-500">프로젝트를 저장한 뒤 remote observation을 조회할 수 있습니다.</p></Section>}
+            </div>
+          ) : null}
+
+          {activeTab === "plan" ? (
+            <div className="grid gap-3">
+              <Section title="MILESTONES"><form className="mb-2 flex gap-2" onSubmit={submitMilestone}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="마일스톤 추가" value={milestoneTitle} onChange={(event) => setMilestoneTitle(event.target.value)} /><button type="submit" disabled={!project} className="rounded bg-slate-800 px-2 text-xs text-white disabled:opacity-50">추가</button></form><div className="grid gap-1">{selectedMilestones.map((item) => <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => actions.updateProjectMilestone(item.id, { title: event.target.value })} /><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.status} onChange={(event) => actions.updateProjectMilestone(item.id, { status: event.target.value as DevMilestoneStatus })}>{MILESTONE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select><button type="button" onClick={() => actions.deleteProjectMilestone(item.id)} className="text-rose-600">삭제</button></div>)}</div></Section>
+              <Section title="NEXT / LATER / BLOCKED"><form className="mb-2 flex flex-wrap gap-2" onSubmit={submitAction}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="다음 작업 추가" value={actionTitle} onChange={(event) => setActionTitle(event.target.value)} /><select className="rounded border border-slate-300 bg-transparent text-[10px] dark:border-neutral-700" value={actionType} onChange={(event) => setActionType(event.target.value as DevActionType)}>{ACTION_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select><button type="submit" disabled={!project} className="rounded bg-slate-800 px-2 text-xs text-white disabled:opacity-50">추가</button></form><div className="grid gap-1">{ACTION_TYPES.map((type) => <div key={type} className="grid gap-1"><p className="text-[10px] font-semibold text-slate-500">{type}</p>{selectedActions.filter((item) => item.type === type).map((item) => <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => actions.updateProjectAction(item.id, { title: event.target.value })} /><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.status} onChange={(event) => actions.updateProjectAction(item.id, { status: event.target.value as DevActionStatus })}>{ACTION_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select><button type="button" onClick={() => actions.deleteProjectAction(item.id)} className="text-rose-600">삭제</button></div>)}</div>)}</div></Section>
+              <Section title="IDEAS"><form className="mb-2 flex gap-2" onSubmit={submitIdea}><input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="아이디어 추가" value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} /><button type="submit" disabled={!project} className="rounded bg-slate-800 px-2 text-xs text-white disabled:opacity-50">추가</button></form><div className="grid gap-1">{selectedIdeas.map((item) => <div key={item.id} className="flex items-center gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><input className="min-w-0 flex-1 bg-transparent" value={item.title} onChange={(event) => actions.updateProjectIdea(item.id, { title: event.target.value })} /><button type="button" onClick={() => actions.deleteProjectIdea(item.id)} className="text-rose-600">삭제</button></div>)}</div></Section>
+            </div>
+          ) : null}
+
+          {activeTab === "history" ? (
+            <div className="grid gap-3">
+              <Section title="PROJECT HISTORY"><form className="grid gap-2" onSubmit={submitHistory}><Field label="요약" value={historyDraft.summary} onChange={(value) => setHistoryDraft((draft) => ({ ...draft, summary: value }))} /><div className="grid grid-cols-1 gap-2 md:grid-cols-2"><label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>유형</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={historyDraft.type} onChange={(event) => setHistoryDraft((draft) => ({ ...draft, type: event.target.value as DevHistoryType }))}>{HISTORY_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></label><Field label="발생 시각" value={historyDraft.occurredAt} onChange={(value) => setHistoryDraft((draft) => ({ ...draft, occurredAt: value }))} /></div><Field label="GitHub ref (선택)" value={historyDraft.githubRef} onChange={(value) => setHistoryDraft((draft) => ({ ...draft, githubRef: value }))} /><button type="submit" disabled={!project} className="justify-self-start rounded bg-slate-800 px-3 py-1.5 text-xs text-white disabled:opacity-50">이력 추가</button></form><div className="mt-3 grid gap-1">{selectedHistory.map((item) => <div key={item.id} className="grid gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><div className="grid grid-cols-1 gap-2 md:grid-cols-[auto_1fr_auto]"><select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={item.type} onChange={(event) => actions.updateProjectHistory(item.id, { type: event.target.value as DevHistoryType })}>{HISTORY_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select><input className="min-w-0 bg-transparent" value={item.summary} onChange={(event) => actions.updateProjectHistory(item.id, { summary: event.target.value })} /><button type="button" onClick={() => actions.deleteProjectHistory(item.id)} className="text-rose-600">삭제</button></div><div className="grid grid-cols-1 gap-2 md:grid-cols-2"><input type="datetime-local" className="rounded border border-slate-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700" value={toDateTimeLocal(item.occurredAt)} onChange={(event) => actions.updateProjectHistory(item.id, { occurredAt: toIsoOrNull(event.target.value) ?? item.occurredAt })} /><input className="rounded border border-slate-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700" value={item.githubRef ?? ""} placeholder="GitHub ref" onChange={(event) => actions.updateProjectHistory(item.id, { githubRef: event.target.value || null })} /></div><span className="text-[10px] text-slate-500">{formatTimestamp(item.occurredAt)}</span></div>)}</div></Section>
+            </div>
+          ) : null}
+        </main>
+      </div>
+    </div>
+  );
+}

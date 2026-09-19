@@ -13,6 +13,10 @@ import { RecordsPanel } from "../features/records/RecordsPanel";
 import { ChecklistPanel } from "../features/tasks/ChecklistPanel";
 import { DevControlPanel } from "../features/dev-control/DevControlPanel";
 import { useGitHubIntegration } from "../features/dev-control/github/useGitHubIntegration";
+import {
+  projectWorkspaceStateFromRuntime,
+  useProjectWorkspaceHost,
+} from "../features/dev-control/workspace/projectWorkspaceBridge";
 import { useLocalSyncMemo } from "./useLocalSyncMemo";
 import { useThemeMode } from "./useThemeMode";
 
@@ -22,6 +26,32 @@ export function App() {
   const { setThemeMode, themeMode } = useThemeMode();
   const [activeView, setActiveView] = useState<HeaderView>("records");
   const [selectedDate, setSelectedDate] = useState(formatLocalDate());
+  const projectWorkspaceState = useMemo(
+    () =>
+      projectWorkspaceStateFromRuntime({
+        projects: memo.projects,
+        projectMilestones: memo.projectMilestones,
+        projectActions: memo.projectActions,
+        projectIdeas: memo.projectIdeas,
+        projectHistory: memo.projectHistory,
+        selectedProjectId: memo.selectedProjectId,
+        github,
+      }),
+    [
+      github,
+      memo.projectActions,
+      memo.projectHistory,
+      memo.projectIdeas,
+      memo.projectMilestones,
+      memo.projects,
+      memo.selectedProjectId,
+    ],
+  );
+  const { openWorkspace } = useProjectWorkspaceHost({
+    state: projectWorkspaceState,
+    github,
+    actions: memo,
+  });
   const quickCapture = useQuickCapture({
     onAddMemo: memo.addNoteForDate,
     onAddTask: memo.addTask,
@@ -134,23 +164,19 @@ export function App() {
               projectIdeas={memo.projectIdeas}
               projectHistory={memo.projectHistory}
               selectedProjectId={memo.selectedProjectId}
-              onSelectProject={memo.setSelectedProjectId}
+              onOpenProjectWorkspace={(projectId) => {
+                memo.setSelectedProjectId(projectId);
+                void openWorkspace({ mode: "view", projectId }).catch((error: unknown) => {
+                  console.error("Project Workspace를 열지 못했습니다.", error);
+                });
+              }}
+              onCreateProjectWorkspace={() => {
+                memo.setSelectedProjectId(null);
+                void openWorkspace({ mode: "create", projectId: null }).catch((error: unknown) => {
+                  console.error("Project Workspace를 열지 못했습니다.", error);
+                });
+              }}
               github={github}
-              addProject={memo.addProject}
-              updateProject={memo.updateProject}
-              deleteProject={memo.deleteProject}
-              addProjectMilestone={memo.addProjectMilestone}
-              updateProjectMilestone={memo.updateProjectMilestone}
-              deleteProjectMilestone={memo.deleteProjectMilestone}
-              addProjectAction={memo.addProjectAction}
-              updateProjectAction={memo.updateProjectAction}
-              deleteProjectAction={memo.deleteProjectAction}
-              addProjectIdea={memo.addProjectIdea}
-              updateProjectIdea={memo.updateProjectIdea}
-              deleteProjectIdea={memo.deleteProjectIdea}
-              addProjectHistory={memo.addProjectHistory}
-              updateProjectHistory={memo.updateProjectHistory}
-              deleteProjectHistory={memo.deleteProjectHistory}
             />
           ) : (
             <div className="grid h-full min-h-0 grid-cols-2 gap-3">

@@ -12,6 +12,7 @@
     "allow-quick-capture-shortcut-status",
     "allow-show-quick-capture",
     "allow-open-db-editor-window",
+    "allow-open-project-workspace-window",
     "allow-github-config-status",
     "allow-github-save-config",
     "allow-github-delete-config",
