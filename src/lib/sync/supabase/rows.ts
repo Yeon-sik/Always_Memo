@@ -106,6 +106,8 @@ export interface ProjectRow extends EntityAuditRow {
   id: string;
   user_id: string;
   name: string;
+  /** Optional at the wire boundary so rows from pre-description schemas remain readable. */
+  description?: string | null;
   repository: string | null;
   branch: string | null;
   /** Optional at the wire boundary so rows from pre-migration schemas remain readable. */
@@ -236,6 +238,19 @@ export interface WorkstreamActionDependencyRow extends EntityAuditRow {
   device_id: string;
 }
 
+export interface KnowledgeDocumentRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  title: string;
+  type: "IDEA" | "PLAN" | "DESIGN" | "RESEARCH" | "NOTE";
+  project_id: string | null;
+  workstream_id: string | null;
+  relative_path: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
 export interface DeviceRow {
   id: string;
   user_id: string;
@@ -307,6 +322,12 @@ export interface Database {
         Row: ProjectRow;
         Insert: ProjectRow;
         Update: Partial<ProjectRow>;
+        Relationships: [];
+      };
+      knowledge_documents: {
+        Row: KnowledgeDocumentRow;
+        Insert: KnowledgeDocumentRow;
+        Update: Partial<KnowledgeDocumentRow>;
         Relationships: [];
       };
       project_milestones: {
@@ -406,6 +427,7 @@ export type SnapshotTableName =
   | "workstream_milestones"
   | "workstream_actions"
   | "workstream_action_projects"
-  | "workstream_action_dependencies";
+  | "workstream_action_dependencies"
+  | "knowledge_documents";
 
 export type RealtimeTableName = Exclude<SnapshotTableName, "devices">;

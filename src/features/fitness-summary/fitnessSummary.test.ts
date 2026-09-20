@@ -91,6 +91,7 @@ function snapshot(
     workstreamActions: [],
     workstreamActionProjects: [],
     workstreamActionDependencies: [],
+    knowledgeDocuments: [],
     ...overrides,
   };
 }

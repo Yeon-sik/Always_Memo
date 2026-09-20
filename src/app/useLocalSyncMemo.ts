@@ -63,6 +63,13 @@ export function useLocalSyncMemo(
     () => getVisibleWorkstreams(runtime.snapshot.workstreams),
     [runtime.snapshot.workstreams],
   );
+  const visibleKnowledgeDocuments = useMemo(
+    () =>
+      runtime.snapshot.knowledgeDocuments
+        .filter((document) => document.deletedAt === null)
+        .sort((first, second) => first.title.localeCompare(second.title)),
+    [runtime.snapshot.knowledgeDocuments],
+  );
   const visibleFitnessSummaryProjections = useMemo(
     () =>
       runtime.snapshot.fitnessSummaryProjections
@@ -97,6 +104,7 @@ export function useLocalSyncMemo(
   });
   const devControlActions = useDevControlActions({
     commitSnapshot: runtime.commitSnapshot,
+    snapshot: runtime.snapshot,
     device: runtime.device,
     selectedProjectId,
     setSelectedProjectId,
@@ -129,6 +137,7 @@ export function useLocalSyncMemo(
     isManualSyncing: runtime.isManualSyncing,
     isReady: runtime.isReady,
     isSupabaseConfigured: runtime.isSupabaseConfigured,
+    knowledgeDocuments: visibleKnowledgeDocuments,
     loadFinanceDailySummaries: runtime.loadFinanceDailySummaries,
     manualSync: runtime.manualSync,
     mealRecords: visibleMealRecords,

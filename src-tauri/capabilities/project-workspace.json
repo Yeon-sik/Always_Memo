@@ -3,5 +3,15 @@
   "identifier": "project-workspace",
   "description": "Project Workspace event bridge permissions",
   "windows": ["project-workspace"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "allow-knowledge-vault-get-config",
+    "allow-knowledge-vault-set-path",
+    "allow-knowledge-vault-create-document",
+    "allow-knowledge-vault-write-generated-file",
+    "allow-knowledge-vault-update-document",
+    "allow-knowledge-vault-move-file",
+    "allow-knowledge-vault-open-file"
+  ]
 }

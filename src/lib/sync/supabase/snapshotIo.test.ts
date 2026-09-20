@@ -174,6 +174,7 @@ describe("Supabase snapshot IO", () => {
       "workstream_actions",
       "workstream_action_projects",
       "workstream_action_dependencies",
+      "knowledge_documents",
     ]);
     expect(result.notes[0].content).toBe("remote");
   });

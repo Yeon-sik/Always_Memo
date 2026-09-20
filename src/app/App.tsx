@@ -40,6 +40,7 @@ export function App() {
         workstreamMilestones: memo.workstreamMilestones,
         workstreamActionProjects: memo.workstreamActionProjects,
         workstreamActionDependencies: memo.workstreamActionDependencies,
+        knowledgeDocuments: memo.knowledgeDocuments,
         selectedProjectId: memo.selectedProjectId,
         github,
       }),
@@ -88,6 +89,7 @@ export function App() {
       workstreamActions: memo.workstreamActions,
       workstreamActionProjects: memo.workstreamActionProjects,
       workstreamActionDependencies: memo.workstreamActionDependencies,
+      knowledgeDocuments: memo.knowledgeDocuments,
     }),
     [
       memo.activeDevices,
@@ -108,6 +110,7 @@ export function App() {
       memo.workstreamMilestones,
       memo.workstreamProjects,
       memo.workstreams,
+      memo.knowledgeDocuments,
     ],
   );
 

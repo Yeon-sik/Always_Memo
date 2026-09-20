@@ -29,6 +29,13 @@ fn main() {
             "github_list_branches",
             "github_read_repository",
             "github_read_commit_history",
+            "knowledge_vault_get_config",
+            "knowledge_vault_set_path",
+            "knowledge_vault_create_document",
+            "knowledge_vault_write_generated_file",
+            "knowledge_vault_update_document",
+            "knowledge_vault_move_file",
+            "knowledge_vault_open_file",
         ]),
     ))
     .expect("failed to build Tauri application manifest");
