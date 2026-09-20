@@ -17,6 +17,7 @@ fn main() {
             "db_editor_list_rows",
             "update_db_row",
             "open_db_editor_window",
+            "open_project_workspace_window",
             "github_config_status",
             "github_save_config",
             "github_delete_config",
