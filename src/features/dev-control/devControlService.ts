@@ -10,6 +10,14 @@ import type {
   ProjectHistory,
   ProjectIdea,
   ProjectMilestone,
+  SyncableEntity,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
+  DevWorkstreamStatus,
 } from "../../types";
 import { createEntityAuditFields } from "../../lib/dataTrust/backfillMetadata";
 import {
@@ -70,6 +78,22 @@ export interface ProjectHistoryChanges {
   summary?: string;
   occurredAt?: string;
   githubRef?: string | null;
+}
+
+export interface WorkstreamChanges {
+  name?: string;
+  status?: DevWorkstreamStatus;
+}
+
+export interface WorkstreamMilestoneChanges {
+  title?: string;
+  status?: DevMilestoneStatus;
+}
+
+export interface WorkstreamActionChanges {
+  title?: string;
+  type?: DevActionType;
+  status?: DevActionStatus;
 }
 
 function nowIso(): string {
@@ -567,5 +591,320 @@ export function hasBlockedAction(actions: ProjectAction[]): boolean {
   return actions.some(
     (action) =>
       action.deletedAt === null && action.type === "BLOCKED" && action.status === "OPEN",
+  );
+}
+
+function workstreamRelationId(...parts: string[]): string {
+  return parts.join(":");
+}
+
+function restoreSyncableEntity<T extends { deletedAt: string | null } & Pick<SyncableEntity, "updatedAt" | "deviceId">>(
+  entity: T,
+  deviceId: string,
+): T {
+  const now = nowIso();
+  return { ...entity, updatedAt: now, deletedAt: null, deviceId };
+}
+
+export function createWorkstream(
+  deviceId: string,
+  changes: Pick<Workstream, "name" | "status">,
+  backfillInput?: BackfillInput,
+): Workstream {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: createId(),
+    name: changes.name.trim(),
+    status: changes.status,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function updateWorkstream(
+  workstream: Workstream,
+  changes: WorkstreamChanges,
+  deviceId: string,
+): Workstream {
+  return {
+    ...workstream,
+    ...(changes.name === undefined ? {} : { name: changes.name.trim() }),
+    ...(changes.status === undefined ? {} : { status: changes.status }),
+    updatedAt: nowIso(),
+    deviceId,
+  };
+}
+
+export function softDeleteWorkstream(
+  workstream: Workstream,
+  deviceId: string,
+): Workstream {
+  const now = nowIso();
+  return { ...workstream, updatedAt: now, deletedAt: now, deviceId };
+}
+
+export function createWorkstreamProject(
+  workstreamId: string,
+  projectId: string,
+  deviceId: string,
+  backfillInput?: BackfillInput,
+): WorkstreamProject {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: workstreamRelationId(workstreamId, projectId),
+    workstreamId,
+    projectId,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function restoreWorkstreamProject(
+  link: WorkstreamProject,
+  deviceId: string,
+): WorkstreamProject {
+  return restoreSyncableEntity(link, deviceId);
+}
+
+export function softDeleteWorkstreamProject(
+  link: WorkstreamProject,
+  deviceId: string,
+): WorkstreamProject {
+  const now = nowIso();
+  return { ...link, updatedAt: now, deletedAt: now, deviceId };
+}
+
+export function createWorkstreamMilestone(
+  workstreamId: string,
+  title: string,
+  deviceId: string,
+  status: DevMilestoneStatus = "PLANNED",
+  backfillInput?: BackfillInput,
+): WorkstreamMilestone {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: createId(),
+    workstreamId,
+    title: title.trim(),
+    status,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function updateWorkstreamMilestone(
+  milestone: WorkstreamMilestone,
+  changes: WorkstreamMilestoneChanges,
+  deviceId: string,
+): WorkstreamMilestone {
+  return {
+    ...milestone,
+    ...(changes.title === undefined ? {} : { title: changes.title.trim() }),
+    ...(changes.status === undefined ? {} : { status: changes.status }),
+    updatedAt: nowIso(),
+    deviceId,
+  };
+}
+
+export function softDeleteWorkstreamMilestone(
+  milestone: WorkstreamMilestone,
+  deviceId: string,
+): WorkstreamMilestone {
+  const now = nowIso();
+  return { ...milestone, updatedAt: now, deletedAt: now, deviceId };
+}
+
+export function createWorkstreamAction(
+  workstreamId: string,
+  title: string,
+  deviceId: string,
+  type: DevActionType = "NEXT",
+  status: DevActionStatus = "OPEN",
+  backfillInput?: BackfillInput,
+): WorkstreamAction {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: createId(),
+    workstreamId,
+    title: title.trim(),
+    type,
+    status,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function updateWorkstreamAction(
+  action: WorkstreamAction,
+  changes: WorkstreamActionChanges,
+  deviceId: string,
+): WorkstreamAction {
+  return {
+    ...action,
+    ...(changes.title === undefined ? {} : { title: changes.title.trim() }),
+    ...(changes.type === undefined ? {} : { type: changes.type }),
+    ...(changes.status === undefined ? {} : { status: changes.status }),
+    updatedAt: nowIso(),
+    deviceId,
+  };
+}
+
+export function softDeleteWorkstreamAction(
+  action: WorkstreamAction,
+  deviceId: string,
+): WorkstreamAction {
+  const now = nowIso();
+  return { ...action, updatedAt: now, deletedAt: now, deviceId };
+}
+
+export function createWorkstreamActionProject(
+  actionId: string,
+  projectId: string,
+  deviceId: string,
+  backfillInput?: BackfillInput,
+): WorkstreamActionProject {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: workstreamRelationId(actionId, projectId),
+    actionId,
+    projectId,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function restoreWorkstreamActionProject(
+  link: WorkstreamActionProject,
+  deviceId: string,
+): WorkstreamActionProject {
+  return restoreSyncableEntity(link, deviceId);
+}
+
+export function softDeleteWorkstreamActionProject(
+  link: WorkstreamActionProject,
+  deviceId: string,
+): WorkstreamActionProject {
+  const now = nowIso();
+  return { ...link, updatedAt: now, deletedAt: now, deviceId };
+}
+
+export function createWorkstreamActionDependency(
+  actionId: string,
+  dependsOnActionId: string,
+  deviceId: string,
+  backfillInput?: BackfillInput,
+): WorkstreamActionDependency {
+  const now = nowIso();
+  return {
+    ...createEntityAuditFields(backfillInput, now),
+    id: workstreamRelationId(actionId, dependsOnActionId),
+    actionId,
+    dependsOnActionId,
+    updatedAt: now,
+    deletedAt: null,
+    deviceId,
+  };
+}
+
+export function restoreWorkstreamActionDependency(
+  dependency: WorkstreamActionDependency,
+  deviceId: string,
+): WorkstreamActionDependency {
+  return restoreSyncableEntity(dependency, deviceId);
+}
+
+export function softDeleteWorkstreamActionDependency(
+  dependency: WorkstreamActionDependency,
+  deviceId: string,
+): WorkstreamActionDependency {
+  const now = nowIso();
+  return { ...dependency, updatedAt: now, deletedAt: now, deviceId };
+}
+
+function hasDependencyPath(
+  dependencies: WorkstreamActionDependency[],
+  currentActionId: string,
+  targetActionId: string,
+  visited = new Set<string>(),
+): boolean {
+  if (currentActionId === targetActionId) return true;
+  if (visited.has(currentActionId)) return false;
+  visited.add(currentActionId);
+
+  return dependencies
+    .filter(
+      (dependency) =>
+        dependency.deletedAt === null &&
+        dependency.actionId === currentActionId,
+    )
+    .some((dependency) =>
+      hasDependencyPath(
+        dependencies,
+        dependency.dependsOnActionId,
+        targetActionId,
+        visited,
+      ),
+    );
+}
+
+export function isWorkstreamActionDependencyAllowed(
+  dependencies: WorkstreamActionDependency[],
+  actionId: string,
+  dependsOnActionId: string,
+): boolean {
+  if (!actionId || !dependsOnActionId || actionId === dependsOnActionId) {
+    return false;
+  }
+  if (
+    dependencies.some(
+      (dependency) =>
+        dependency.deletedAt === null &&
+        dependency.actionId === actionId &&
+        dependency.dependsOnActionId === dependsOnActionId,
+    )
+  ) {
+    return false;
+  }
+
+  return !hasDependencyPath(
+    dependencies,
+    dependsOnActionId,
+    actionId,
+  );
+}
+
+export function getVisibleWorkstreams(workstreams: Workstream[]): Workstream[] {
+  return workstreams
+    .filter((workstream) => workstream.deletedAt === null)
+    .sort((first, second) => second.updatedAt.localeCompare(first.updatedAt));
+}
+
+export function getWorkstreamChildren<
+  T extends { workstreamId: string; deletedAt: string | null },
+>(
+  workstreamId: string,
+  workstreams: Workstream[],
+  children: T[],
+): T[] {
+  if (
+    !workstreams.some(
+      (workstream) =>
+        workstream.id === workstreamId && workstream.deletedAt === null,
+    )
+  ) {
+    return [];
+  }
+  return children.filter(
+    (child) => child.workstreamId === workstreamId && child.deletedAt === null,
   );
 }

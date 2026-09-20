@@ -13,6 +13,12 @@ import type {
   FitnessSummaryProjectionV2,
   LegacyWorkoutRecordV1,
   WorkoutType,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../types";
 import { normalizeEntityAuditFields } from "../dataTrust/backfillMetadata";
 import { normalizeProjectGitHubIdentity } from "../dataTrust/projectGitHubIdentity";
@@ -80,6 +86,7 @@ function isOneOf<T extends string>(value: unknown, values: readonly T[]): value 
 }
 
 const PROJECT_STATUSES = ["PLANNED", "ACTIVE", "COMPLETED"] as const;
+const WORKSTREAM_STATUSES = ["PLANNED", "ACTIVE", "COMPLETED"] as const;
 const MILESTONE_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED"] as const;
 const ACTION_TYPES = ["NEXT", "LATER", "BLOCKED"] as const;
 const ACTION_STATUSES = ["OPEN", "DONE"] as const;
@@ -206,6 +213,126 @@ function normalizeProjectHistory(value: unknown): ProjectHistory | null {
     summary: value.summary as string,
     occurredAt: value.occurredAt as string,
     githubRef: (value.githubRef as string | null | undefined) ?? null,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstream(value: unknown): Workstream | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.name !== "string" ||
+    !isOneOf(value.status, WORKSTREAM_STATUSES)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    name: value.name,
+    status: value.status as (typeof WORKSTREAM_STATUSES)[number],
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstreamProject(value: unknown): WorkstreamProject | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.workstreamId !== "string" ||
+    typeof value.projectId !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    workstreamId: value.workstreamId,
+    projectId: value.projectId,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstreamMilestone(
+  value: unknown,
+): WorkstreamMilestone | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.workstreamId !== "string" ||
+    typeof value.title !== "string" ||
+    !isOneOf(value.status, MILESTONE_STATUSES)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    workstreamId: value.workstreamId,
+    title: value.title,
+    status: value.status as (typeof MILESTONE_STATUSES)[number],
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstreamAction(value: unknown): WorkstreamAction | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.workstreamId !== "string" ||
+    typeof value.title !== "string" ||
+    !isOneOf(value.type, ACTION_TYPES) ||
+    !isOneOf(value.status, ACTION_STATUSES)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    workstreamId: value.workstreamId,
+    title: value.title,
+    type: value.type as (typeof ACTION_TYPES)[number],
+    status: value.status as (typeof ACTION_STATUSES)[number],
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstreamActionProject(
+  value: unknown,
+): WorkstreamActionProject | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.actionId !== "string" ||
+    typeof value.projectId !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    actionId: value.actionId,
+    projectId: value.projectId,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeWorkstreamActionDependency(
+  value: unknown,
+): WorkstreamActionDependency | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.actionId !== "string" ||
+    typeof value.dependsOnActionId !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    actionId: value.actionId,
+    dependsOnActionId: value.dependsOnActionId,
     ...getNormalizedSyncFields(value),
   };
 }
@@ -462,6 +589,27 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
   const projectActions = normalizeArray(value.projectActions, normalizeProjectAction);
   const projectIdeas = normalizeArray(value.projectIdeas, normalizeProjectIdea);
   const projectHistory = normalizeArray(value.projectHistory, normalizeProjectHistory);
+  const workstreams = normalizeArray(value.workstreams, normalizeWorkstream);
+  const workstreamProjects = normalizeArray(
+    value.workstreamProjects,
+    normalizeWorkstreamProject,
+  );
+  const workstreamMilestones = normalizeArray(
+    value.workstreamMilestones,
+    normalizeWorkstreamMilestone,
+  );
+  const workstreamActions = normalizeArray(
+    value.workstreamActions,
+    normalizeWorkstreamAction,
+  );
+  const workstreamActionProjects = normalizeArray(
+    value.workstreamActionProjects,
+    normalizeWorkstreamActionProject,
+  );
+  const workstreamActionDependencies = normalizeArray(
+    value.workstreamActionDependencies,
+    normalizeWorkstreamActionDependency,
+  );
 
   return {
     notes,
@@ -476,6 +624,12 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     projectActions,
     projectIdeas,
     projectHistory,
+    workstreams,
+    workstreamProjects,
+    workstreamMilestones,
+    workstreamActions,
+    workstreamActionProjects,
+    workstreamActionDependencies,
   };
 }
 

@@ -11,6 +11,12 @@ import type {
   ProjectHistory,
   ProjectIdea,
   ProjectMilestone,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../../types";
 import type { DevControlActions } from "../useDevControlActions";
 import {
@@ -54,6 +60,12 @@ export interface ProjectWorkspaceState {
   projectActions: ProjectAction[];
   projectIdeas: ProjectIdea[];
   projectHistory: ProjectHistory[];
+  workstreams: Workstream[];
+  workstreamProjects: WorkstreamProject[];
+  workstreamMilestones: WorkstreamMilestone[];
+  workstreamActions: WorkstreamAction[];
+  workstreamActionProjects: WorkstreamActionProject[];
+  workstreamActionDependencies: WorkstreamActionDependency[];
   selectedProjectId: string | null;
   github: ProjectWorkspaceGitHubState;
 }
@@ -344,6 +356,21 @@ export function useProjectWorkspaceClient() {
     addProjectHistory: (projectId, summary, historyType, occurredAt, githubRef) => void emitMutation({ type: "addProjectHistory", projectId, summary, historyType, occurredAt, githubRef }),
     updateProjectHistory: (id, changes) => void emitMutation({ type: "updateProjectHistory", id, changes }),
     deleteProjectHistory: (id) => void emitMutation({ type: "deleteProjectHistory", id }),
+    addWorkstream: () => undefined,
+    updateWorkstream: () => undefined,
+    deleteWorkstream: () => undefined,
+    addWorkstreamProject: () => undefined,
+    deleteWorkstreamProject: () => undefined,
+    addWorkstreamMilestone: () => undefined,
+    updateWorkstreamMilestone: () => undefined,
+    deleteWorkstreamMilestone: () => undefined,
+    addWorkstreamAction: () => undefined,
+    updateWorkstreamAction: () => undefined,
+    deleteWorkstreamAction: () => undefined,
+    addWorkstreamActionProject: () => undefined,
+    deleteWorkstreamActionProject: () => undefined,
+    addWorkstreamActionDependency: () => undefined,
+    deleteWorkstreamActionDependency: () => undefined,
   }), [emitMutation]);
 
   const github = useMemo<GitHubIntegrationController>(() => {
@@ -372,6 +399,12 @@ export function projectWorkspaceStateFromRuntime({
   projectActions,
   projectIdeas,
   projectHistory,
+  workstreams,
+  workstreamProjects,
+  workstreamMilestones,
+  workstreamActions,
+  workstreamActionProjects,
+  workstreamActionDependencies,
   selectedProjectId,
   github,
 }: Omit<ProjectWorkspaceState, "github"> & { github: GitHubIntegrationController }): ProjectWorkspaceState {
@@ -381,6 +414,12 @@ export function projectWorkspaceStateFromRuntime({
     projectActions,
     projectIdeas,
     projectHistory,
+    workstreams,
+    workstreamProjects,
+    workstreamMilestones,
+    workstreamActions,
+    workstreamActionProjects,
+    workstreamActionDependencies,
     selectedProjectId,
     github: githubStateFromController(github),
   };
@@ -392,6 +431,12 @@ export const emptyProjectWorkspaceState: ProjectWorkspaceState = {
   projectActions: [],
   projectIdeas: [],
   projectHistory: [],
+  workstreams: [],
+  workstreamProjects: [],
+  workstreamMilestones: [],
+  workstreamActions: [],
+  workstreamActionProjects: [],
+  workstreamActionDependencies: [],
   selectedProjectId: null,
   github: {
     status: disconnectedGitHubStatus,

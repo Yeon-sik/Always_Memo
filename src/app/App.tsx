@@ -34,6 +34,12 @@ export function App() {
         projectActions: memo.projectActions,
         projectIdeas: memo.projectIdeas,
         projectHistory: memo.projectHistory,
+        workstreams: memo.workstreams,
+        workstreamProjects: memo.workstreamProjects,
+        workstreamActions: memo.workstreamActions,
+        workstreamMilestones: memo.workstreamMilestones,
+        workstreamActionProjects: memo.workstreamActionProjects,
+        workstreamActionDependencies: memo.workstreamActionDependencies,
         selectedProjectId: memo.selectedProjectId,
         github,
       }),
@@ -45,6 +51,12 @@ export function App() {
       memo.projectMilestones,
       memo.projects,
       memo.selectedProjectId,
+      memo.workstreamActionDependencies,
+      memo.workstreamActionProjects,
+      memo.workstreamActions,
+      memo.workstreamMilestones,
+      memo.workstreamProjects,
+      memo.workstreams,
     ],
   );
   const { openWorkspace } = useProjectWorkspaceHost({
@@ -70,6 +82,12 @@ export function App() {
       projectActions: memo.projectActions,
       projectIdeas: memo.projectIdeas,
       projectHistory: memo.projectHistory,
+      workstreams: memo.workstreams,
+      workstreamProjects: memo.workstreamProjects,
+      workstreamMilestones: memo.workstreamMilestones,
+      workstreamActions: memo.workstreamActions,
+      workstreamActionProjects: memo.workstreamActionProjects,
+      workstreamActionDependencies: memo.workstreamActionDependencies,
     }),
     [
       memo.activeDevices,
@@ -84,6 +102,12 @@ export function App() {
       memo.tasks,
       memo.weightRecords,
       memo.workoutRecords,
+      memo.workstreamActionDependencies,
+      memo.workstreamActionProjects,
+      memo.workstreamActions,
+      memo.workstreamMilestones,
+      memo.workstreamProjects,
+      memo.workstreams,
     ],
   );
 
@@ -163,6 +187,19 @@ export function App() {
               projectActions={memo.projectActions}
               projectIdeas={memo.projectIdeas}
               projectHistory={memo.projectHistory}
+              workstreams={memo.workstreams}
+              workstreamProjects={memo.workstreamProjects}
+              workstreamMilestones={memo.workstreamMilestones}
+              workstreamActions={memo.workstreamActions}
+              workstreamActionProjects={memo.workstreamActionProjects}
+              workstreamActionDependencies={memo.workstreamActionDependencies}
+              selectedWorkstreamId={memo.selectedWorkstreamId}
+              onOpenWorkstream={(workstreamId) => {
+                memo.setSelectedWorkstreamId(workstreamId);
+              }}
+              onCreateWorkstream={() => {
+                memo.setSelectedWorkstreamId(null);
+              }}
               selectedProjectId={memo.selectedProjectId}
               onOpenProjectWorkspace={(projectId) => {
                 memo.setSelectedProjectId(projectId);
@@ -176,6 +213,7 @@ export function App() {
                   console.error("Project Workspace를 열지 못했습니다.", error);
                 });
               }}
+              actions={memo}
               github={github}
             />
           ) : (

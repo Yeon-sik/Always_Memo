@@ -6,12 +6,19 @@ import {
   createProjectHistory,
   createProjectIdea,
   createProjectMilestone,
+  createWorkstream,
+  createWorkstreamAction,
+  createWorkstreamActionDependency,
+  createWorkstreamActionProject,
+  createWorkstreamProject,
   getOpenNextCount,
   getProjectRepositoryMode,
   getProjectChildren,
   getProjectLastUpdated,
   getVisibleProjects,
+  getVisibleWorkstreams,
   hasBlockedAction,
+  isWorkstreamActionDependencyAllowed,
   normalizeProjectRepositoryFields,
   normalizeProjectGitHubFields,
   parseGitHubRepositoryUrl,
@@ -20,6 +27,7 @@ import {
   softDeleteProjectHistory,
   softDeleteProjectIdea,
   softDeleteProjectMilestone,
+  softDeleteWorkstream,
   updateProject,
   updateProjectAction,
   updateProjectHistory,
@@ -309,5 +317,127 @@ describe("Dev Control service", () => {
       expect(entity.deletedAt).toBe(entity.updatedAt);
       expect(entity.deviceId).toBe(DEVICE_ID);
     }
+  });
+
+  it("keeps Workstream participation separate from Project children", () => {
+    const workstream = createWorkstream(DEVICE_ID, {
+      name: "OCR v5",
+      status: "ACTIVE",
+    });
+    const projectA = createProject(DEVICE_ID, projectInput());
+    const projectB = createProject(DEVICE_ID, {
+      ...projectInput(),
+      name: "Fitness App",
+    });
+    const projectC = createProject(DEVICE_ID, {
+      ...projectInput(),
+      name: "PT",
+    });
+    const linkA = createWorkstreamProject(
+      workstream.id,
+      projectA.id,
+      DEVICE_ID,
+    );
+    const linkB = createWorkstreamProject(
+      workstream.id,
+      projectB.id,
+      DEVICE_ID,
+    );
+    const linkC = createWorkstreamProject(
+      workstream.id,
+      projectC.id,
+      DEVICE_ID,
+    );
+
+    expect(getVisibleWorkstreams([workstream])).toEqual([workstream]);
+    expect(new Set([linkA.projectId, linkB.projectId, linkC.projectId])).toEqual(
+      new Set([projectA.id, projectB.id, projectC.id]),
+    );
+    expect(linkA.id).toBe(workstream.id + ":" + projectA.id);
+    expect(linkA.id).not.toBe(linkB.id);
+
+    const sharedAction = createWorkstreamAction(
+      workstream.id,
+      "canonical contract",
+      DEVICE_ID,
+    );
+    const actionProjectA = createWorkstreamActionProject(
+      sharedAction.id,
+      projectA.id,
+      DEVICE_ID,
+    );
+    const actionProjectB = createWorkstreamActionProject(
+      sharedAction.id,
+      projectB.id,
+      DEVICE_ID,
+    );
+    expect(new Set([actionProjectA.projectId, actionProjectB.projectId])).toEqual(
+      new Set([projectA.id, projectB.id]),
+    );
+
+    const secondWorkstream = createWorkstream(DEVICE_ID, {
+      name: "Receipt v3",
+      status: "PLANNED",
+    });
+    const secondWorkstreamProject = createWorkstreamProject(
+      secondWorkstream.id,
+      projectA.id,
+      DEVICE_ID,
+    );
+    expect(secondWorkstreamProject.projectId).toBe(projectA.id);
+    expect(secondWorkstreamProject.id).not.toBe(linkA.id);
+
+    expect(getVisibleWorkstreams([softDeleteWorkstream(workstream, DEVICE_ID)]))
+      .toEqual([]);
+  });
+
+  it("rejects dependency cycles while allowing independent Workstream actions", () => {
+    const workstream = createWorkstream(DEVICE_ID, {
+      name: "OCR v5",
+      status: "ACTIVE",
+    });
+    const contract = createWorkstreamAction(
+      workstream.id,
+      "contract",
+      DEVICE_ID,
+    );
+    const exporter = createWorkstreamAction(
+      workstream.id,
+      "exporter",
+      DEVICE_ID,
+    );
+    const e2e = createWorkstreamAction(workstream.id, "e2e", DEVICE_ID);
+    const contractDependency = createWorkstreamActionDependency(
+      exporter.id,
+      contract.id,
+      DEVICE_ID,
+    );
+    const exporterDependency = createWorkstreamActionDependency(
+      e2e.id,
+      exporter.id,
+      DEVICE_ID,
+    );
+
+    expect(
+      isWorkstreamActionDependencyAllowed(
+        [contractDependency, exporterDependency],
+        contract.id,
+        e2e.id,
+      ),
+    ).toBe(false);
+    expect(
+      isWorkstreamActionDependencyAllowed(
+        [contractDependency, exporterDependency],
+        e2e.id,
+        contract.id,
+      ),
+    ).toBe(true);
+    expect(
+      isWorkstreamActionDependencyAllowed(
+        [contractDependency, exporterDependency],
+        exporter.id,
+        contract.id,
+      ),
+    ).toBe(false);
   });
 });

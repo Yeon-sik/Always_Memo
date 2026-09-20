@@ -5,6 +5,7 @@ import type {
   DevHistoryType,
   DevMilestoneStatus,
   DevProjectStatus,
+  DevWorkstreamStatus,
   FitnessSummaryProjectionV2,
   LegacyWorkoutRecordV1,
   LocalDataSnapshot,
@@ -17,6 +18,12 @@ import type {
   ProjectMilestone,
   Task,
   WeightRecord,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../../types";
 
 export const TEST_TIME = "2026-08-01T00:00:00.000Z";
@@ -215,6 +222,81 @@ export function makeProjectHistory(
   };
 }
 
+export function makeWorkstream(
+  overrides: Partial<Workstream> = {},
+): Workstream {
+  return {
+    ...auditFields,
+    id: "workstream-1",
+    name: "Workstream",
+    status: "ACTIVE" satisfies DevWorkstreamStatus,
+    ...overrides,
+  };
+}
+
+export function makeWorkstreamProject(
+  overrides: Partial<WorkstreamProject> = {},
+): WorkstreamProject {
+  return {
+    ...auditFields,
+    id: "workstream-1:project-1",
+    workstreamId: "workstream-1",
+    projectId: "project-1",
+    ...overrides,
+  };
+}
+
+export function makeWorkstreamMilestone(
+  overrides: Partial<WorkstreamMilestone> = {},
+): WorkstreamMilestone {
+  return {
+    ...auditFields,
+    id: "workstream-milestone-1",
+    workstreamId: "workstream-1",
+    title: "Workstream milestone",
+    status: "PLANNED" satisfies DevMilestoneStatus,
+    ...overrides,
+  };
+}
+
+export function makeWorkstreamAction(
+  overrides: Partial<WorkstreamAction> = {},
+): WorkstreamAction {
+  return {
+    ...auditFields,
+    id: "workstream-action-1",
+    workstreamId: "workstream-1",
+    title: "Workstream action",
+    type: "NEXT" satisfies DevActionType,
+    status: "OPEN" satisfies DevActionStatus,
+    ...overrides,
+  };
+}
+
+export function makeWorkstreamActionProject(
+  overrides: Partial<WorkstreamActionProject> = {},
+): WorkstreamActionProject {
+  return {
+    ...auditFields,
+    id: "workstream-action-1:project-1",
+    actionId: "workstream-action-1",
+    projectId: "project-1",
+    ...overrides,
+  };
+}
+
+export function makeWorkstreamActionDependency(
+  overrides: Partial<WorkstreamActionDependency> = {},
+): WorkstreamActionDependency {
+  return {
+    ...auditFields,
+    id: "workstream-action-1:workstream-action-2",
+    actionId: "workstream-action-1",
+    dependsOnActionId: "workstream-action-2",
+    ...overrides,
+  };
+}
+
 export function makeSnapshot(
   overrides: Partial<LocalDataSnapshot> = {},
 ): LocalDataSnapshot {
@@ -231,6 +313,12 @@ export function makeSnapshot(
     projectActions: [],
     projectIdeas: [],
     projectHistory: [],
+    workstreams: [],
+    workstreamProjects: [],
+    workstreamMilestones: [],
+    workstreamActions: [],
+    workstreamActionProjects: [],
+    workstreamActionDependencies: [],
     ...overrides,
   };
 }

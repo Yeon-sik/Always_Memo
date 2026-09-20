@@ -12,6 +12,12 @@ import type {
   Task,
   WeightRecord,
   WorkoutType,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../../types";
 import { normalizeProjectGitHubIdentity } from "../../dataTrust/projectGitHubIdentity";
 import type {
@@ -28,6 +34,12 @@ import type {
   ProjectIdeaRow,
   ProjectMilestoneRow,
   ProjectRow,
+  WorkstreamActionDependencyRow,
+  WorkstreamActionProjectRow,
+  WorkstreamActionRow,
+  WorkstreamMilestoneRow,
+  WorkstreamProjectRow,
+  WorkstreamRow,
 } from "./rows";
 
 export function auditFieldsFromRow(
@@ -275,6 +287,91 @@ export function projectHistoryFromRow(row: ProjectHistoryRow): ProjectHistory {
   };
 }
 
+export function workstreamFromRow(row: WorkstreamRow): Workstream {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function workstreamProjectFromRow(
+  row: WorkstreamProjectRow,
+): WorkstreamProject {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    workstreamId: row.workstream_id,
+    projectId: row.project_id,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function workstreamMilestoneFromRow(
+  row: WorkstreamMilestoneRow,
+): WorkstreamMilestone {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    workstreamId: row.workstream_id,
+    title: row.title,
+    status: row.status,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function workstreamActionFromRow(
+  row: WorkstreamActionRow,
+): WorkstreamAction {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    workstreamId: row.workstream_id,
+    title: row.title,
+    type: row.type,
+    status: row.status,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function workstreamActionProjectFromRow(
+  row: WorkstreamActionProjectRow,
+): WorkstreamActionProject {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    actionId: row.action_id,
+    projectId: row.project_id,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
+export function workstreamActionDependencyFromRow(
+  row: WorkstreamActionDependencyRow,
+): WorkstreamActionDependency {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    actionId: row.action_id,
+    dependsOnActionId: row.depends_on_action_id,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
 export function deviceFromRow(row: DeviceRow): Device {
   return {
     id: row.id,
@@ -476,6 +573,105 @@ export function projectHistoryToRow(
     updated_at: history.updatedAt,
     deleted_at: history.deletedAt,
     device_id: history.deviceId,
+  };
+}
+
+export function workstreamToRow(
+  workstream: Workstream,
+  userId: string,
+): WorkstreamRow {
+  return {
+    ...auditFieldsToRow(workstream),
+    id: workstream.id,
+    user_id: userId,
+    name: workstream.name,
+    status: workstream.status,
+    updated_at: workstream.updatedAt,
+    deleted_at: workstream.deletedAt,
+    device_id: workstream.deviceId,
+  };
+}
+
+export function workstreamProjectToRow(
+  link: WorkstreamProject,
+  userId: string,
+): WorkstreamProjectRow {
+  return {
+    ...auditFieldsToRow(link),
+    id: link.id,
+    user_id: userId,
+    workstream_id: link.workstreamId,
+    project_id: link.projectId,
+    updated_at: link.updatedAt,
+    deleted_at: link.deletedAt,
+    device_id: link.deviceId,
+  };
+}
+
+export function workstreamMilestoneToRow(
+  milestone: WorkstreamMilestone,
+  userId: string,
+): WorkstreamMilestoneRow {
+  return {
+    ...auditFieldsToRow(milestone),
+    id: milestone.id,
+    user_id: userId,
+    workstream_id: milestone.workstreamId,
+    title: milestone.title,
+    status: milestone.status,
+    updated_at: milestone.updatedAt,
+    deleted_at: milestone.deletedAt,
+    device_id: milestone.deviceId,
+  };
+}
+
+export function workstreamActionToRow(
+  action: WorkstreamAction,
+  userId: string,
+): WorkstreamActionRow {
+  return {
+    ...auditFieldsToRow(action),
+    id: action.id,
+    user_id: userId,
+    workstream_id: action.workstreamId,
+    title: action.title,
+    type: action.type,
+    status: action.status,
+    updated_at: action.updatedAt,
+    deleted_at: action.deletedAt,
+    device_id: action.deviceId,
+  };
+}
+
+export function workstreamActionProjectToRow(
+  link: WorkstreamActionProject,
+  userId: string,
+): WorkstreamActionProjectRow {
+  return {
+    ...auditFieldsToRow(link),
+    id: link.id,
+    user_id: userId,
+    action_id: link.actionId,
+    project_id: link.projectId,
+    updated_at: link.updatedAt,
+    deleted_at: link.deletedAt,
+    device_id: link.deviceId,
+  };
+}
+
+export function workstreamActionDependencyToRow(
+  dependency: WorkstreamActionDependency,
+  userId: string,
+): WorkstreamActionDependencyRow {
+  return {
+    ...auditFieldsToRow(dependency),
+    id: dependency.id,
+    user_id: userId,
+    action_id: dependency.actionId,
+    depends_on_action_id: dependency.dependsOnActionId,
+    updated_at: dependency.updatedAt,
+    deleted_at: dependency.deletedAt,
+    device_id: dependency.deviceId,
   };
 }
 

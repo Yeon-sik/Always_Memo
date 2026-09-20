@@ -10,7 +10,10 @@ import { useNoteActions } from "../features/notes/useNoteActions";
 import { getVisibleTasks } from "../features/tasks/taskService";
 import { useTaskActions } from "../features/tasks/useTaskActions";
 import { useDevControlActions } from "../features/dev-control/useDevControlActions";
-import { getVisibleProjects } from "../features/dev-control/devControlService";
+import {
+  getVisibleProjects,
+  getVisibleWorkstreams,
+} from "../features/dev-control/devControlService";
 import { localStorageAdapter } from "../lib/storage/localStorageAdapter";
 import type { StorageAdapter } from "../lib/storage/storageAdapter";
 import type { SyncClient } from "../lib/sync/syncTypes";
@@ -53,6 +56,13 @@ export function useLocalSyncMemo(
     [runtime.snapshot.projects],
   );
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedWorkstreamId, setSelectedWorkstreamId] = useState<string | null>(
+    null,
+  );
+  const visibleWorkstreams = useMemo(
+    () => getVisibleWorkstreams(runtime.snapshot.workstreams),
+    [runtime.snapshot.workstreams],
+  );
   const visibleFitnessSummaryProjections = useMemo(
     () =>
       runtime.snapshot.fitnessSummaryProjections
@@ -90,6 +100,8 @@ export function useLocalSyncMemo(
     device: runtime.device,
     selectedProjectId,
     setSelectedProjectId,
+    selectedWorkstreamId,
+    setSelectedWorkstreamId,
   });
   return {
     activeDevices: runtime.activeDevices,
@@ -101,6 +113,13 @@ export function useLocalSyncMemo(
     device: runtime.device,
     projectActions: runtime.snapshot.projectActions,
     projectHistory: runtime.snapshot.projectHistory,
+    workstreamActions: runtime.snapshot.workstreamActions,
+    workstreamActionDependencies:
+      runtime.snapshot.workstreamActionDependencies,
+    workstreamActionProjects: runtime.snapshot.workstreamActionProjects,
+    workstreamMilestones: runtime.snapshot.workstreamMilestones,
+    workstreamProjects: runtime.snapshot.workstreamProjects,
+    workstreams: visibleWorkstreams,
     projectIdeas: runtime.snapshot.projectIdeas,
     projectMilestones: runtime.snapshot.projectMilestones,
     projects: visibleProjects,
@@ -120,6 +139,8 @@ export function useLocalSyncMemo(
     selectedNoteId: runtime.selectedNoteId,
     selectedProjectId,
     setSelectedProjectId,
+    selectedWorkstreamId,
+    setSelectedWorkstreamId,
     setAutostartEnabled: runtime.setAutostartEnabled,
     signIn: runtime.signIn,
     signOut: runtime.signOut,

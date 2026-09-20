@@ -25,6 +25,12 @@ import {
   makeTask,
   makeWeightRecord,
   makeWorkoutRecord,
+  makeWorkstream,
+  makeWorkstreamAction,
+  makeWorkstreamActionDependency,
+  makeWorkstreamActionProject,
+  makeWorkstreamMilestone,
+  makeWorkstreamProject,
 } from "./testFixtures";
 
 class FakeSnapshotTransport implements SnapshotTransport {
@@ -103,6 +109,12 @@ describe("Supabase snapshot IO", () => {
       "project_actions",
       "project_ideas",
       "project_history",
+      "workstreams",
+      "workstream_projects",
+      "workstream_milestones",
+      "workstream_actions",
+      "workstream_action_projects",
+      "workstream_action_dependencies",
     ];
 
     for (const tableName of tableNames) {
@@ -156,6 +168,12 @@ describe("Supabase snapshot IO", () => {
       "project_actions",
       "project_ideas",
       "project_history",
+      "workstreams",
+      "workstream_projects",
+      "workstream_milestones",
+      "workstream_actions",
+      "workstream_action_projects",
+      "workstream_action_dependencies",
     ]);
     expect(result.notes[0].content).toBe("remote");
   });
@@ -213,6 +231,12 @@ describe("Supabase snapshot IO", () => {
       projectActions: [makeProjectAction()],
       projectIdeas: [makeProjectIdea()],
       projectHistory: [makeProjectHistory()],
+      workstreams: [makeWorkstream()],
+      workstreamProjects: [makeWorkstreamProject()],
+      workstreamMilestones: [makeWorkstreamMilestone()],
+      workstreamActions: [makeWorkstreamAction()],
+      workstreamActionProjects: [makeWorkstreamActionProject()],
+      workstreamActionDependencies: [makeWorkstreamActionDependency()],
     });
 
     const result = await pushSnapshot(
@@ -225,12 +249,18 @@ describe("Supabase snapshot IO", () => {
     expect(transport.upsertCalls.map((call) => call.tableName)).toEqual([
       "devices",
       "projects",
+      "workstreams",
       "notes",
       "tasks",
       "project_milestones",
       "project_actions",
       "project_ideas",
       "project_history",
+      "workstream_projects",
+      "workstream_milestones",
+      "workstream_actions",
+      "workstream_action_projects",
+      "workstream_action_dependencies",
     ]);
     expect(transport.upsertCalls.map((call) => call.onConflict)).toEqual([
       "user_id,id",
@@ -241,8 +271,14 @@ describe("Supabase snapshot IO", () => {
       "id",
       "id",
       "id",
+      "id",
+      "id",
+      "id",
+      "id",
+      "id",
+      "id",
     ]);
-    expect(result.changedRows).toBe(8);
+    expect(result.changedRows).toBe(14);
     expect(result.currentDevice.lastSeenAt).toBe("2026-08-01T00:00:05.000Z");
   });
 
