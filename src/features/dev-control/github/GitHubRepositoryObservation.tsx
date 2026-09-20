@@ -18,14 +18,24 @@ export function GitHubRepositoryObservation({
   project,
   readState,
   onRefresh,
+  onLoadMore,
 }: {
   project: Project;
   readState?: GitHubProjectReadState;
   onRefresh: () => void;
+  onLoadMore: () => void;
 }) {
   if (!project.githubOwner || !project.githubRepo) return null;
 
   const model = readState?.model ?? null;
+  const commitHistory = readState?.commitHistory ?? {
+    commits: [],
+    page: 0,
+    perPage: 100,
+    hasNextPage: false,
+    loading: false,
+    error: null,
+  };
   const verificationState = getRemoteVerificationState(
     model?.remoteHead?.sha,
     project.lastVerifiedCommit,
@@ -80,18 +90,33 @@ export function GitHubRepositoryObservation({
           </div>
 
           <div className="grid gap-1">
-            <p className="text-[11px] font-semibold text-slate-700 dark:text-neutral-200">최근 commits</p>
-            {model.recentCommits.length === 0 ? (
-              <p className="text-[11px] text-slate-500">최근 commit이 없습니다.</p>
+            <p className="text-[11px] font-semibold text-slate-700 dark:text-neutral-200">Commit History</p>
+            {commitHistory.error ? (
+              <p role="alert" className="rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
+                {commitHistory.error}
+              </p>
+            ) : null}
+            {commitHistory.commits.length === 0 ? (
+              <p className="text-[11px] text-slate-500">{commitHistory.loading ? "commit history를 불러오는 중입니다." : "commit history가 없습니다."}</p>
             ) : (
-              model.recentCommits.map((commit) => (
+              commitHistory.commits.map((commit) => (
                 <a key={commit.sha} href={commit.htmlUrl} target="_blank" rel="noreferrer" className="grid gap-0.5 rounded border border-slate-200 p-2 text-[11px] hover:border-teal-400 dark:border-neutral-800">
-                  <span className="font-mono text-teal-700 dark:text-teal-300">{commit.sha.slice(0, 10)}</span>
+                  <span className="break-all font-mono text-teal-700 dark:text-teal-300">{commit.sha}</span>
                   <span className="line-clamp-1">{commit.message.split("\n")[0]}</span>
                   <span className="text-slate-500">{formatTimestamp(commit.committedAt)}{commit.author ? ` · ${commit.author}` : ""}</span>
                 </a>
               ))
             )}
+            {commitHistory.hasNextPage ? (
+              <button
+                type="button"
+                disabled={commitHistory.loading}
+                onClick={onLoadMore}
+                className="justify-self-start rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold disabled:opacity-50 dark:border-neutral-700"
+              >
+                {commitHistory.loading ? "불러오는 중" : "더 보기"}
+              </button>
+            ) : null}
           </div>
 
           <div className="grid gap-1">

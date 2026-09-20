@@ -387,6 +387,7 @@ pub fn run() {
             github::github_list_repositories,
             github::github_list_branches,
             github::github_read_repository,
+            github::github_read_commit_history,
         ])
         .setup(|app| {
             #[cfg(desktop)]

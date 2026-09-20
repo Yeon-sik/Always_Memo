@@ -18,6 +18,7 @@ const DEFAULT_DEVICE_POLL_INTERVAL_SECONDS: u64 = 5;
 const CREDENTIAL_SERVICE: &str = "com.yeonsik.note.github";
 const CREDENTIAL_USERNAME: &str = "github-device-flow";
 const GITHUB_CONFIG_FILE_NAME: &str = "github-config.json";
+const GITHUB_COMMIT_HISTORY_PAGE_SIZE: u32 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -409,6 +410,16 @@ where
         path: impl Into<String>,
         query: Vec<(String, String)>,
     ) -> Result<(U, u16), GitHubError> {
+        let (value, response) = self.get_json_with_response(token, path, query).await?;
+        Ok((value, response.status))
+    }
+
+    async fn get_json_with_response<U: DeserializeOwned>(
+        &self,
+        token: &SecretString,
+        path: impl Into<String>,
+        query: Vec<(String, String)>,
+    ) -> Result<(U, GitHubHttpResponse), GitHubError> {
         let path = path.into();
         let response = self
             .send(GitHubHttpRequest {
@@ -419,9 +430,8 @@ where
                 bearer_token: Some(token.clone()),
             })
             .await?;
-        let status = response.status;
         serde_json::from_str::<U>(&response.body)
-            .map(|value| (value, status))
+            .map(|value| (value, response))
             .map_err(|error| {
                 GitHubError::new(
                     GitHubErrorCode::InvalidResponse,
@@ -783,7 +793,7 @@ where
                 format!("/repos/{owner}/{repository}/commits"),
                 vec![
                     ("sha".to_string(), branch.to_string()),
-                    ("per_page".to_string(), "10".to_string()),
+                    ("per_page".to_string(), "1".to_string()),
                 ],
             )
             .await?;
@@ -815,6 +825,62 @@ where
                 .map(PullRequestWire::into_pull_request)
                 .collect(),
             queried_at: now_iso(),
+        })
+    }
+
+    async fn read_commit_history(
+        &self,
+        token: &SecretString,
+        owner: &str,
+        repository: &str,
+        branch: &str,
+        page: u32,
+    ) -> Result<GitHubCommitHistoryPage, GitHubError> {
+        let owner = validate_repository_segment(owner, "owner")?;
+        let repository = validate_repository_segment(repository, "repository")?;
+        let branch = branch.trim();
+        if branch.is_empty() || branch.len() > 250 {
+            return Err(GitHubError::new(
+                GitHubErrorCode::InvalidInput,
+                "조회할 GitHub branch를 입력하세요.",
+            ));
+        }
+        if page == 0 {
+            return Err(GitHubError::new(
+                GitHubErrorCode::InvalidInput,
+                "GitHub commit history page는 1 이상이어야 합니다.",
+            ));
+        }
+
+        let (commits, response): (Vec<CommitWire>, GitHubHttpResponse) = self
+            .get_json_with_response(
+                token,
+                format!("/repos/{owner}/{repository}/commits"),
+                vec![
+                    ("sha".to_string(), branch.to_string()),
+                    (
+                        "per_page".to_string(),
+                        GITHUB_COMMIT_HISTORY_PAGE_SIZE.to_string(),
+                    ),
+                    ("page".to_string(), page.to_string()),
+                ],
+            )
+            .await?;
+        let commit_count = commits.len();
+        let has_next_page = response
+            .headers
+            .get("link")
+            .map(|link| link.split(',').any(|entry| entry.contains("rel=\"next\"")))
+            .unwrap_or(commit_count as u32 == GITHUB_COMMIT_HISTORY_PAGE_SIZE);
+
+        Ok(GitHubCommitHistoryPage {
+            commits: commits
+                .iter()
+                .map(CommitWire::into_commit)
+                .collect::<Vec<_>>(),
+            page,
+            per_page: GITHUB_COMMIT_HISTORY_PAGE_SIZE,
+            has_next_page,
         })
     }
 }
@@ -978,9 +1044,20 @@ pub struct GitHubRepositoryReadModel {
     pub repository: GitHubRepository,
     pub tracked_branch: String,
     pub remote_head: Option<GitHubRemoteCommit>,
+    /// Retained for the existing frontend contract; repository observation now
+    /// requests only the single HEAD commit and full history is paged separately.
     pub recent_commits: Vec<GitHubRemoteCommit>,
     pub open_pull_requests: Vec<GitHubRemotePullRequest>,
     pub queried_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitHubCommitHistoryPage {
+    pub commits: Vec<GitHubRemoteCommit>,
+    pub page: u32,
+    pub per_page: u32,
+    pub has_next_page: bool,
 }
 
 #[derive(Clone)]
@@ -1938,6 +2015,22 @@ pub async fn github_read_repository(
         .await
 }
 
+#[tauri::command(rename_all = "camelCase")]
+pub async fn github_read_commit_history(
+    app: tauri::AppHandle,
+    owner: String,
+    repository: String,
+    branch: String,
+    page: u32,
+) -> Result<GitHubCommitHistoryPage, GitHubError> {
+    let config = load_github_config(&app);
+    let api = native_api().await?;
+    let store = GitHubCredentialStore::native();
+    let token = access_token(&api, &store, &config).await?;
+    api.read_commit_history(&token, &owner, &repository, &branch, page)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2306,6 +2399,68 @@ mod tests {
             .all(|request| request.method == GitHubHttpMethod::Get));
         let debug = format!("{:?}", request_log.lock().expect("request log")[0]);
         assert!(!debug.contains("access-secret"));
+    }
+
+    #[tokio::test]
+    async fn commit_history_uses_branch_scoped_pages_of_one_hundred() {
+        let first_page = (0..100)
+            .map(|index| {
+                serde_json::json!({
+                    "sha": format!("sha-{index}"),
+                    "html_url": format!("https://github.com/a/r/commit/{index}"),
+                    "commit": {
+                        "message": format!("message {index}"),
+                        "author": {"name": "dev", "date": "2026-09-12T00:00:00Z"},
+                        "committer": null
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+        let first_page_body =
+            serde_json::to_string(&first_page).expect("first commit page should serialize");
+        let transport = FakeTransport::with_responses(vec![
+            response(
+                r#"[{"sha":"page-two","html_url":"https://github.com/a/r/commit/page-two","commit":{"message":"page two","author":{"name":"dev","date":"2026-09-11T00:00:00Z"},"committer":null}}]"#,
+            ),
+            response(&first_page_body),
+        ]);
+        let request_log = transport.requests.clone();
+        let api = GitHubApi::new(transport);
+
+        let first = api
+            .read_commit_history(&SecretString::new("access-secret"), "a", "r", "release", 1)
+            .await
+            .expect("first commit history page should parse");
+        let second = api
+            .read_commit_history(&SecretString::new("access-secret"), "a", "r", "release", 2)
+            .await
+            .expect("second commit history page should parse");
+
+        assert_eq!(first.commits.len(), 100);
+        assert_eq!(first.page, 1);
+        assert_eq!(first.per_page, 100);
+        assert!(first.has_next_page);
+        assert_eq!(second.commits[0].sha, "page-two");
+        assert_eq!(second.page, 2);
+        assert!(!second.has_next_page);
+
+        let requests = request_log.lock().expect("request log");
+        assert_eq!(
+            requests[0].query,
+            vec![
+                ("sha".to_string(), "release".to_string()),
+                ("per_page".to_string(), "100".to_string()),
+                ("page".to_string(), "1".to_string()),
+            ]
+        );
+        assert_eq!(
+            requests[1].query,
+            vec![
+                ("sha".to_string(), "release".to_string()),
+                ("per_page".to_string(), "100".to_string()),
+                ("page".to_string(), "2".to_string()),
+            ]
+        );
     }
 
     #[tokio::test]

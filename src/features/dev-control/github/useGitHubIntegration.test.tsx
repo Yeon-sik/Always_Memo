@@ -45,6 +45,12 @@ function createService(overrides: Partial<GitHubIntegrationService> = {}) {
     listRepositories: vi.fn().mockResolvedValue(emptyRepositoryListResult),
     listBranches: vi.fn().mockResolvedValue([]),
     readRepository: vi.fn(),
+    readCommitHistory: vi.fn().mockResolvedValue({
+      commits: [],
+      page: 1,
+      perPage: 100,
+      hasNextPage: false,
+    }),
     ...overrides,
   } satisfies GitHubIntegrationService;
 }
@@ -146,5 +152,86 @@ describe("useGitHubIntegration", () => {
       loading: false,
     });
     expect(current?.error).toBeNull();
+  });
+
+  it("loads commit history in pages and resets it when the tracked branch changes", async () => {
+    const service = createService({
+      readRepository: vi.fn().mockResolvedValue({
+        repository: {
+          id: "42",
+          owner: "octo",
+          name: "repo",
+          fullName: "octo/repo",
+          htmlUrl: "https://github.com/octo/repo",
+          defaultBranch: "main",
+          private: false,
+          description: null,
+        },
+        trackedBranch: "main",
+        remoteHead: null,
+        recentCommits: [],
+        openPullRequests: [],
+        queriedAt: "2026-09-20T00:00:00.000Z",
+      }),
+      readCommitHistory: vi.fn().mockImplementation(
+        async (_owner: string, _repository: string, branch: string, page: number) => ({
+          commits: [{
+            sha: branch + "-" + page,
+            message: "commit " + branch + " " + page,
+            committedAt: null,
+            htmlUrl: "https://github.com/octo/repo/commit/" + branch + "-" + page,
+            author: "dev",
+          }],
+          page,
+          perPage: 100,
+          hasNextPage: page === 1,
+        }),
+      ),
+    });
+    let current: GitHubIntegrationController | undefined;
+    function Harness() {
+      current = useGitHubIntegration(service);
+      return null;
+    }
+
+    create(<Harness />);
+    await act(async () => undefined);
+    await act(async () => {
+      await current?.refreshProject({
+        id: "project-1",
+        githubOwner: "octo",
+        githubRepo: "repo",
+        branch: "main",
+      });
+    });
+
+    expect(service.readCommitHistory).toHaveBeenLastCalledWith("octo", "repo", "main", 1);
+    expect(current?.readStates["project-1"]?.commitHistory.commits).toHaveLength(1);
+    await act(async () => {
+      await current?.loadMoreCommitHistory({
+        id: "project-1",
+        githubOwner: "octo",
+        githubRepo: "repo",
+        branch: "main",
+      });
+    });
+    expect(service.readCommitHistory).toHaveBeenLastCalledWith("octo", "repo", "main", 2);
+    expect(current?.readStates["project-1"]?.commitHistory.commits.map((commit) => commit.sha)).toEqual([
+      "main-1",
+      "main-2",
+    ]);
+
+    await act(async () => {
+      await current?.refreshProject({
+        id: "project-1",
+        githubOwner: "octo",
+        githubRepo: "repo",
+        branch: "develop",
+      });
+    });
+    expect(service.readCommitHistory).toHaveBeenLastCalledWith("octo", "repo", "develop", 1);
+    expect(current?.readStates["project-1"]?.commitHistory.commits.map((commit) => commit.sha)).toEqual([
+      "develop-1",
+    ]);
   });
 });

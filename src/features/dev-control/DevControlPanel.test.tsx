@@ -1,7 +1,7 @@
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vitest";
 
-import { DevControlPanel } from "./DevControlPanel";
+import { DevControlPanel, getDerivedProjectCardSummary } from "./DevControlPanel";
 import type { Project } from "../../types";
 
 function project(): Project {
@@ -47,6 +47,19 @@ function renderPanel(): { renderer: ReactTestRenderer; open: ReturnType<typeof v
 }
 
 describe("DevControlPanel command center", () => {
+  it("derives the card status from OPEN NEXT, remote HEAD, then project status", () => {
+    expect(
+      getDerivedProjectCardSummary(project(), [{
+        deletedAt: null,
+        type: "NEXT",
+        status: "OPEN",
+        title: "Repository observation 분리",
+      }], "HEAD commit message"),
+    ).toBe("Repository observation 분리");
+    expect(getDerivedProjectCardSummary(project(), [], "HEAD commit message\nbody")).toBe("HEAD commit message");
+    expect(getDerivedProjectCardSummary(project(), [], null)).toBe("진행 중");
+  });
+
   it("shows a compact project scan and opens the workspace on project click", () => {
     const { renderer, open } = renderPanel();
 

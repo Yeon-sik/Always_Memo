@@ -28,6 +28,7 @@ fn main() {
             "github_list_repositories",
             "github_list_branches",
             "github_read_repository",
+            "github_read_commit_history",
         ]),
     ))
     .expect("failed to build Tauri application manifest");

@@ -70,6 +70,7 @@ function createIntegration(
     loadRepositories: vi.fn().mockResolvedValue(undefined),
     loadBranches: vi.fn().mockResolvedValue(undefined),
     refreshProject: vi.fn().mockResolvedValue(undefined),
+    loadMoreCommitHistory: vi.fn().mockResolvedValue(undefined),
   };
 }
 

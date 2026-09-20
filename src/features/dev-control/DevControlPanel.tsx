@@ -45,6 +45,24 @@ function shortSha(value: string | null | undefined): string {
   return value ? value.slice(0, 7) : "-";
 }
 
+export function getDerivedProjectCardSummary(
+  project: Pick<Project, "status">,
+  actions: Pick<ProjectAction, "deletedAt" | "type" | "status" | "title">[],
+  remoteHeadMessage?: string | null,
+): string {
+  const nextAction = actions.find(
+    (action) =>
+      action.deletedAt === null &&
+      action.type === "NEXT" &&
+      action.status === "OPEN" &&
+      action.title.trim(),
+  );
+  if (nextAction) return nextAction.title.trim();
+
+  const remoteSummary = remoteHeadMessage?.split("\n")[0]?.trim();
+  return remoteSummary || PROJECT_STATUS_LABELS[project.status];
+}
+
 export function DevControlPanel({
   projects,
   projectMilestones,
@@ -132,7 +150,7 @@ export function DevControlPanel({
                     </span>
                   </div>
                   <p className="line-clamp-2 text-xs text-slate-600 dark:text-neutral-300">
-                    {project.currentSummary || "CURRENT 요약 없음"}
+                    {getDerivedProjectCardSummary(project, actions, model?.remoteHead?.message)}
                   </p>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] text-slate-500 dark:text-neutral-400 sm:grid-cols-4">
                     <span>OPEN NEXT {getOpenNextCount(actions)}</span>

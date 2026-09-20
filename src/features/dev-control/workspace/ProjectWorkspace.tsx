@@ -130,8 +130,6 @@ export function ProjectWorkspace({
     githubOwner: null as string | null,
     githubRepo: null as string | null,
     status: "PLANNED" as DevProjectStatus,
-    currentSummary: "",
-    targetSummary: "",
     lastVerifiedCommit: "",
     lastVerifiedAt: "",
   });
@@ -159,8 +157,6 @@ export function ProjectWorkspace({
         githubOwner: null,
         githubRepo: null,
         status: "PLANNED",
-        currentSummary: "",
-        targetSummary: "",
         lastVerifiedCommit: "",
         lastVerifiedAt: "",
       });
@@ -177,8 +173,6 @@ export function ProjectWorkspace({
       githubOwner: project.githubOwner,
       githubRepo: project.githubRepo,
       status: project.status,
-      currentSummary: project.currentSummary,
-      targetSummary: project.targetSummary,
       lastVerifiedCommit: project.lastVerifiedCommit ?? "",
       lastVerifiedAt: toDateTimeLocal(project.lastVerifiedAt),
     });
@@ -251,12 +245,14 @@ export function ProjectWorkspace({
       ...normalizedRepositoryFields,
       ...normalizeProjectGitHubFields(repositoryMode, projectDraft.githubRepositoryId, projectDraft.githubOwner, projectDraft.githubRepo),
       status: projectDraft.status,
-      currentSummary: projectDraft.currentSummary,
-      targetSummary: projectDraft.targetSummary,
-      backfillInput: undefined,
     };
     if (mode === "create" || !project) {
-      actions.addProject(input);
+      actions.addProject({
+        ...input,
+        currentSummary: "",
+        targetSummary: "",
+        backfillInput: undefined,
+      });
     } else {
       actions.updateProject(project.id, input);
     }
@@ -322,7 +318,6 @@ export function ProjectWorkspace({
                   <Field label="이름" value={projectDraft.name} onChange={(value) => setProjectDraft((draft) => ({ ...draft, name: value }))} />
                   <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>
                   <fieldset className="grid gap-2 rounded border border-slate-200 p-2 dark:border-neutral-800"><legend className="px-1 text-[11px] font-semibold text-slate-600 dark:text-neutral-300">Repository 연결</legend><div className="flex flex-wrap gap-3 text-xs"><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "github"} onChange={() => handleRepositoryModeChange("github")} />GitHub Repository</label><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "text"} onChange={() => handleRepositoryModeChange("text")} />GitHub 미연결</label></div>{repositoryMode === "github" ? <GitHubRepositoryPicker integration={github} repository={projectDraft.repository} branch={projectDraft.branch} githubRepositoryId={projectDraft.githubRepositoryId} githubOwner={projectDraft.githubOwner} githubRepo={projectDraft.githubRepo} onRepositoryChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value, githubRepositoryId: null, githubOwner: null, githubRepo: null }))} onBranchChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} onIdentityChange={handleRepositorySelection} /> : <p className="text-[11px] text-slate-500">GitHub 연결 없이 상태를 관리합니다.</p>}</fieldset>
-                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="CURRENT" value={projectDraft.currentSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} multiline /><Field label="TARGET" value={projectDraft.targetSummary} onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} multiline /></div>
                   {repositoryMode === "github" ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><Field label="Last verified time" value={projectDraft.lastVerifiedAt} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: value }))} /></div> : null}
                   {projectFormError ? <p role="alert" className="rounded border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">{projectFormError}</p> : null}
                   <div className="flex flex-wrap gap-2"><button type="submit" className="rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">저장</button>{project ? <button type="button" onClick={() => actions.deleteProject(project.id)} className="rounded border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700">프로젝트 삭제</button> : null}</div>
@@ -335,7 +330,7 @@ export function ProjectWorkspace({
           {activeTab === "github" ? (
             <div className="grid gap-3">
               <GitHubConnectionBar integration={github} />
-              {project ? <GitHubRepositoryObservation project={project} readState={readState} onRefresh={() => void github.refreshProject(project)} /> : <Section title="GITHUB"><p className="text-xs text-slate-500">프로젝트를 저장한 뒤 remote observation을 조회할 수 있습니다.</p></Section>}
+              {project ? <GitHubRepositoryObservation project={project} readState={readState} onRefresh={() => void github.refreshProject(project)} onLoadMore={() => void github.loadMoreCommitHistory(project)} /> : <Section title="GITHUB"><p className="text-xs text-slate-500">프로젝트를 저장한 뒤 remote observation을 조회할 수 있습니다.</p></Section>}
             </div>
           ) : null}
 

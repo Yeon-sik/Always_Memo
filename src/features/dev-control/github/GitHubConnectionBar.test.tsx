@@ -31,6 +31,7 @@ function createIntegration(
     loadRepositories: vi.fn(),
     loadBranches: vi.fn(),
     refreshProject: vi.fn(),
+    loadMoreCommitHistory: vi.fn(),
     ...overrides,
     refreshStatus: overrides.refreshStatus ?? vi.fn(),
   };

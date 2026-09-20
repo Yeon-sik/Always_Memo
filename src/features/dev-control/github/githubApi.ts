@@ -4,6 +4,7 @@ import type {
   GitHubConfigService,
   GitHubConfigStatus,
   GitHubConnectionStatus,
+  GitHubCommitHistoryPage,
   GitHubDeviceFlowPollResult,
   GitHubDeviceFlowStart,
   GitHubRepositoryListResult,
@@ -78,6 +79,20 @@ export const githubApi = {
       owner,
       repository,
       branch,
+    });
+  },
+
+  async readCommitHistory(
+    owner: string,
+    repository: string,
+    branch: string,
+    page: number,
+  ): Promise<GitHubCommitHistoryPage> {
+    return (await getInvoke())<GitHubCommitHistoryPage>("github_read_commit_history", {
+      owner,
+      repository,
+      branch,
+      page,
     });
   },
 };

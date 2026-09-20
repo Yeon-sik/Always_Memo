@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { githubApi } from "./githubApi";
 import {
@@ -6,6 +6,7 @@ import {
   getGitHubReadStateKey,
   type GitHubIntegrationController,
   type GitHubIntegrationService,
+  type GitHubCommitHistoryState,
   type GitHubProjectReadState,
   type GitHubRepositoryLoadState,
 } from "./githubTypes";
@@ -26,6 +27,17 @@ const idleRepositoryLoadState: GitHubRepositoryLoadState = {
   error: null,
 };
 
+function emptyCommitHistoryState(loading = false): GitHubCommitHistoryState {
+  return {
+    commits: [],
+    page: 0,
+    perPage: 100,
+    hasNextPage: false,
+    loading,
+    error: null,
+  };
+}
+
 export function useGitHubIntegration(
   service: GitHubIntegrationService = githubApi,
 ): GitHubIntegrationController {
@@ -37,6 +49,7 @@ export function useGitHubIntegration(
   );
   const [branches, setBranches] = useState<GitHubIntegrationController["branches"]>([]);
   const [readStates, setReadStates] = useState<Record<string, GitHubProjectReadState>>({});
+  const readRequestVersionRef = useRef<Record<string, number>>({});
   const [statusCheckError, setStatusCheckError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -171,31 +184,127 @@ export function useGitHubIntegration(
   ) => {
     const key = getGitHubReadStateKey(project.id);
     if (!project.githubOwner || !project.githubRepo || !project.branch) return;
+    const requestVersion = (readRequestVersionRef.current[key] ?? 0) + 1;
+    readRequestVersionRef.current[key] = requestVersion;
     setReadStates((current) => ({
       ...current,
-      [key]: { ...(current[key] ?? { model: null, error: null }), loading: true },
+      [key]: {
+        model: null,
+        error: null,
+        loading: true,
+        commitHistory: emptyCommitHistoryState(true),
+      },
     }));
-    try {
-      const model = await service.readRepository(
+    const [repositoryResult, historyResult] = await Promise.allSettled([
+      service.readRepository(
         project.githubOwner,
         project.githubRepo,
         project.branch,
-      );
-      setReadStates((current) => ({
-        ...current,
-        [key]: { model, error: null, loading: false },
-      }));
-    } catch (readError) {
-      setReadStates((current) => ({
+      ),
+      service.readCommitHistory(
+        project.githubOwner,
+        project.githubRepo,
+        project.branch,
+        1,
+      ),
+    ]);
+    setReadStates((current) => {
+      if (readRequestVersionRef.current[key] !== requestVersion) return current;
+      return {
         ...current,
         [key]: {
-          model: current[key]?.model ?? null,
-          error: errorMessage(readError, "GitHub Repository를 조회하지 못했습니다."),
+          model: repositoryResult.status === "fulfilled" ? repositoryResult.value : null,
+          error:
+            repositoryResult.status === "rejected"
+              ? errorMessage(repositoryResult.reason, "GitHub Repository를 조회하지 못했습니다.")
+              : null,
           loading: false,
+          commitHistory:
+            historyResult.status === "fulfilled"
+              ? {
+                  commits: historyResult.value.commits,
+                  page: historyResult.value.page,
+                  perPage: historyResult.value.perPage,
+                  hasNextPage: historyResult.value.hasNextPage,
+                  loading: false,
+                  error: null,
+                }
+              : {
+                  ...emptyCommitHistoryState(),
+                  error: errorMessage(
+                    historyResult.reason,
+                    "GitHub commit history를 조회하지 못했습니다.",
+                  ),
+                },
         },
-      }));
-    }
+      };
+    });
   }, [service]);
+
+  const loadMoreCommitHistory = useCallback(async (
+    project: Parameters<GitHubIntegrationController["loadMoreCommitHistory"]>[0],
+  ) => {
+    const key = getGitHubReadStateKey(project.id);
+    if (!project.githubOwner || !project.githubRepo || !project.branch) return;
+    const current = readStates[key];
+    if (!current || current.commitHistory.loading || !current.commitHistory.hasNextPage) return;
+
+    const requestVersion = readRequestVersionRef.current[key] ?? 0;
+    const page = current.commitHistory.page + 1;
+    setReadStates((states) => ({
+      ...states,
+      [key]: {
+        ...current,
+        commitHistory: { ...current.commitHistory, loading: true, error: null },
+      },
+    }));
+    try {
+      const result = await service.readCommitHistory(
+        project.githubOwner,
+        project.githubRepo,
+        project.branch,
+        page,
+      );
+      setReadStates((states) => {
+        if (readRequestVersionRef.current[key] !== requestVersion) return states;
+        const state = states[key] ?? current;
+        const knownShas = new Set(state.commitHistory.commits.map((commit) => commit.sha));
+        return {
+          ...states,
+          [key]: {
+            ...state,
+            commitHistory: {
+              commits: [
+                ...state.commitHistory.commits,
+                ...result.commits.filter((commit) => !knownShas.has(commit.sha)),
+              ],
+              page: result.page,
+              perPage: result.perPage,
+              hasNextPage: result.hasNextPage,
+              loading: false,
+              error: null,
+            },
+          },
+        };
+      });
+    } catch (historyError) {
+      setReadStates((states) => {
+        if (readRequestVersionRef.current[key] !== requestVersion) return states;
+        const state = states[key] ?? current;
+        return {
+          ...states,
+          [key]: {
+            ...state,
+            commitHistory: {
+              ...state.commitHistory,
+              loading: false,
+              error: errorMessage(historyError, "GitHub commit history를 조회하지 못했습니다."),
+            },
+          },
+        };
+      });
+    }
+  }, [readStates, service]);
 
   return {
     status,
@@ -215,5 +324,6 @@ export function useGitHubIntegration(
     loadRepositories,
     loadBranches,
     refreshProject,
+    loadMoreCommitHistory,
   };
 }

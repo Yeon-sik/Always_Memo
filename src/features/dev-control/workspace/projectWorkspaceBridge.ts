@@ -90,7 +90,8 @@ export type ProjectWorkspaceGitHubCommand =
   | { type: "disconnect" }
   | { type: "loadRepositories"; search?: string }
   | { type: "loadBranches"; owner: string; repository: string }
-  | { type: "refreshProject"; project: Pick<Project, "id" | "githubOwner" | "githubRepo" | "branch"> };
+  | { type: "refreshProject"; project: Pick<Project, "id" | "githubOwner" | "githubRepo" | "branch"> }
+  | { type: "loadMoreCommitHistory"; project: Pick<Project, "id" | "githubOwner" | "githubRepo" | "branch"> };
 
 function githubStateFromController(
   github: GitHubIntegrationController,
@@ -246,6 +247,9 @@ export function useProjectWorkspaceHost({
             case "refreshProject":
               void current.refreshProject(payload.project);
               break;
+            case "loadMoreCommitHistory":
+              void current.loadMoreCommitHistory(payload.project);
+              break;
           }
         },
       );
@@ -355,6 +359,7 @@ export function useProjectWorkspaceClient() {
       loadRepositories: (search) => emitGitHub({ type: "loadRepositories", search }),
       loadBranches: (owner, repository) => emitGitHub({ type: "loadBranches", owner, repository }),
       refreshProject: (project) => emitGitHub({ type: "refreshProject", project }),
+      loadMoreCommitHistory: (project) => emitGitHub({ type: "loadMoreCommitHistory", project }),
     };
   }, [emitGitHub, state?.github]);
 

@@ -112,6 +112,22 @@ export interface GitHubRemoteCommit {
   author: string | null;
 }
 
+export interface GitHubCommitHistoryPage {
+  commits: GitHubRemoteCommit[];
+  page: number;
+  perPage: number;
+  hasNextPage: boolean;
+}
+
+export interface GitHubCommitHistoryState {
+  commits: GitHubRemoteCommit[];
+  page: number;
+  perPage: number;
+  hasNextPage: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
 export interface GitHubRemotePullRequest {
   number: number;
   title: string;
@@ -142,6 +158,7 @@ export interface GitHubProjectReadState {
   model: GitHubRepositoryReadModel | null;
   error: string | null;
   loading: boolean;
+  commitHistory: GitHubCommitHistoryState;
 }
 
 export interface GitHubIntegrationService {
@@ -157,6 +174,12 @@ export interface GitHubIntegrationService {
     repository: string,
     branch: string,
   ): Promise<GitHubRepositoryReadModel>;
+  readCommitHistory(
+    owner: string,
+    repository: string,
+    branch: string,
+    page: number,
+  ): Promise<GitHubCommitHistoryPage>;
 }
 
 export interface GitHubIntegrationController {
@@ -177,6 +200,7 @@ export interface GitHubIntegrationController {
   loadRepositories: (search?: string) => Promise<void>;
   loadBranches: (owner: string, repository: string) => Promise<void>;
   refreshProject: (project: Pick<Project, "id" | "githubOwner" | "githubRepo" | "branch">) => Promise<void>;
+  loadMoreCommitHistory: (project: Pick<Project, "id" | "githubOwner" | "githubRepo" | "branch">) => Promise<void>;
 }
 
 export const disconnectedGitHubStatus: GitHubConnectionStatus = {
@@ -206,6 +230,7 @@ export const unavailableGitHubIntegration: GitHubIntegrationController = {
   loadRepositories: async () => undefined,
   loadBranches: async () => undefined,
   refreshProject: async () => undefined,
+  loadMoreCommitHistory: async () => undefined,
 };
 
 export function getRemoteVerificationState(
