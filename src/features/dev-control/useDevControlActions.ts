@@ -1,9 +1,7 @@
 import { useCallback } from "react";
 
 import type { SnapshotUpdater } from "../../app/sync/useSnapshotStore";
-import type {
-  Device,
-} from "../../types";
+import type { Device } from "../../types";
 import type {
   BackfillInput,
   DevActionStatus,
@@ -11,6 +9,7 @@ import type {
   DevHistoryType,
   DevMilestoneStatus,
   DevProjectStatus,
+  DevWorkstreamStatus,
 } from "../../types";
 import {
   createProject,
@@ -28,6 +27,25 @@ import {
   updateProjectHistory,
   updateProjectIdea,
   updateProjectMilestone,
+  createWorkstream,
+  createWorkstreamAction,
+  createWorkstreamActionDependency,
+  createWorkstreamActionProject,
+  createWorkstreamMilestone,
+  createWorkstreamProject,
+  isWorkstreamActionDependencyAllowed,
+  restoreWorkstreamActionDependency,
+  restoreWorkstreamActionProject,
+  restoreWorkstreamProject,
+  softDeleteWorkstream,
+  softDeleteWorkstreamAction,
+  softDeleteWorkstreamActionDependency,
+  softDeleteWorkstreamActionProject,
+  softDeleteWorkstreamMilestone,
+  softDeleteWorkstreamProject,
+  updateWorkstream,
+  updateWorkstreamAction,
+  updateWorkstreamMilestone,
 } from "./devControlService";
 import type {
   ProjectActionChanges,
@@ -35,6 +53,9 @@ import type {
   ProjectHistoryChanges,
   ProjectIdeaChanges,
   ProjectMilestoneChanges,
+  WorkstreamActionChanges,
+  WorkstreamChanges,
+  WorkstreamMilestoneChanges,
 } from "./devControlService";
 
 interface UseDevControlActionsOptions {
@@ -42,6 +63,8 @@ interface UseDevControlActionsOptions {
   device: Device | null;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  selectedWorkstreamId: string | null;
+  setSelectedWorkstreamId: (id: string | null) => void;
 }
 
 export interface DevControlActions {
@@ -79,6 +102,44 @@ export interface DevControlActions {
   ) => void;
   updateProjectHistory: (id: string, changes: ProjectHistoryChanges) => void;
   deleteProjectHistory: (id: string) => void;
+  addWorkstream: (input: {
+    name: string;
+    status: DevWorkstreamStatus;
+    projectIds: string[];
+    backfillInput?: BackfillInput;
+  }) => void;
+  updateWorkstream: (id: string, changes: WorkstreamChanges) => void;
+  deleteWorkstream: (id: string) => void;
+  addWorkstreamProject: (workstreamId: string, projectId: string) => void;
+  deleteWorkstreamProject: (id: string) => void;
+  addWorkstreamMilestone: (
+    workstreamId: string,
+    title: string,
+    status?: DevMilestoneStatus,
+  ) => void;
+  updateWorkstreamMilestone: (
+    id: string,
+    changes: WorkstreamMilestoneChanges,
+  ) => void;
+  deleteWorkstreamMilestone: (id: string) => void;
+  addWorkstreamAction: (
+    workstreamId: string,
+    title: string,
+    type?: DevActionType,
+    status?: DevActionStatus,
+  ) => void;
+  updateWorkstreamAction: (
+    id: string,
+    changes: WorkstreamActionChanges,
+  ) => void;
+  deleteWorkstreamAction: (id: string) => void;
+  addWorkstreamActionProject: (actionId: string, projectId: string) => void;
+  deleteWorkstreamActionProject: (id: string) => void;
+  addWorkstreamActionDependency: (
+    actionId: string,
+    dependsOnActionId: string,
+  ) => void;
+  deleteWorkstreamActionDependency: (id: string) => void;
 }
 
 export function useDevControlActions({
@@ -86,6 +147,8 @@ export function useDevControlActions({
   device,
   selectedProjectId,
   setSelectedProjectId,
+  selectedWorkstreamId,
+  setSelectedWorkstreamId,
 }: UseDevControlActionsOptions): DevControlActions {
   const addProject = useCallback(
     (input: Parameters<DevControlActions["addProject"]>[0]) => {
@@ -269,6 +332,390 @@ export function useDevControlActions({
     [commitSnapshot, device],
   );
 
+  const addWorkstream = useCallback(
+    (input: Parameters<DevControlActions["addWorkstream"]>[0]) => {
+      if (!device) return;
+      const workstream = createWorkstream(device.id, input, input.backfillInput);
+      const requestedProjectIds = new Set(input.projectIds);
+      commitSnapshot((snapshot) => {
+        const projectIds = snapshot.projects
+          .filter(
+            (project) =>
+              project.deletedAt === null && requestedProjectIds.has(project.id),
+          )
+          .map((project) => project.id);
+        const links = projectIds.map((projectId) =>
+          createWorkstreamProject(workstream.id, projectId, device.id),
+        );
+        return {
+          ...snapshot,
+          workstreams: [...snapshot.workstreams, workstream],
+          workstreamProjects: [...snapshot.workstreamProjects, ...links],
+        };
+      });
+      setSelectedWorkstreamId(workstream.id);
+    },
+    [commitSnapshot, device, setSelectedWorkstreamId],
+  );
+
+  const updateWorkstreamById = useCallback(
+    (id: string, changes: WorkstreamChanges) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreams: snapshot.workstreams.map((item) =>
+          item.id === id ? updateWorkstream(item, changes, device.id) : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstream = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreams: snapshot.workstreams.map((item) =>
+          item.id === id ? softDeleteWorkstream(item, device.id) : item,
+        ),
+      }));
+      if (selectedWorkstreamId === id) setSelectedWorkstreamId(null);
+    },
+    [commitSnapshot, device, selectedWorkstreamId, setSelectedWorkstreamId],
+  );
+
+  const addWorkstreamProject = useCallback(
+    (workstreamId: string, projectId: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => {
+        const workstream = snapshot.workstreams.find(
+          (item) => item.id === workstreamId && item.deletedAt === null,
+        );
+        const project = snapshot.projects.find(
+          (item) => item.id === projectId && item.deletedAt === null,
+        );
+        if (!workstream || !project) return snapshot;
+
+        const existing = snapshot.workstreamProjects.find(
+          (item) =>
+            item.workstreamId === workstreamId && item.projectId === projectId,
+        );
+        if (existing) {
+          if (existing.deletedAt === null) return snapshot;
+          return {
+            ...snapshot,
+            workstreamProjects: snapshot.workstreamProjects.map((item) =>
+              item.id === existing.id
+                ? restoreWorkstreamProject(item, device.id)
+                : item,
+            ),
+          };
+        }
+
+        return {
+          ...snapshot,
+          workstreamProjects: [
+            ...snapshot.workstreamProjects,
+            createWorkstreamProject(workstreamId, projectId, device.id),
+          ],
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstreamProject = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => {
+        const participation = snapshot.workstreamProjects.find(
+          (item) => item.id === id,
+        );
+        if (!participation) return snapshot;
+
+        const workstreamActionIds = new Set(
+          snapshot.workstreamActions
+            .filter(
+              (item) =>
+                item.workstreamId === participation.workstreamId &&
+                item.deletedAt === null,
+            )
+            .map((item) => item.id),
+        );
+
+        return {
+          ...snapshot,
+          workstreamProjects: snapshot.workstreamProjects.map((item) =>
+            item.id === id ? softDeleteWorkstreamProject(item, device.id) : item,
+          ),
+          workstreamActionProjects: snapshot.workstreamActionProjects.map(
+            (item) =>
+              item.deletedAt === null &&
+              item.projectId === participation.projectId &&
+              workstreamActionIds.has(item.actionId)
+                ? softDeleteWorkstreamActionProject(item, device.id)
+                : item,
+          ),
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const addWorkstreamMilestone = useCallback(
+    (
+      workstreamId: string,
+      title: string,
+      status: DevMilestoneStatus = "PLANNED",
+    ) => {
+      if (!device) return;
+      const milestone = createWorkstreamMilestone(
+        workstreamId,
+        title,
+        device.id,
+        status,
+      );
+      commitSnapshot((snapshot) => {
+        if (
+          !snapshot.workstreams.some(
+            (item) => item.id === workstreamId && item.deletedAt === null,
+          )
+        ) {
+          return snapshot;
+        }
+        return {
+          ...snapshot,
+          workstreamMilestones: [...snapshot.workstreamMilestones, milestone],
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const updateWorkstreamMilestoneById = useCallback(
+    (id: string, changes: WorkstreamMilestoneChanges) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamMilestones: snapshot.workstreamMilestones.map((item) =>
+          item.id === id
+            ? updateWorkstreamMilestone(item, changes, device.id)
+            : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstreamMilestone = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamMilestones: snapshot.workstreamMilestones.map((item) =>
+          item.id === id
+            ? softDeleteWorkstreamMilestone(item, device.id)
+            : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const addWorkstreamAction = useCallback(
+    (
+      workstreamId: string,
+      title: string,
+      type: DevActionType = "NEXT",
+      status: DevActionStatus = "OPEN",
+    ) => {
+      if (!device) return;
+      const action = createWorkstreamAction(
+        workstreamId,
+        title,
+        device.id,
+        type,
+        status,
+      );
+      commitSnapshot((snapshot) => {
+        if (
+          !snapshot.workstreams.some(
+            (item) => item.id === workstreamId && item.deletedAt === null,
+          )
+        ) {
+          return snapshot;
+        }
+        return {
+          ...snapshot,
+          workstreamActions: [...snapshot.workstreamActions, action],
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const updateWorkstreamActionById = useCallback(
+    (id: string, changes: WorkstreamActionChanges) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamActions: snapshot.workstreamActions.map((item) =>
+          item.id === id ? updateWorkstreamAction(item, changes, device.id) : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstreamAction = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamActions: snapshot.workstreamActions.map((item) =>
+          item.id === id ? softDeleteWorkstreamAction(item, device.id) : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const addWorkstreamActionProject = useCallback(
+    (actionId: string, projectId: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => {
+        const action = snapshot.workstreamActions.find(
+          (item) => item.id === actionId && item.deletedAt === null,
+        );
+        const project = snapshot.projects.find(
+          (item) => item.id === projectId && item.deletedAt === null,
+        );
+        if (!action || !project) return snapshot;
+        const isParticipating = snapshot.workstreamProjects.some(
+          (item) =>
+            item.workstreamId === action.workstreamId &&
+            item.projectId === projectId &&
+            item.deletedAt === null,
+        );
+        if (!isParticipating) return snapshot;
+
+        const existing = snapshot.workstreamActionProjects.find(
+          (item) => item.actionId === actionId && item.projectId === projectId,
+        );
+        if (existing) {
+          if (existing.deletedAt === null) return snapshot;
+          return {
+            ...snapshot,
+            workstreamActionProjects: snapshot.workstreamActionProjects.map(
+              (item) =>
+                item.id === existing.id
+                  ? restoreWorkstreamActionProject(item, device.id)
+                  : item,
+            ),
+          };
+        }
+
+        return {
+          ...snapshot,
+          workstreamActionProjects: [
+            ...snapshot.workstreamActionProjects,
+            createWorkstreamActionProject(actionId, projectId, device.id),
+          ],
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstreamActionProject = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamActionProjects: snapshot.workstreamActionProjects.map((item) =>
+          item.id === id
+            ? softDeleteWorkstreamActionProject(item, device.id)
+            : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const addWorkstreamActionDependency = useCallback(
+    (actionId: string, dependsOnActionId: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => {
+        const action = snapshot.workstreamActions.find(
+          (item) => item.id === actionId && item.deletedAt === null,
+        );
+        const dependsOnAction = snapshot.workstreamActions.find(
+          (item) => item.id === dependsOnActionId && item.deletedAt === null,
+        );
+        if (
+          !action ||
+          !dependsOnAction ||
+          action.workstreamId !== dependsOnAction.workstreamId ||
+          !isWorkstreamActionDependencyAllowed(
+            snapshot.workstreamActionDependencies,
+            actionId,
+            dependsOnActionId,
+          )
+        ) {
+          return snapshot;
+        }
+
+        const existing = snapshot.workstreamActionDependencies.find(
+          (item) =>
+            item.actionId === actionId &&
+            item.dependsOnActionId === dependsOnActionId,
+        );
+        if (existing) {
+          if (existing.deletedAt === null) return snapshot;
+          return {
+            ...snapshot,
+            workstreamActionDependencies:
+              snapshot.workstreamActionDependencies.map((item) =>
+                item.id === existing.id
+                  ? restoreWorkstreamActionDependency(item, device.id)
+                  : item,
+              ),
+          };
+        }
+
+        return {
+          ...snapshot,
+          workstreamActionDependencies: [
+            ...snapshot.workstreamActionDependencies,
+            createWorkstreamActionDependency(
+              actionId,
+              dependsOnActionId,
+              device.id,
+            ),
+          ],
+        };
+      });
+    },
+    [commitSnapshot, device],
+  );
+
+  const deleteWorkstreamActionDependency = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((snapshot) => ({
+        ...snapshot,
+        workstreamActionDependencies: snapshot.workstreamActionDependencies.map(
+          (item) =>
+            item.id === id
+              ? softDeleteWorkstreamActionDependency(item, device.id)
+              : item,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
   return {
     addProject,
     updateProject: updateProjectById,
@@ -285,5 +732,20 @@ export function useDevControlActions({
     addProjectHistory,
     updateProjectHistory: updateProjectHistoryById,
     deleteProjectHistory,
+    addWorkstream,
+    updateWorkstream: updateWorkstreamById,
+    deleteWorkstream,
+    addWorkstreamProject,
+    deleteWorkstreamProject,
+    addWorkstreamMilestone,
+    updateWorkstreamMilestone: updateWorkstreamMilestoneById,
+    deleteWorkstreamMilestone,
+    addWorkstreamAction,
+    updateWorkstreamAction: updateWorkstreamActionById,
+    deleteWorkstreamAction,
+    addWorkstreamActionProject,
+    deleteWorkstreamActionProject,
+    addWorkstreamActionDependency,
+    deleteWorkstreamActionDependency,
   };
 }

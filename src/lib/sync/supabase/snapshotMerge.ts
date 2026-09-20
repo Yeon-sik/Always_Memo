@@ -82,6 +82,30 @@ export function mergeSnapshot(
       localSnapshot.projectHistory,
       incomingSnapshot.projectHistory,
     ),
+    workstreams: mergeEntities(
+      localSnapshot.workstreams,
+      incomingSnapshot.workstreams,
+    ),
+    workstreamProjects: mergeEntities(
+      localSnapshot.workstreamProjects,
+      incomingSnapshot.workstreamProjects,
+    ),
+    workstreamMilestones: mergeEntities(
+      localSnapshot.workstreamMilestones,
+      incomingSnapshot.workstreamMilestones,
+    ),
+    workstreamActions: mergeEntities(
+      localSnapshot.workstreamActions,
+      incomingSnapshot.workstreamActions,
+    ),
+    workstreamActionProjects: mergeEntities(
+      localSnapshot.workstreamActionProjects,
+      incomingSnapshot.workstreamActionProjects,
+    ),
+    workstreamActionDependencies: mergeEntities(
+      localSnapshot.workstreamActionDependencies,
+      incomingSnapshot.workstreamActionDependencies,
+    ),
   };
 }
 
@@ -134,6 +158,30 @@ export function mergeAuthoritativeSnapshot(
     projectHistory: mergeAuthoritativeEntities(
       localSnapshot.projectHistory,
       incomingSnapshot.projectHistory,
+    ),
+    workstreams: mergeAuthoritativeEntities(
+      localSnapshot.workstreams,
+      incomingSnapshot.workstreams,
+    ),
+    workstreamProjects: mergeAuthoritativeEntities(
+      localSnapshot.workstreamProjects,
+      incomingSnapshot.workstreamProjects,
+    ),
+    workstreamMilestones: mergeAuthoritativeEntities(
+      localSnapshot.workstreamMilestones,
+      incomingSnapshot.workstreamMilestones,
+    ),
+    workstreamActions: mergeAuthoritativeEntities(
+      localSnapshot.workstreamActions,
+      incomingSnapshot.workstreamActions,
+    ),
+    workstreamActionProjects: mergeAuthoritativeEntities(
+      localSnapshot.workstreamActionProjects,
+      incomingSnapshot.workstreamActionProjects,
+    ),
+    workstreamActionDependencies: mergeAuthoritativeEntities(
+      localSnapshot.workstreamActionDependencies,
+      incomingSnapshot.workstreamActionDependencies,
     ),
   };
 }

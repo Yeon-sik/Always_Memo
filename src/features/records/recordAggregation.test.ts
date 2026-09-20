@@ -128,6 +128,12 @@ const snapshot: LocalDataSnapshot = {
   projectActions: [],
   projectIdeas: [],
   projectHistory: [],
+  workstreams: [],
+  workstreamProjects: [],
+  workstreamMilestones: [],
+  workstreamActions: [],
+  workstreamActionProjects: [],
+  workstreamActionDependencies: [],
 };
 
 describe("recordAggregation", () => {

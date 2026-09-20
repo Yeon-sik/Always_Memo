@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { noteToRow, projectActionToRow } from "./mappers";
+import {
+  noteToRow,
+  projectActionToRow,
+  workstreamActionToRow,
+} from "./mappers";
 import {
   applyRealtimePayload,
   subscribeSnapshotRealtime,
@@ -9,7 +13,12 @@ import type {
   PostgresChangePayload,
   RealtimeTableName,
 } from "./rows";
-import { makeNote, makeProjectAction, makeSnapshot } from "./testFixtures";
+import {
+  makeNote,
+  makeProjectAction,
+  makeSnapshot,
+  makeWorkstreamAction,
+} from "./testFixtures";
 
 class FakeRealtimeTransport implements RealtimeTransport {
   readonly channel = { id: "channel-1" };
@@ -120,6 +129,31 @@ describe("Supabase realtime", () => {
       expect.objectContaining({
         id: "action-1",
         projectId: "project-1",
+        type: "NEXT",
+      }),
+    ]);
+  });
+
+  it("maps a Workstream realtime row into its bounded collection", () => {
+    const remoteAction = workstreamActionToRow(
+      makeWorkstreamAction({
+        deviceId: "device-b",
+        updatedAt: "2026-08-01T00:00:02.000Z",
+      }),
+      "user-1",
+    );
+
+    const result = applyRealtimePayload(
+      makeSnapshot(),
+      "workstream_actions",
+      { eventType: "INSERT", new: remoteAction },
+      "device-a",
+    );
+
+    expect(result?.workstreamActions).toEqual([
+      expect.objectContaining({
+        id: "workstream-action-1",
+        workstreamId: "workstream-1",
         type: "NEXT",
       }),
     ]);

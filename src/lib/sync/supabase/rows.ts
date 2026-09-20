@@ -168,6 +168,74 @@ export interface ProjectHistoryRow extends EntityAuditRow {
   device_id: string;
 }
 
+export interface WorkstreamRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  name: string;
+  status: "PLANNED" | "ACTIVE" | "COMPLETED";
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+/**
+ * Relation ids are stable text keys (for example workstreamId:projectId).
+ * This keeps concurrent devices convergent while retaining the shared
+ * Syncable/audit/tombstone contract.
+ */
+export interface WorkstreamProjectRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  workstream_id: string;
+  project_id: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface WorkstreamMilestoneRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  workstream_id: string;
+  title: string;
+  status: "PLANNED" | "IN_PROGRESS" | "COMPLETED";
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface WorkstreamActionRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  workstream_id: string;
+  title: string;
+  type: "NEXT" | "LATER" | "BLOCKED";
+  status: "OPEN" | "DONE";
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface WorkstreamActionProjectRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  action_id: string;
+  project_id: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
+export interface WorkstreamActionDependencyRow extends EntityAuditRow {
+  id: string;
+  user_id: string;
+  action_id: string;
+  depends_on_action_id: string;
+  updated_at: string;
+  deleted_at: string | null;
+  device_id: string;
+}
+
 export interface DeviceRow {
   id: string;
   user_id: string;
@@ -265,6 +333,42 @@ export interface Database {
         Update: Partial<ProjectHistoryRow>;
         Relationships: [];
       };
+      workstreams: {
+        Row: WorkstreamRow;
+        Insert: WorkstreamRow;
+        Update: Partial<WorkstreamRow>;
+        Relationships: [];
+      };
+      workstream_projects: {
+        Row: WorkstreamProjectRow;
+        Insert: WorkstreamProjectRow;
+        Update: Partial<WorkstreamProjectRow>;
+        Relationships: [];
+      };
+      workstream_milestones: {
+        Row: WorkstreamMilestoneRow;
+        Insert: WorkstreamMilestoneRow;
+        Update: Partial<WorkstreamMilestoneRow>;
+        Relationships: [];
+      };
+      workstream_actions: {
+        Row: WorkstreamActionRow;
+        Insert: WorkstreamActionRow;
+        Update: Partial<WorkstreamActionRow>;
+        Relationships: [];
+      };
+      workstream_action_projects: {
+        Row: WorkstreamActionProjectRow;
+        Insert: WorkstreamActionProjectRow;
+        Update: Partial<WorkstreamActionProjectRow>;
+        Relationships: [];
+      };
+      workstream_action_dependencies: {
+        Row: WorkstreamActionDependencyRow;
+        Insert: WorkstreamActionDependencyRow;
+        Update: Partial<WorkstreamActionDependencyRow>;
+        Relationships: [];
+      };
       devices: {
         Row: DeviceRow;
         Insert: DeviceRow;
@@ -296,6 +400,12 @@ export type SnapshotTableName =
   | "project_milestones"
   | "project_actions"
   | "project_ideas"
-  | "project_history";
+  | "project_history"
+  | "workstreams"
+  | "workstream_projects"
+  | "workstream_milestones"
+  | "workstream_actions"
+  | "workstream_action_projects"
+  | "workstream_action_dependencies";
 
 export type RealtimeTableName = Exclude<SnapshotTableName, "devices">;

@@ -17,6 +17,18 @@ import {
   projectMilestoneFromRow,
   projectMilestoneToRow,
   projectToRow,
+  workstreamActionDependencyFromRow,
+  workstreamActionDependencyToRow,
+  workstreamActionFromRow,
+  workstreamActionProjectFromRow,
+  workstreamActionProjectToRow,
+  workstreamActionToRow,
+  workstreamFromRow,
+  workstreamMilestoneFromRow,
+  workstreamMilestoneToRow,
+  workstreamProjectFromRow,
+  workstreamProjectToRow,
+  workstreamToRow,
   taskFromRow,
   taskToRow,
   weightRecordFromRow,
@@ -37,6 +49,12 @@ import type {
   TaskRow,
   WeightRecordRow,
   WorkoutRecordRow,
+  WorkstreamActionDependencyRow,
+  WorkstreamActionProjectRow,
+  WorkstreamActionRow,
+  WorkstreamMilestoneRow,
+  WorkstreamProjectRow,
+  WorkstreamRow,
 } from "./rows";
 import {
   mergeAuthoritativeSnapshot,
@@ -148,6 +166,12 @@ async function fetchIncomingSnapshot(
     projectActionsResult,
     projectIdeasResult,
     projectHistoryResult,
+    workstreamsResult,
+    workstreamProjectsResult,
+    workstreamMilestonesResult,
+    workstreamActionsResult,
+    workstreamActionProjectsResult,
+    workstreamActionDependenciesResult,
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
     transport.selectRows<TaskRow>("tasks", userId),
@@ -164,6 +188,24 @@ async function fetchIncomingSnapshot(
     transport.selectRows<ProjectActionRow>("project_actions", userId),
     transport.selectRows<ProjectIdeaRow>("project_ideas", userId),
     transport.selectRows<ProjectHistoryRow>("project_history", userId),
+    transport.selectRows<WorkstreamRow>("workstreams", userId),
+    transport.selectRows<WorkstreamProjectRow>(
+      "workstream_projects",
+      userId,
+    ),
+    transport.selectRows<WorkstreamMilestoneRow>(
+      "workstream_milestones",
+      userId,
+    ),
+    transport.selectRows<WorkstreamActionRow>("workstream_actions", userId),
+    transport.selectRows<WorkstreamActionProjectRow>(
+      "workstream_action_projects",
+      userId,
+    ),
+    transport.selectRows<WorkstreamActionDependencyRow>(
+      "workstream_action_dependencies",
+      userId,
+    ),
   ]);
 
   for (const result of [
@@ -179,6 +221,12 @@ async function fetchIncomingSnapshot(
     projectActionsResult,
     projectIdeasResult,
     projectHistoryResult,
+    workstreamsResult,
+    workstreamProjectsResult,
+    workstreamMilestonesResult,
+    workstreamActionsResult,
+    workstreamActionProjectsResult,
+    workstreamActionDependenciesResult,
   ]) {
     throwQueryError(result);
   }
@@ -202,6 +250,22 @@ async function fetchIncomingSnapshot(
     projectActions: (projectActionsResult.data ?? []).map(projectActionFromRow),
     projectIdeas: (projectIdeasResult.data ?? []).map(projectIdeaFromRow),
     projectHistory: (projectHistoryResult.data ?? []).map(projectHistoryFromRow),
+    workstreams: (workstreamsResult.data ?? []).map(workstreamFromRow),
+    workstreamProjects: (workstreamProjectsResult.data ?? []).map(
+      workstreamProjectFromRow,
+    ),
+    workstreamMilestones: (workstreamMilestonesResult.data ?? []).map(
+      workstreamMilestoneFromRow,
+    ),
+    workstreamActions: (workstreamActionsResult.data ?? []).map(
+      workstreamActionFromRow,
+    ),
+    workstreamActionProjects: (workstreamActionProjectsResult.data ?? []).map(
+      workstreamActionProjectFromRow,
+    ),
+    workstreamActionDependencies: (
+      workstreamActionDependenciesResult.data ?? []
+    ).map(workstreamActionDependencyFromRow),
   };
 
   return incomingSnapshot;
@@ -235,6 +299,12 @@ export interface PushPayload {
   projectActions: ProjectActionRow[];
   projectIdeas: ProjectIdeaRow[];
   projectHistory: ProjectHistoryRow[];
+  workstreams: WorkstreamRow[];
+  workstreamProjects: WorkstreamProjectRow[];
+  workstreamMilestones: WorkstreamMilestoneRow[];
+  workstreamActions: WorkstreamActionRow[];
+  workstreamActionProjects: WorkstreamActionProjectRow[];
+  workstreamActionDependencies: WorkstreamActionDependencyRow[];
 }
 
 export function createPushPayload(
@@ -273,6 +343,30 @@ export function createPushPayload(
     projectHistory: localSnapshot.projectHistory
       .filter(isOwnedByCurrentDevice)
       .map((history) => projectHistoryToRow(history, context.userId)),
+    workstreams: localSnapshot.workstreams
+      .filter(isOwnedByCurrentDevice)
+      .map((workstream) => workstreamToRow(workstream, context.userId)),
+    workstreamProjects: localSnapshot.workstreamProjects
+      .filter(isOwnedByCurrentDevice)
+      .map((link) => workstreamProjectToRow(link, context.userId)),
+    workstreamMilestones: localSnapshot.workstreamMilestones
+      .filter(isOwnedByCurrentDevice)
+      .map((milestone) =>
+        workstreamMilestoneToRow(milestone, context.userId),
+      ),
+    workstreamActions: localSnapshot.workstreamActions
+      .filter(isOwnedByCurrentDevice)
+      .map((action) => workstreamActionToRow(action, context.userId)),
+    workstreamActionProjects: localSnapshot.workstreamActionProjects
+      .filter(isOwnedByCurrentDevice)
+      .map((link) =>
+        workstreamActionProjectToRow(link, context.userId),
+      ),
+    workstreamActionDependencies: localSnapshot.workstreamActionDependencies
+      .filter(isOwnedByCurrentDevice)
+      .map((dependency) =>
+        workstreamActionDependencyToRow(dependency, context.userId),
+      ),
   };
 }
 
@@ -303,6 +397,7 @@ export async function pushSnapshot(
     rows: unknown[];
   }> = [
     { tableName: "projects", rows: payload.projects },
+    { tableName: "workstreams", rows: payload.workstreams },
     { tableName: "notes", rows: payload.notes },
     { tableName: "tasks", rows: payload.tasks },
     // Parents must arrive before children so the composite ownership FK is
@@ -311,6 +406,17 @@ export async function pushSnapshot(
     { tableName: "project_actions", rows: payload.projectActions },
     { tableName: "project_ideas", rows: payload.projectIdeas },
     { tableName: "project_history", rows: payload.projectHistory },
+    { tableName: "workstream_projects", rows: payload.workstreamProjects },
+    { tableName: "workstream_milestones", rows: payload.workstreamMilestones },
+    { tableName: "workstream_actions", rows: payload.workstreamActions },
+    {
+      tableName: "workstream_action_projects",
+      rows: payload.workstreamActionProjects,
+    },
+    {
+      tableName: "workstream_action_dependencies",
+      rows: payload.workstreamActionDependencies,
+    },
   ];
 
   for (const batch of batches) {

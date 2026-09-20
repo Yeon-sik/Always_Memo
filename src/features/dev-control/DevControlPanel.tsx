@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type {
   Project,
@@ -6,6 +6,12 @@ import type {
   ProjectHistory,
   ProjectIdea,
   ProjectMilestone,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../types";
 import {
   getOpenNextCount,
@@ -17,6 +23,8 @@ import {
   unavailableGitHubIntegration,
   type GitHubIntegrationController,
 } from "./github/githubTypes";
+import { WorkstreamPanel } from "./WorkstreamPanel";
+import type { DevControlActions } from "./useDevControlActions";
 
 export interface DevControlPanelProps {
   projects: Project[];
@@ -24,9 +32,19 @@ export interface DevControlPanelProps {
   projectActions: ProjectAction[];
   projectIdeas: ProjectIdea[];
   projectHistory: ProjectHistory[];
+  workstreams?: Workstream[];
+  workstreamProjects?: WorkstreamProject[];
+  workstreamMilestones?: WorkstreamMilestone[];
+  workstreamActions?: WorkstreamAction[];
+  workstreamActionProjects?: WorkstreamActionProject[];
+  workstreamActionDependencies?: WorkstreamActionDependency[];
   selectedProjectId: string | null;
+  selectedWorkstreamId?: string | null;
   onOpenProjectWorkspace: (projectId: string) => void;
   onCreateProjectWorkspace: () => void;
+  onOpenWorkstream?: (workstreamId: string) => void;
+  onCreateWorkstream?: () => void;
+  actions?: DevControlActions;
   github?: GitHubIntegrationController;
 }
 
@@ -69,11 +87,24 @@ export function DevControlPanel({
   projectActions,
   projectIdeas,
   projectHistory,
+  workstreams = [],
+  workstreamProjects = [],
+  workstreamMilestones = [],
+  workstreamActions = [],
+  workstreamActionProjects = [],
+  workstreamActionDependencies = [],
   selectedProjectId,
+  selectedWorkstreamId = null,
   onOpenProjectWorkspace,
   onCreateProjectWorkspace,
+  onOpenWorkstream = () => undefined,
+  onCreateWorkstream = () => undefined,
+  actions,
   github = unavailableGitHubIntegration,
 }: DevControlPanelProps) {
+  const [activeSection, setActiveSection] = useState<"projects" | "workstreams">(
+    "projects",
+  );
   useEffect(() => {
     if (!github.status.connected) return;
 
@@ -95,15 +126,64 @@ export function DevControlPanel({
             Command Center · 프로젝트 운영 상태 스캔
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onCreateProjectWorkspace}
-          className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-white dark:text-black"
-        >
-          새 프로젝트
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveSection("projects")}
+            className={
+              activeSection === "projects"
+                ? "rounded bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white dark:bg-white dark:text-black"
+                : "rounded border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300"
+            }
+          >
+            Projects
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("workstreams")}
+            className={
+              activeSection === "workstreams"
+                ? "rounded bg-teal-700 px-2.5 py-1.5 text-xs font-semibold text-white"
+                : "rounded border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:border-neutral-700 dark:text-neutral-300"
+            }
+          >
+            공통 작업 / Workstreams
+          </button>
+          {activeSection === "projects" ? (
+            <button
+              type="button"
+              onClick={onCreateProjectWorkspace}
+              className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-700 dark:bg-white dark:text-black"
+            >
+              새 프로젝트
+            </button>
+          ) : null}
+        </div>
       </div>
 
+      {activeSection === "workstreams" ? (
+        actions ? (
+          <WorkstreamPanel
+            workstreams={workstreams}
+            projects={projects}
+            workstreamProjects={workstreamProjects}
+            workstreamMilestones={workstreamMilestones}
+            workstreamActions={workstreamActions}
+            workstreamActionProjects={workstreamActionProjects}
+            workstreamActionDependencies={workstreamActionDependencies}
+            selectedWorkstreamId={selectedWorkstreamId}
+            onOpenWorkstream={onOpenWorkstream}
+            onCreateWorkstream={onCreateWorkstream}
+            onOpenProjectWorkspace={onOpenProjectWorkspace}
+            actions={actions}
+          />
+        ) : (
+          <p className="rounded border border-dashed border-slate-300 p-4 text-xs text-slate-500 dark:border-neutral-800 dark:text-neutral-400">
+            Workstream 편집을 초기화하는 중입니다.
+          </p>
+        )
+      ) : (
+        <>
       {projects.length === 0 ? (
         <p className="rounded border border-dashed border-slate-300 p-4 text-xs text-slate-500 dark:border-neutral-800 dark:text-neutral-400">
           프로젝트가 없습니다. 새 프로젝트를 만들어 보세요.
@@ -166,10 +246,12 @@ export function DevControlPanel({
                   </div>
                 </button>
               );
-            })}
-          </section>
-        );
+          })}
+        </section>
+      );
       })}
+        </>
+      )}
     </div>
   );
 }

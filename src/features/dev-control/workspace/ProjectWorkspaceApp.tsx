@@ -28,6 +28,12 @@ export function ProjectWorkspaceApp() {
       projectActions={workspaceState.projectActions}
       projectIdeas={workspaceState.projectIdeas}
       projectHistory={workspaceState.projectHistory}
+      workstreams={workspaceState.workstreams}
+      workstreamProjects={workspaceState.workstreamProjects}
+      workstreamMilestones={workspaceState.workstreamMilestones}
+      workstreamActions={workspaceState.workstreamActions}
+      workstreamActionProjects={workspaceState.workstreamActionProjects}
+      workstreamActionDependencies={workspaceState.workstreamActionDependencies}
       actions={actions}
       github={github}
     />

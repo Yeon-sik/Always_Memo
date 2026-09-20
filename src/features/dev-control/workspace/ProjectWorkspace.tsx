@@ -11,6 +11,12 @@ import type {
   ProjectHistory,
   ProjectIdea,
   ProjectMilestone,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../../types";
 import {
   DEFAULT_PROJECT_BRANCH,
@@ -37,6 +43,11 @@ const MILESTONE_STATUSES: DevMilestoneStatus[] = ["PLANNED", "IN_PROGRESS", "COM
 const ACTION_TYPES: DevActionType[] = ["NEXT", "LATER", "BLOCKED"];
 const ACTION_STATUSES: DevActionStatus[] = ["OPEN", "DONE"];
 const HISTORY_TYPES: DevHistoryType[] = ["STATUS_CHANGE", "MILESTONE", "RELEASE", "NOTE"];
+const WORKSTREAM_STATUS_LABELS: Record<Workstream["status"], string> = {
+  ACTIVE: "진행 중",
+  PLANNED: "예정",
+  COMPLETED: "완료",
+};
 
 const statusLabels: Record<DevProjectStatus, string> = {
   ACTIVE: "진행 중",
@@ -104,6 +115,12 @@ export interface ProjectWorkspaceProps {
   projectActions: ProjectAction[];
   projectIdeas: ProjectIdea[];
   projectHistory: ProjectHistory[];
+  workstreams: Workstream[];
+  workstreamProjects: WorkstreamProject[];
+  workstreamMilestones: WorkstreamMilestone[];
+  workstreamActions: WorkstreamAction[];
+  workstreamActionProjects: WorkstreamActionProject[];
+  workstreamActionDependencies: WorkstreamActionDependency[];
   actions: DevControlActions;
   github?: GitHubIntegrationController;
 }
@@ -116,6 +133,9 @@ export function ProjectWorkspace({
   projectActions,
   projectIdeas,
   projectHistory,
+  workstreams,
+  workstreamProjects,
+  workstreamActions,
   actions,
   github = unavailableGitHubIntegration,
 }: ProjectWorkspaceProps) {
@@ -193,6 +213,22 @@ export function ProjectWorkspace({
   const selectedHistory = useMemo(
     () => (project ? getProjectChildren(project.id, projects, projectHistory).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)) : []),
     [project, projectHistory, projects],
+  );
+  const selectedWorkstreams = useMemo(
+    () =>
+      project
+        ? workstreams.filter(
+            (workstream) =>
+              workstream.deletedAt === null &&
+              workstreamProjects.some(
+                (link) =>
+                  link.deletedAt === null &&
+                  link.workstreamId === workstream.id &&
+                  link.projectId === project.id,
+              ),
+          )
+        : [],
+    [project, workstreamProjects, workstreams],
   );
   const readState = project ? github.readStates[project.id] : undefined;
 
@@ -324,6 +360,7 @@ export function ProjectWorkspace({
                 </form>
               </Section>
               {project ? <Section title="VERIFICATION"><div className="grid grid-cols-1 gap-2 text-xs text-slate-600 dark:text-neutral-300 md:grid-cols-2"><p>Repository: <strong>{project.repository || "-"}</strong></p><p>tracked branch: <strong>{project.branch || "-"}</strong></p><p>Last verified commit: <strong className="font-mono">{project.lastVerifiedCommit || "-"}</strong></p><p>Last verified time: <strong>{project.lastVerifiedAt ? formatTimestamp(project.lastVerifiedAt) : "-"}</strong></p></div></Section> : null}
+              {project ? <Section title="WORKSTREAMS"><div className="grid gap-1">{selectedWorkstreams.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">참여 중인 Workstream이 없습니다.</p> : selectedWorkstreams.map((workstream) => { const openActions = workstreamActions.filter((action) => action.deletedAt === null && action.workstreamId === workstream.id && action.status === "OPEN").length; return <div key={workstream.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><span className="min-w-0 truncate font-semibold">{workstream.name}</span><span className="shrink-0 text-[10px] text-slate-500">{WORKSTREAM_STATUS_LABELS[workstream.status]} · OPEN {openActions}</span></div>; })}</div><p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Workstream의 Source of Truth는 공통 작업 화면이며, 이 영역은 Project 참여 상태만 읽습니다.</p></Section> : null}
             </div>
           ) : null}
 

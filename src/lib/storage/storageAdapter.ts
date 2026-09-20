@@ -22,5 +22,11 @@ export function createEmptySnapshot(): LocalDataSnapshot {
     projectActions: [],
     projectIdeas: [],
     projectHistory: [],
+    workstreams: [],
+    workstreamProjects: [],
+    workstreamMilestones: [],
+    workstreamActions: [],
+    workstreamActionProjects: [],
+    workstreamActionDependencies: [],
   };
 }

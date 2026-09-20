@@ -11,6 +11,12 @@ import type {
   ProjectMilestone,
   Task,
   WeightRecord,
+  Workstream,
+  WorkstreamAction,
+  WorkstreamActionDependency,
+  WorkstreamActionProject,
+  WorkstreamMilestone,
+  WorkstreamProject,
 } from "../../../types";
 import type { RealtimeSubscription } from "../syncTypes";
 import { mergeEntities } from "../merge";
@@ -26,6 +32,12 @@ import {
   fitnessSummaryProjectionV2FromRow,
   weightRecordFromRow,
   workoutRecordFromRow,
+  workstreamActionDependencyFromRow,
+  workstreamActionProjectFromRow,
+  workstreamActionFromRow,
+  workstreamFromRow,
+  workstreamMilestoneFromRow,
+  workstreamProjectFromRow,
 } from "./mappers";
 import type {
   MealRecordRow,
@@ -42,6 +54,12 @@ import type {
   ProjectMilestoneRow,
   ProjectRow,
   WorkoutRecordRow,
+  WorkstreamActionDependencyRow,
+  WorkstreamActionProjectRow,
+  WorkstreamActionRow,
+  WorkstreamMilestoneRow,
+  WorkstreamProjectRow,
+  WorkstreamRow,
 } from "./rows";
 
 const REALTIME_TABLES: RealtimeTableName[] = [
@@ -56,6 +74,12 @@ const REALTIME_TABLES: RealtimeTableName[] = [
   "project_actions",
   "project_ideas",
   "project_history",
+  "workstreams",
+  "workstream_projects",
+  "workstream_milestones",
+  "workstream_actions",
+  "workstream_action_projects",
+  "workstream_action_dependencies",
 ];
 
 const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
@@ -71,6 +95,14 @@ const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
   project_actions: "다른 기기의 프로젝트 작업 변경사항을 반영했습니다.",
   project_ideas: "다른 기기의 프로젝트 아이디어 변경사항을 반영했습니다.",
   project_history: "다른 기기의 프로젝트 이력 변경사항을 반영했습니다.",
+  workstreams: "다른 기기의 Workstream 변경사항을 반영했습니다.",
+  workstream_projects: "Workstream 참여 Project 변경사항을 반영했습니다.",
+  workstream_milestones: "Workstream 마일스톤 변경사항을 반영했습니다.",
+  workstream_actions: "Workstream 작업 변경사항을 반영했습니다.",
+  workstream_action_projects:
+    "Workstream 작업의 영향 Project 변경사항을 반영했습니다.",
+  workstream_action_dependencies:
+    "Workstream 작업 dependency 변경사항을 반영했습니다.",
 };
 
 export function getRealtimeDetail(tableName: RealtimeTableName): string {
@@ -190,6 +222,75 @@ export function applyRemoteProjectHistory(
   };
 }
 
+export function applyRemoteWorkstream(
+  snapshot: LocalDataSnapshot,
+  workstream: Workstream,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreams: mergeEntities(snapshot.workstreams, [workstream]),
+  };
+}
+
+export function applyRemoteWorkstreamProject(
+  snapshot: LocalDataSnapshot,
+  link: WorkstreamProject,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreamProjects: mergeEntities(snapshot.workstreamProjects, [link]),
+  };
+}
+
+export function applyRemoteWorkstreamMilestone(
+  snapshot: LocalDataSnapshot,
+  milestone: WorkstreamMilestone,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreamMilestones: mergeEntities(
+      snapshot.workstreamMilestones,
+      [milestone],
+    ),
+  };
+}
+
+export function applyRemoteWorkstreamAction(
+  snapshot: LocalDataSnapshot,
+  action: WorkstreamAction,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreamActions: mergeEntities(snapshot.workstreamActions, [action]),
+  };
+}
+
+export function applyRemoteWorkstreamActionProject(
+  snapshot: LocalDataSnapshot,
+  link: WorkstreamActionProject,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreamActionProjects: mergeEntities(
+      snapshot.workstreamActionProjects,
+      [link],
+    ),
+  };
+}
+
+export function applyRemoteWorkstreamActionDependency(
+  snapshot: LocalDataSnapshot,
+  dependency: WorkstreamActionDependency,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    workstreamActionDependencies: mergeEntities(
+      snapshot.workstreamActionDependencies,
+      [dependency],
+    ),
+  };
+}
+
 export function applyRealtimePayload(
   snapshot: LocalDataSnapshot,
   tableName: RealtimeTableName,
@@ -252,6 +353,38 @@ export function applyRealtimePayload(
       return applyRemoteProjectHistory(
         snapshot,
         projectHistoryFromRow(row as ProjectHistoryRow),
+      );
+    case "workstreams":
+      return applyRemoteWorkstream(
+        snapshot,
+        workstreamFromRow(row as WorkstreamRow),
+      );
+    case "workstream_projects":
+      return applyRemoteWorkstreamProject(
+        snapshot,
+        workstreamProjectFromRow(row as WorkstreamProjectRow),
+      );
+    case "workstream_milestones":
+      return applyRemoteWorkstreamMilestone(
+        snapshot,
+        workstreamMilestoneFromRow(row as WorkstreamMilestoneRow),
+      );
+    case "workstream_actions":
+      return applyRemoteWorkstreamAction(
+        snapshot,
+        workstreamActionFromRow(row as WorkstreamActionRow),
+      );
+    case "workstream_action_projects":
+      return applyRemoteWorkstreamActionProject(
+        snapshot,
+        workstreamActionProjectFromRow(row as WorkstreamActionProjectRow),
+      );
+    case "workstream_action_dependencies":
+      return applyRemoteWorkstreamActionDependency(
+        snapshot,
+        workstreamActionDependencyFromRow(
+          row as WorkstreamActionDependencyRow,
+        ),
       );
   }
 }

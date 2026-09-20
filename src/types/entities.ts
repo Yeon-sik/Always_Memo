@@ -101,6 +101,7 @@ export interface WeightRecord extends SyncableEntity, ScopedRecordFields {
 }
 
 export type DevProjectStatus = "PLANNED" | "ACTIVE" | "COMPLETED";
+export type DevWorkstreamStatus = "PLANNED" | "ACTIVE" | "COMPLETED";
 export type DevMilestoneStatus = "PLANNED" | "IN_PROGRESS" | "COMPLETED";
 export type DevActionType = "NEXT" | "LATER" | "BLOCKED";
 export type DevActionStatus = "OPEN" | "DONE";
@@ -152,6 +153,42 @@ export interface ProjectHistory extends SyncableEntity {
   githubRef: string | null;
 }
 
+/** A cross-project feature or release unit. Project remains its own entity. */
+export interface Workstream extends SyncableEntity {
+  name: string;
+  status: DevWorkstreamStatus;
+}
+
+/** Stable, tombstoned N:M link between a Workstream and a Project. */
+export interface WorkstreamProject extends SyncableEntity {
+  workstreamId: EntityId;
+  projectId: EntityId;
+}
+
+export interface WorkstreamMilestone extends SyncableEntity {
+  workstreamId: EntityId;
+  title: string;
+  status: DevMilestoneStatus;
+}
+
+export interface WorkstreamAction extends SyncableEntity {
+  workstreamId: EntityId;
+  title: string;
+  type: DevActionType;
+  status: DevActionStatus;
+}
+
+/** A Workstream Action's optional 0..N impacted Project references. */
+export interface WorkstreamActionProject extends SyncableEntity {
+  actionId: EntityId;
+  projectId: EntityId;
+}
+
+export interface WorkstreamActionDependency extends SyncableEntity {
+  actionId: EntityId;
+  dependsOnActionId: EntityId;
+}
+
 export interface Device {
   id: EntityId;
   name: string;
@@ -173,4 +210,10 @@ export interface LocalDataSnapshot {
   projectActions: ProjectAction[];
   projectIdeas: ProjectIdea[];
   projectHistory: ProjectHistory[];
+  workstreams: Workstream[];
+  workstreamProjects: WorkstreamProject[];
+  workstreamMilestones: WorkstreamMilestone[];
+  workstreamActions: WorkstreamAction[];
+  workstreamActionProjects: WorkstreamActionProject[];
+  workstreamActionDependencies: WorkstreamActionDependency[];
 }

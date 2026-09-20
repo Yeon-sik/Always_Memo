@@ -22,6 +22,18 @@ import {
   weightRecordToRow,
   workoutRecordFromRow,
   workoutRecordToRow,
+  workstreamActionDependencyFromRow,
+  workstreamActionDependencyToRow,
+  workstreamActionFromRow,
+  workstreamActionProjectFromRow,
+  workstreamActionProjectToRow,
+  workstreamActionToRow,
+  workstreamFromRow,
+  workstreamMilestoneFromRow,
+  workstreamMilestoneToRow,
+  workstreamProjectFromRow,
+  workstreamProjectToRow,
+  workstreamToRow,
 } from "./mappers";
 import type { TaskRow, WorkoutRecordRow } from "./rows";
 import {
@@ -36,6 +48,12 @@ import {
   makeTask,
   makeWeightRecord,
   makeWorkoutRecord,
+  makeWorkstream,
+  makeWorkstreamAction,
+  makeWorkstreamActionDependency,
+  makeWorkstreamActionProject,
+  makeWorkstreamMilestone,
+  makeWorkstreamProject,
 } from "./testFixtures";
 
 const USER_ID = "user-1";
@@ -53,6 +71,12 @@ describe("Supabase row mappers", () => {
     const action = makeProjectAction();
     const idea = makeProjectIdea();
     const history = makeProjectHistory();
+    const workstream = makeWorkstream();
+    const workstreamProject = makeWorkstreamProject();
+    const workstreamMilestone = makeWorkstreamMilestone();
+    const workstreamAction = makeWorkstreamAction();
+    const workstreamActionProject = makeWorkstreamActionProject();
+    const workstreamActionDependency = makeWorkstreamActionDependency();
 
     expect(noteFromRow(noteToRow(note, USER_ID))).toEqual(note);
     expect(taskFromRow(taskToRow(task, USER_ID))).toEqual(task);
@@ -75,6 +99,32 @@ describe("Supabase row mappers", () => {
     expect(
       projectHistoryFromRow(projectHistoryToRow(history, USER_ID)),
     ).toEqual(history);
+    expect(workstreamFromRow(workstreamToRow(workstream, USER_ID))).toEqual(
+      workstream,
+    );
+    expect(
+      workstreamProjectFromRow(
+        workstreamProjectToRow(workstreamProject, USER_ID),
+      ),
+    ).toEqual(workstreamProject);
+    expect(
+      workstreamMilestoneFromRow(
+        workstreamMilestoneToRow(workstreamMilestone, USER_ID),
+      ),
+    ).toEqual(workstreamMilestone);
+    expect(
+      workstreamActionFromRow(workstreamActionToRow(workstreamAction, USER_ID)),
+    ).toEqual(workstreamAction);
+    expect(
+      workstreamActionProjectFromRow(
+        workstreamActionProjectToRow(workstreamActionProject, USER_ID),
+      ),
+    ).toEqual(workstreamActionProject);
+    expect(
+      workstreamActionDependencyFromRow(
+        workstreamActionDependencyToRow(workstreamActionDependency, USER_ID),
+      ),
+    ).toEqual(workstreamActionDependency);
   });
 
   it("normalizes missing audit fields and database time precision", () => {
