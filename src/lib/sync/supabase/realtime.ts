@@ -1,5 +1,6 @@
 import type {
   FitnessSummaryProjectionV2,
+  KnowledgeDocument,
   LocalDataSnapshot,
   LegacyWorkoutRecordV1,
   MealRecord,
@@ -32,6 +33,7 @@ import {
   fitnessSummaryProjectionV2FromRow,
   weightRecordFromRow,
   workoutRecordFromRow,
+  knowledgeDocumentFromRow,
   workstreamActionDependencyFromRow,
   workstreamActionProjectFromRow,
   workstreamActionFromRow,
@@ -48,6 +50,7 @@ import type {
   TaskRow,
   WeightRecordRow,
   FitnessSummaryProjectionV2Row,
+  KnowledgeDocumentRow,
   ProjectActionRow,
   ProjectHistoryRow,
   ProjectIdeaRow,
@@ -80,6 +83,7 @@ const REALTIME_TABLES: RealtimeTableName[] = [
   "workstream_actions",
   "workstream_action_projects",
   "workstream_action_dependencies",
+  "knowledge_documents",
 ];
 
 const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
@@ -103,6 +107,7 @@ const REALTIME_DETAILS: Record<RealtimeTableName, string> = {
     "Workstream 작업의 영향 Project 변경사항을 반영했습니다.",
   workstream_action_dependencies:
     "Workstream 작업 dependency 변경사항을 반영했습니다.",
+  knowledge_documents: "Knowledge 문서 registry 변경사항을 반영했습니다.",
 };
 
 export function getRealtimeDetail(tableName: RealtimeTableName): string {
@@ -291,6 +296,16 @@ export function applyRemoteWorkstreamActionDependency(
   };
 }
 
+export function applyRemoteKnowledgeDocument(
+  snapshot: LocalDataSnapshot,
+  document: KnowledgeDocument,
+): LocalDataSnapshot {
+  return {
+    ...snapshot,
+    knowledgeDocuments: mergeEntities(snapshot.knowledgeDocuments, [document]),
+  };
+}
+
 export function applyRealtimePayload(
   snapshot: LocalDataSnapshot,
   tableName: RealtimeTableName,
@@ -385,6 +400,11 @@ export function applyRealtimePayload(
         workstreamActionDependencyFromRow(
           row as WorkstreamActionDependencyRow,
         ),
+      );
+    case "knowledge_documents":
+      return applyRemoteKnowledgeDocument(
+        snapshot,
+        knowledgeDocumentFromRow(row as KnowledgeDocumentRow),
       );
   }
 }

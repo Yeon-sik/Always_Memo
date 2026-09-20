@@ -6,6 +6,8 @@ import type {
   DevHistoryType,
   DevMilestoneStatus,
   DevProjectStatus,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   Project,
   ProjectAction,
   ProjectHistory,
@@ -26,6 +28,11 @@ import {
   normalizeProjectRepositoryFields,
 } from "../devControlService";
 import type { DevControlActions } from "../useDevControlActions";
+import {
+  getKnowledgeWorkstreamCandidates,
+  getProjectNamesById,
+} from "../../knowledge-vault/knowledgeDocumentCreation";
+import { buildKnowledgeDocumentRelativePath } from "../../knowledge-vault/knowledgeVaultService";
 import { GitHubConnectionBar } from "../github/GitHubConnectionBar";
 import { GitHubRepositoryObservation } from "../github/GitHubRepositoryObservation";
 import { GitHubRepositoryPicker } from "../github/GitHubRepositoryPicker";
@@ -37,6 +44,8 @@ import {
 import type { ProjectWorkspaceMode } from "./projectWorkspaceBridge";
 
 type WorkspaceTab = "overview" | "github" | "plan" | "history";
+
+const KNOWLEDGE_DOCUMENT_TYPES: KnowledgeDocumentType[] = ["IDEA", "PLAN", "DESIGN", "RESEARCH", "NOTE"];
 
 const PROJECT_STATUSES: DevProjectStatus[] = ["ACTIVE", "PLANNED", "COMPLETED"];
 const MILESTONE_STATUSES: DevMilestoneStatus[] = ["PLANNED", "IN_PROGRESS", "COMPLETED"];
@@ -121,6 +130,7 @@ export interface ProjectWorkspaceProps {
   workstreamActions: WorkstreamAction[];
   workstreamActionProjects: WorkstreamActionProject[];
   workstreamActionDependencies: WorkstreamActionDependency[];
+  knowledgeDocuments: KnowledgeDocument[];
   actions: DevControlActions;
   github?: GitHubIntegrationController;
 }
@@ -136,6 +146,7 @@ export function ProjectWorkspace({
   workstreams,
   workstreamProjects,
   workstreamActions,
+  knowledgeDocuments,
   actions,
   github = unavailableGitHubIntegration,
 }: ProjectWorkspaceProps) {
@@ -150,6 +161,9 @@ export function ProjectWorkspace({
     githubOwner: null as string | null,
     githubRepo: null as string | null,
     status: "PLANNED" as DevProjectStatus,
+    description: "",
+    currentSummary: "",
+    targetSummary: "",
     lastVerifiedCommit: "",
     lastVerifiedAt: "",
   });
@@ -163,6 +177,16 @@ export function ProjectWorkspace({
     occurredAt: "",
     githubRef: "",
   });
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeType, setKnowledgeType] = useState<KnowledgeDocumentType>("PLAN");
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
+  const [knowledgeComposerOpen, setKnowledgeComposerOpen] = useState(false);
+  const [knowledgeProjectIds, setKnowledgeProjectIds] = useState<string[]>([]);
+  const [knowledgeWorkstreamId, setKnowledgeWorkstreamId] = useState<string | null>(null);
+  const [knowledgeOwnerMode, setKnowledgeOwnerMode] = useState<"existing" | "new">("existing");
+  const [knowledgeAddProjectIds, setKnowledgeAddProjectIds] = useState<string[]>([]);
+  const [knowledgeNewWorkstreamName, setKnowledgeNewWorkstreamName] = useState("");
+  const [knowledgeSubmitting, setKnowledgeSubmitting] = useState(false);
 
   useEffect(() => {
     setActiveTab("overview");
@@ -177,6 +201,9 @@ export function ProjectWorkspace({
         githubOwner: null,
         githubRepo: null,
         status: "PLANNED",
+        description: "",
+        currentSummary: "",
+        targetSummary: "",
         lastVerifiedCommit: "",
         lastVerifiedAt: "",
       });
@@ -193,10 +220,25 @@ export function ProjectWorkspace({
       githubOwner: project.githubOwner,
       githubRepo: project.githubRepo,
       status: project.status,
+      description: project.description,
+      currentSummary: project.currentSummary,
+      targetSummary: project.targetSummary,
       lastVerifiedCommit: project.lastVerifiedCommit ?? "",
       lastVerifiedAt: toDateTimeLocal(project.lastVerifiedAt),
     });
   }, [mode, project?.id]);
+
+  useEffect(() => {
+    setKnowledgeProjectIds(project ? [project.id] : []);
+    setKnowledgeTitle("");
+    setKnowledgeType("PLAN");
+    setKnowledgeWorkstreamId(null);
+    setKnowledgeOwnerMode("existing");
+    setKnowledgeAddProjectIds([]);
+    setKnowledgeNewWorkstreamName("");
+    setKnowledgeComposerOpen(false);
+    setKnowledgeError(null);
+  }, [project?.id]);
 
   const selectedMilestones = useMemo(
     () => (project ? getProjectChildren(project.id, projects, projectMilestones) : []),
@@ -230,6 +272,47 @@ export function ProjectWorkspace({
         : [],
     [project, workstreamProjects, workstreams],
   );
+  const selectedKnowledgeDocuments = useMemo(() => {
+    if (!project) return [];
+    const workstreamIds = new Set(selectedWorkstreams.map((item) => item.id));
+    return knowledgeDocuments
+      .filter(
+        (document) =>
+          document.deletedAt === null &&
+          (document.projectId === project.id ||
+            (document.workstreamId !== null && workstreamIds.has(document.workstreamId))),
+      )
+      .sort((first, second) => first.title.localeCompare(second.title));
+  }, [knowledgeDocuments, project, selectedWorkstreams]);
+  const knowledgeCandidates = useMemo(
+    () => getKnowledgeWorkstreamCandidates(workstreams, workstreamProjects, knowledgeProjectIds),
+    [knowledgeProjectIds, workstreamProjects, workstreams],
+  );
+  const selectedKnowledgeCandidate = useMemo(
+    () => knowledgeCandidates.find((candidate) => candidate.workstream.id === knowledgeWorkstreamId) ?? null,
+    [knowledgeCandidates, knowledgeWorkstreamId],
+  );
+  const knowledgePreviewPath = useMemo(() => {
+    const title = knowledgeTitle.trim() || "Untitled";
+    if (knowledgeProjectIds.length === 1) {
+      const selected = projects.find((item) => item.id === knowledgeProjectIds[0]);
+      return buildKnowledgeDocumentRelativePath({
+        title,
+        type: knowledgeType,
+        projectId: knowledgeProjectIds[0],
+        projectName: selected?.name,
+      });
+    }
+    const workstreamName = knowledgeOwnerMode === "new"
+      ? knowledgeNewWorkstreamName.trim() || title
+      : selectedKnowledgeCandidate?.workstream.name;
+    return buildKnowledgeDocumentRelativePath({
+      title,
+      type: knowledgeType,
+      workstreamId: knowledgeWorkstreamId ?? "new-workstream",
+      workstreamName,
+    });
+  }, [knowledgeNewWorkstreamName, knowledgeOwnerMode, knowledgeProjectIds, knowledgeTitle, knowledgeType, knowledgeWorkstreamId, projects, selectedKnowledgeCandidate]);
   const readState = project ? github.readStates[project.id] : undefined;
 
   function handleRepositoryModeChange(nextMode: "github" | "text") {
@@ -281,16 +364,64 @@ export function ProjectWorkspace({
       ...normalizedRepositoryFields,
       ...normalizeProjectGitHubFields(repositoryMode, projectDraft.githubRepositoryId, projectDraft.githubOwner, projectDraft.githubRepo),
       status: projectDraft.status,
+      description: projectDraft.description,
+      currentSummary: projectDraft.currentSummary,
+      targetSummary: projectDraft.targetSummary,
     };
     if (mode === "create" || !project) {
       actions.addProject({
         ...input,
-        currentSummary: "",
-        targetSummary: "",
         backfillInput: undefined,
       });
     } else {
       actions.updateProject(project.id, input);
+    }
+  }
+
+  function toggleKnowledgeProject(projectId: string) {
+    setKnowledgeProjectIds((current) =>
+      current.includes(projectId)
+        ? current.filter((id) => id !== projectId)
+        : [...current, projectId],
+    );
+    setKnowledgeAddProjectIds((current) => current.filter((id) => id !== projectId));
+  }
+
+  function openKnowledgeComposer() {
+    if (!project) return;
+    setKnowledgeProjectIds([project.id]);
+    setKnowledgeTitle("");
+    setKnowledgeType("PLAN");
+    setKnowledgeWorkstreamId(null);
+    setKnowledgeOwnerMode("existing");
+    setKnowledgeAddProjectIds([]);
+    setKnowledgeNewWorkstreamName("");
+    setKnowledgeError(null);
+    setKnowledgeComposerOpen(true);
+  }
+
+  async function submitKnowledgeDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !knowledgeTitle.trim() || knowledgeProjectIds.length === 0) return;
+    setKnowledgeError(null);
+    setKnowledgeSubmitting(true);
+    try {
+      await actions.createKnowledgeDocumentForProjects({
+        title: knowledgeTitle,
+        type: knowledgeType,
+        projectIds: knowledgeProjectIds,
+        workstreamId: knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "existing" ? knowledgeWorkstreamId : null,
+        addProjectIds: knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "existing" ? knowledgeAddProjectIds : undefined,
+        newWorkstream: knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "new"
+          ? { name: knowledgeNewWorkstreamName.trim() || knowledgeTitle.trim(), status: "PLANNED" }
+          : undefined,
+      });
+      setKnowledgeTitle("");
+      setKnowledgeComposerOpen(false);
+    } catch (caughtError) {
+      setKnowledgeError(caughtError instanceof Error ? caughtError.message : "문서를 만들지 못했습니다.");
+    } finally {
+      setKnowledgeSubmitting(false);
     }
   }
 
@@ -352,6 +483,11 @@ export function ProjectWorkspace({
               <Section title="PROJECT OVERVIEW">
                 <form className="grid gap-2" onSubmit={submitProject}>
                   <Field label="이름" value={projectDraft.name} onChange={(value) => setProjectDraft((draft) => ({ ...draft, name: value }))} />
+                  <Field label="설명" value={projectDraft.description} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, description: value }))} placeholder="프로젝트의 목적과 맥락" />
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <Field label="CURRENT" value={projectDraft.currentSummary} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} placeholder="현재 상태" />
+                    <Field label="TARGET" value={projectDraft.targetSummary} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} placeholder="도달하려는 상태" />
+                  </div>
                   <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>
                   <fieldset className="grid gap-2 rounded border border-slate-200 p-2 dark:border-neutral-800"><legend className="px-1 text-[11px] font-semibold text-slate-600 dark:text-neutral-300">Repository 연결</legend><div className="flex flex-wrap gap-3 text-xs"><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "github"} onChange={() => handleRepositoryModeChange("github")} />GitHub Repository</label><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "text"} onChange={() => handleRepositoryModeChange("text")} />GitHub 미연결</label></div>{repositoryMode === "github" ? <GitHubRepositoryPicker integration={github} repository={projectDraft.repository} branch={projectDraft.branch} githubRepositoryId={projectDraft.githubRepositoryId} githubOwner={projectDraft.githubOwner} githubRepo={projectDraft.githubRepo} onRepositoryChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value, githubRepositoryId: null, githubOwner: null, githubRepo: null }))} onBranchChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} onIdentityChange={handleRepositorySelection} /> : <p className="text-[11px] text-slate-500">GitHub 연결 없이 상태를 관리합니다.</p>}</fieldset>
                   {repositoryMode === "github" ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><Field label="Last verified time" value={projectDraft.lastVerifiedAt} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: value }))} /></div> : null}
@@ -361,6 +497,41 @@ export function ProjectWorkspace({
               </Section>
               {project ? <Section title="VERIFICATION"><div className="grid grid-cols-1 gap-2 text-xs text-slate-600 dark:text-neutral-300 md:grid-cols-2"><p>Repository: <strong>{project.repository || "-"}</strong></p><p>tracked branch: <strong>{project.branch || "-"}</strong></p><p>Last verified commit: <strong className="font-mono">{project.lastVerifiedCommit || "-"}</strong></p><p>Last verified time: <strong>{project.lastVerifiedAt ? formatTimestamp(project.lastVerifiedAt) : "-"}</strong></p></div></Section> : null}
               {project ? <Section title="WORKSTREAMS"><div className="grid gap-1">{selectedWorkstreams.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">참여 중인 Workstream이 없습니다.</p> : selectedWorkstreams.map((workstream) => { const openActions = workstreamActions.filter((action) => action.deletedAt === null && action.workstreamId === workstream.id && action.status === "OPEN").length; return <div key={workstream.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><span className="min-w-0 truncate font-semibold">{workstream.name}</span><span className="shrink-0 text-[10px] text-slate-500">{WORKSTREAM_STATUS_LABELS[workstream.status]} · OPEN {openActions}</span></div>; })}</div><p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Workstream의 Source of Truth는 공통 작업 화면이며, 이 영역은 Project 참여 상태만 읽습니다.</p></Section> : null}
+              {project ? <Section title="KNOWLEDGE DOCUMENTS">
+                <button type="button" onClick={openKnowledgeComposer} className="mb-2 rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white">새 문서</button>
+                {knowledgeComposerOpen ? <form className="mb-3 grid gap-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 dark:border-teal-900 dark:bg-teal-950/20" onSubmit={(event) => void submitKnowledgeDocument(event)}>
+                  <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-700 dark:text-neutral-200">새 Knowledge Document</p><button type="button" onClick={() => setKnowledgeComposerOpen(false)} className="text-[11px] text-slate-500 hover:underline">닫기</button></div>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                    <input autoFocus className="min-w-0 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="문서 제목" value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} />
+                    <select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-[10px] dark:border-neutral-700 dark:bg-neutral-950" value={knowledgeType} onChange={(event) => setKnowledgeType(event.target.value as KnowledgeDocumentType)}>
+                      {KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <fieldset className="grid gap-1"><legend className="text-[11px] font-semibold text-slate-600 dark:text-neutral-300">연결 프로젝트</legend>{projects.filter((item) => item.deletedAt === null).sort((a, b) => a.name.localeCompare(b.name)).map((item) => <label key={item.id} className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-white dark:hover:bg-neutral-900"><input type="checkbox" checked={knowledgeProjectIds.includes(item.id)} onChange={() => toggleKnowledgeProject(item.id)} /><span>{item.name}</span>{item.id === project.id ? <span className="text-[10px] text-teal-700 dark:text-teal-300">현재 Project</span> : null}</label>)}</fieldset>
+                  {knowledgeProjectIds.length > 1 ? <div className="grid gap-2 rounded border border-slate-200 bg-white/70 p-2 dark:border-neutral-800 dark:bg-neutral-950/60">
+                    <p className="text-[11px] font-semibold text-slate-600 dark:text-neutral-300">다중 프로젝트 문서 소유자</p>
+                    <label className="flex items-center gap-2 text-xs"><input type="radio" checked={knowledgeOwnerMode === "existing"} onChange={() => { setKnowledgeOwnerMode("existing"); setKnowledgeAddProjectIds([]); }} />기존 Workstream 사용</label>
+                    {knowledgeOwnerMode === "existing" ? <div className="grid gap-1 pl-5">{knowledgeCandidates.length === 0 ? <p className="text-[11px] text-slate-500">기존 Workstream이 없습니다.</p> : knowledgeCandidates.map((candidate) => <label key={candidate.workstream.id} className="grid gap-1 rounded border border-slate-200 p-2 text-[11px] dark:border-neutral-800"><span className="flex items-center gap-2"><input type="radio" name="knowledge-workstream" checked={knowledgeWorkstreamId === candidate.workstream.id} onChange={() => { setKnowledgeWorkstreamId(candidate.workstream.id); setKnowledgeAddProjectIds([]); }} /><strong>{candidate.workstream.name}</strong><span className="text-[10px] text-slate-500">{candidate.rank === 0 ? "모든 선택 Project 참여" : candidate.rank === 1 ? "일부 참여" : "기타"}</span></span>{candidate.missingProjectIds.length > 0 ? <span className="pl-5 text-amber-700 dark:text-amber-300">누락: {getProjectNamesById(projects, candidate.missingProjectIds).join(", ")}</span> : null}{knowledgeWorkstreamId === candidate.workstream.id && candidate.missingProjectIds.length > 0 ? <span className="grid gap-1 pl-5">{candidate.missingProjectIds.map((missingId) => <label key={missingId} className="flex items-center gap-2"><input type="checkbox" checked={knowledgeAddProjectIds.includes(missingId)} onChange={() => setKnowledgeAddProjectIds((current) => current.includes(missingId) ? current.filter((id) => id !== missingId) : [...current, missingId])} />{getProjectNamesById(projects, [missingId])[0]}를 participant로 추가</label>)}</span> : null}</label>)}</div> : null}
+                    <label className="flex items-center gap-2 text-xs"><input type="radio" checked={knowledgeOwnerMode === "new"} onChange={() => { setKnowledgeOwnerMode("new"); setKnowledgeWorkstreamId(null); setKnowledgeAddProjectIds([]); setKnowledgeNewWorkstreamName(knowledgeNewWorkstreamName || knowledgeTitle); }} />새 Workstream 생성</label>
+                    {knowledgeOwnerMode === "new" ? <div className="grid gap-1 pl-5"><input className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="Workstream 이름" value={knowledgeNewWorkstreamName} onChange={(event) => setKnowledgeNewWorkstreamName(event.target.value)} /><span className="text-[10px] text-slate-500">상태: PLANNED · 선택한 Project가 모두 participant로 연결됩니다.</span></div> : null}
+                  </div> : null}
+                  <div className="rounded border border-slate-200 bg-white/70 px-2 py-1.5 text-[11px] dark:border-neutral-800 dark:bg-neutral-950/60">생성 위치: <span className="font-mono">{knowledgePreviewPath}</span></div>
+                  {knowledgeError ? <p role="alert" className="text-[11px] text-rose-700 dark:text-rose-300">{knowledgeError}</p> : null}
+                  <button type="submit" disabled={knowledgeSubmitting || !knowledgeTitle.trim() || knowledgeProjectIds.length === 0 || (knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "existing" && !knowledgeWorkstreamId) || (knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "new" && !knowledgeNewWorkstreamName.trim() && !knowledgeTitle.trim()) || (knowledgeProjectIds.length > 1 && knowledgeOwnerMode === "existing" && Boolean(selectedKnowledgeCandidate?.missingProjectIds.some((id) => !knowledgeAddProjectIds.includes(id))))} className="justify-self-start rounded bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">{knowledgeSubmitting ? "생성 중..." : "생성"}</button>
+                </form> : null}
+                <div className="grid gap-1">
+                  {selectedKnowledgeDocuments.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">관련 문서가 없습니다.</p> : selectedKnowledgeDocuments.map((document) => <div key={document.id} className="grid gap-1 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input className="min-w-0 flex-1 bg-transparent font-medium" value={document.title} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { title: event.target.value })} />
+                      <select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={document.type} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { type: event.target.value as KnowledgeDocumentType })}>{KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select>
+                      <button type="button" onClick={() => void actions.openKnowledgeDocument(document)} className="text-teal-700 hover:underline dark:text-teal-300">열기</button>
+                    </div>
+                    <span className="truncate text-[10px] text-slate-500 dark:text-neutral-400">{document.workstreamId ? `Workstream · ${workstreams.find((item) => item.id === document.workstreamId)?.name ?? document.workstreamId}` : "Project"} · {document.relativePath}</span>
+                  </div>)}
+                </div>
+                {knowledgeError ? <p role="alert" className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">{knowledgeError}</p> : null}
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Project Home은 generated projection이며 여기서 직접 편집하지 않습니다.</p>
+              </Section> : null}
             </div>
           ) : null}
 

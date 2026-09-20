@@ -34,6 +34,7 @@ export function ProjectWorkspaceApp() {
       workstreamActions={workspaceState.workstreamActions}
       workstreamActionProjects={workspaceState.workstreamActionProjects}
       workstreamActionDependencies={workspaceState.workstreamActionDependencies}
+      knowledgeDocuments={workspaceState.knowledgeDocuments}
       actions={actions}
       github={github}
     />

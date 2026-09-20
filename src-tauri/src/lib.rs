@@ -2,6 +2,7 @@ use std::{collections::HashMap, env, fs, path::PathBuf, sync::Mutex};
 
 mod db_editor;
 mod github;
+mod knowledge_vault;
 mod project_workspace;
 
 #[cfg(desktop)]
@@ -356,6 +357,7 @@ fn setup_tray(app: &mut tauri::App) -> tauri::Result<()> {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(Mutex::new(QuickCaptureShortcutStatus::unsupported()))
         .manage(github::GitHubState::default())
         .invoke_handler(tauri::generate_handler![
@@ -388,6 +390,13 @@ pub fn run() {
             github::github_list_branches,
             github::github_read_repository,
             github::github_read_commit_history,
+            knowledge_vault::knowledge_vault_get_config,
+            knowledge_vault::knowledge_vault_set_path,
+            knowledge_vault::knowledge_vault_create_document,
+            knowledge_vault::knowledge_vault_write_generated_file,
+            knowledge_vault::knowledge_vault_update_document,
+            knowledge_vault::knowledge_vault_move_file,
+            knowledge_vault::knowledge_vault_open_file,
         ])
         .setup(|app| {
             #[cfg(desktop)]

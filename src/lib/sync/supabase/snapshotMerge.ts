@@ -106,6 +106,10 @@ export function mergeSnapshot(
       localSnapshot.workstreamActionDependencies,
       incomingSnapshot.workstreamActionDependencies,
     ),
+    knowledgeDocuments: mergeEntities(
+      localSnapshot.knowledgeDocuments,
+      incomingSnapshot.knowledgeDocuments,
+    ),
   };
 }
 
@@ -182,6 +186,10 @@ export function mergeAuthoritativeSnapshot(
     workstreamActionDependencies: mergeAuthoritativeEntities(
       localSnapshot.workstreamActionDependencies,
       incomingSnapshot.workstreamActionDependencies,
+    ),
+    knowledgeDocuments: mergeAuthoritativeEntities(
+      localSnapshot.knowledgeDocuments,
+      incomingSnapshot.knowledgeDocuments,
     ),
   };
 }

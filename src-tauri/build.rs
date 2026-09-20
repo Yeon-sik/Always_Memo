@@ -17,6 +17,7 @@ fn main() {
             "db_editor_list_rows",
             "update_db_row",
             "open_db_editor_window",
+            "open_project_workspace_window",
             "github_config_status",
             "github_save_config",
             "github_delete_config",
@@ -29,6 +30,13 @@ fn main() {
             "github_list_branches",
             "github_read_repository",
             "github_read_commit_history",
+            "knowledge_vault_get_config",
+            "knowledge_vault_set_path",
+            "knowledge_vault_create_document",
+            "knowledge_vault_write_generated_file",
+            "knowledge_vault_update_document",
+            "knowledge_vault_move_file",
+            "knowledge_vault_open_file",
         ]),
     ))
     .expect("failed to build Tauri application manifest");

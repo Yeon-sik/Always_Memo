@@ -13,6 +13,8 @@ import { DesktopIntegrationSettingsSection } from "./settings/DesktopIntegration
 import { GitHubSettingsSection } from "./settings/GitHubSettingsSection";
 import { SupabaseSettingsSection } from "./settings/SupabaseSettingsSection";
 import { DbEditorLauncher } from "../features/db-editor/DbEditorLauncher";
+import type { KnowledgeVaultRuntime } from "../features/knowledge-vault/useKnowledgeVaultRuntime";
+import { KnowledgeVaultSettingsSection } from "./settings/KnowledgeVaultSettingsSection";
 
 interface SettingsPanelProps {
   activeDevices: Device[];
@@ -38,6 +40,7 @@ interface SettingsPanelProps {
   onSignOut: () => Promise<void>;
   onSaveQuickCaptureShortcutPreference: (shortcut: string) => void;
   onToggleAutostart: (enabled: boolean) => Promise<void>;
+  knowledgeVault: KnowledgeVaultRuntime;
 }
 
 export function SettingsPanel({
@@ -64,6 +67,7 @@ export function SettingsPanel({
   onSignOut,
   onSaveQuickCaptureShortcutPreference,
   onToggleAutostart,
+  knowledgeVault,
 }: SettingsPanelProps) {
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-slate-300 bg-white dark:border-neutral-800 dark:bg-black">
@@ -81,6 +85,7 @@ export function SettingsPanel({
           onChangeThemeMode={onChangeThemeMode}
         />
         <DbEditorLauncher />
+        <KnowledgeVaultSettingsSection vault={knowledgeVault} />
         <SupabaseSettingsSection
           authEmail={authEmail}
           isAuthenticated={isAuthenticated}

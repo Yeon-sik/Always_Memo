@@ -10,6 +10,7 @@ import { useNoteActions } from "../features/notes/useNoteActions";
 import { getVisibleTasks } from "../features/tasks/taskService";
 import { useTaskActions } from "../features/tasks/useTaskActions";
 import { useDevControlActions } from "../features/dev-control/useDevControlActions";
+import { useKnowledgeVaultRuntime } from "../features/knowledge-vault/useKnowledgeVaultRuntime";
 import {
   getVisibleProjects,
   getVisibleWorkstreams,
@@ -63,6 +64,13 @@ export function useLocalSyncMemo(
     () => getVisibleWorkstreams(runtime.snapshot.workstreams),
     [runtime.snapshot.workstreams],
   );
+  const visibleKnowledgeDocuments = useMemo(
+    () =>
+      runtime.snapshot.knowledgeDocuments
+        .filter((document) => document.deletedAt === null)
+        .sort((first, second) => first.title.localeCompare(second.title)),
+    [runtime.snapshot.knowledgeDocuments],
+  );
   const visibleFitnessSummaryProjections = useMemo(
     () =>
       runtime.snapshot.fitnessSummaryProjections
@@ -97,11 +105,17 @@ export function useLocalSyncMemo(
   });
   const devControlActions = useDevControlActions({
     commitSnapshot: runtime.commitSnapshot,
+    snapshot: runtime.snapshot,
     device: runtime.device,
     selectedProjectId,
     setSelectedProjectId,
     selectedWorkstreamId,
     setSelectedWorkstreamId,
+  });
+  const knowledgeVault = useKnowledgeVaultRuntime({
+    snapshot: runtime.snapshot,
+    isReady: runtime.isReady,
+    commitSnapshot: runtime.commitSnapshot,
   });
   return {
     activeDevices: runtime.activeDevices,
@@ -129,6 +143,8 @@ export function useLocalSyncMemo(
     isManualSyncing: runtime.isManualSyncing,
     isReady: runtime.isReady,
     isSupabaseConfigured: runtime.isSupabaseConfigured,
+    knowledgeDocuments: visibleKnowledgeDocuments,
+    knowledgeVault,
     loadFinanceDailySummaries: runtime.loadFinanceDailySummaries,
     manualSync: runtime.manualSync,
     mealRecords: visibleMealRecords,

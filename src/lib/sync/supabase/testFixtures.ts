@@ -7,6 +7,8 @@ import type {
   DevProjectStatus,
   DevWorkstreamStatus,
   FitnessSummaryProjectionV2,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   LegacyWorkoutRecordV1,
   LocalDataSnapshot,
   MealRecord,
@@ -156,6 +158,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     ...auditFields,
     id: "project-1",
     name: "Project",
+    description: "Description",
     repository: "https://github.com/example/project",
     branch: "main",
     githubRepositoryId: "12345",
@@ -166,6 +169,21 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     targetSummary: "Target",
     lastVerifiedCommit: null,
     lastVerifiedAt: null,
+    ...overrides,
+  };
+}
+
+export function makeKnowledgeDocument(
+  overrides: Partial<KnowledgeDocument> = {},
+): KnowledgeDocument {
+  return {
+    ...auditFields,
+    id: "knowledge-document-1",
+    title: "Document",
+    type: "PLAN" satisfies KnowledgeDocumentType,
+    projectId: "project-1",
+    workstreamId: null,
+    relativePath: "Projects/Project/Plans/Document.md",
     ...overrides,
   };
 }
@@ -319,6 +337,7 @@ export function makeSnapshot(
     workstreamActions: [],
     workstreamActionProjects: [],
     workstreamActionDependencies: [],
+    knowledgeDocuments: [],
     ...overrides,
   };
 }

@@ -11,6 +11,8 @@ import type {
   Task,
   WeightRecord,
   FitnessSummaryProjectionV2,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   LegacyWorkoutRecordV1,
   WorkoutType,
   Workstream,
@@ -91,12 +93,20 @@ const MILESTONE_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED"] as const;
 const ACTION_TYPES = ["NEXT", "LATER", "BLOCKED"] as const;
 const ACTION_STATUSES = ["OPEN", "DONE"] as const;
 const HISTORY_TYPES = ["STATUS_CHANGE", "MILESTONE", "RELEASE", "NOTE"] as const;
+const KNOWLEDGE_DOCUMENT_TYPES = [
+  "IDEA",
+  "PLAN",
+  "DESIGN",
+  "RESEARCH",
+  "NOTE",
+] as const;
 
 function normalizeProject(value: unknown): Project | null {
   if (
     !isRecord(value) ||
     !isSyncableEntity(value) ||
     typeof value.name !== "string" ||
+    !isOptionalNullableString(value.description) ||
     !isOneOf(value.status, PROJECT_STATUSES) ||
     typeof value.currentSummary !== "string" ||
     typeof value.targetSummary !== "string" ||
@@ -120,6 +130,7 @@ function normalizeProject(value: unknown): Project | null {
   return {
     id: value.id as string,
     name: value.name as string,
+    description: (value.description as string | null | undefined) ?? "",
     repository: (value.repository as string | null | undefined) ?? null,
     branch: (value.branch as string | null | undefined) ?? null,
     ...githubIdentity,
@@ -333,6 +344,34 @@ function normalizeWorkstreamActionDependency(
     id: value.id as string,
     actionId: value.actionId,
     dependsOnActionId: value.dependsOnActionId,
+    ...getNormalizedSyncFields(value),
+  };
+}
+
+function normalizeKnowledgeDocument(value: unknown): KnowledgeDocument | null {
+  if (
+    !isRecord(value) ||
+    !isSyncableEntity(value) ||
+    typeof value.title !== "string" ||
+    !isOneOf(value.type, KNOWLEDGE_DOCUMENT_TYPES) ||
+    !isOptionalNullableString(value.projectId) ||
+    !isOptionalNullableString(value.workstreamId) ||
+    typeof value.relativePath !== "string" ||
+    (value.projectId !== null &&
+      value.projectId !== undefined &&
+      value.workstreamId !== null &&
+      value.workstreamId !== undefined)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id as string,
+    title: value.title,
+    type: value.type as KnowledgeDocumentType,
+    projectId: (value.projectId as string | null | undefined) ?? null,
+    workstreamId: (value.workstreamId as string | null | undefined) ?? null,
+    relativePath: value.relativePath,
     ...getNormalizedSyncFields(value),
   };
 }
@@ -610,6 +649,10 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     value.workstreamActionDependencies,
     normalizeWorkstreamActionDependency,
   );
+  const knowledgeDocuments = normalizeArray(
+    value.knowledgeDocuments,
+    normalizeKnowledgeDocument,
+  );
 
   return {
     notes,
@@ -630,6 +673,7 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     workstreamActions,
     workstreamActionProjects,
     workstreamActionDependencies,
+    knowledgeDocuments,
   };
 }
 

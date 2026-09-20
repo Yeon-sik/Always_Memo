@@ -6,6 +6,7 @@ import type {
   DevActionType,
   DevHistoryType,
   DevMilestoneStatus,
+  KnowledgeDocument,
   Project,
   ProjectAction,
   ProjectHistory,
@@ -66,6 +67,7 @@ export interface ProjectWorkspaceState {
   workstreamActions: WorkstreamAction[];
   workstreamActionProjects: WorkstreamActionProject[];
   workstreamActionDependencies: WorkstreamActionDependency[];
+  knowledgeDocuments: KnowledgeDocument[];
   selectedProjectId: string | null;
   github: ProjectWorkspaceGitHubState;
 }
@@ -76,6 +78,9 @@ type UpdateMilestoneInput = Parameters<DevControlActions["updateProjectMilestone
 type UpdateActionInput = Parameters<DevControlActions["updateProjectAction"]>[1];
 type UpdateIdeaInput = Parameters<DevControlActions["updateProjectIdea"]>[1];
 type UpdateHistoryInput = Parameters<DevControlActions["updateProjectHistory"]>[1];
+type AddKnowledgeDocumentInput = Parameters<DevControlActions["addKnowledgeDocument"]>[0];
+type CreateKnowledgeDocumentForProjectsInput = Parameters<DevControlActions["createKnowledgeDocumentForProjects"]>[0];
+type UpdateKnowledgeDocumentInput = Parameters<DevControlActions["updateKnowledgeDocument"]>[1];
 
 export type ProjectWorkspaceMutation =
   | { type: "addProject"; input: AddProjectInput }
@@ -92,7 +97,12 @@ export type ProjectWorkspaceMutation =
   | { type: "deleteProjectIdea"; id: string }
   | { type: "addProjectHistory"; projectId: string; summary: string; historyType?: DevHistoryType; occurredAt?: string; githubRef?: string | null }
   | { type: "updateProjectHistory"; id: string; changes: UpdateHistoryInput }
-  | { type: "deleteProjectHistory"; id: string };
+  | { type: "deleteProjectHistory"; id: string }
+  | { type: "addKnowledgeDocument"; input: AddKnowledgeDocumentInput }
+  | { type: "createKnowledgeDocumentForProjects"; input: CreateKnowledgeDocumentForProjectsInput }
+  | { type: "updateKnowledgeDocument"; id: string; changes: UpdateKnowledgeDocumentInput }
+  | { type: "deleteKnowledgeDocument"; id: string }
+  | { type: "openKnowledgeDocument"; document: KnowledgeDocument };
 
 export type ProjectWorkspaceGitHubCommand =
   | { type: "refreshStatus" }
@@ -227,6 +237,21 @@ export function useProjectWorkspaceHost({
             case "deleteProjectHistory":
               current.deleteProjectHistory(payload.id);
               break;
+            case "addKnowledgeDocument":
+              void current.addKnowledgeDocument(payload.input);
+              break;
+            case "createKnowledgeDocumentForProjects":
+              void current.createKnowledgeDocumentForProjects(payload.input);
+              break;
+            case "updateKnowledgeDocument":
+              void current.updateKnowledgeDocument(payload.id, payload.changes);
+              break;
+            case "deleteKnowledgeDocument":
+              current.deleteKnowledgeDocument(payload.id);
+              break;
+            case "openKnowledgeDocument":
+              void current.openKnowledgeDocument(payload.document);
+              break;
           }
         },
       );
@@ -356,6 +381,20 @@ export function useProjectWorkspaceClient() {
     addProjectHistory: (projectId, summary, historyType, occurredAt, githubRef) => void emitMutation({ type: "addProjectHistory", projectId, summary, historyType, occurredAt, githubRef }),
     updateProjectHistory: (id, changes) => void emitMutation({ type: "updateProjectHistory", id, changes }),
     deleteProjectHistory: (id) => void emitMutation({ type: "deleteProjectHistory", id }),
+    addKnowledgeDocument: async (input) => {
+      await emitMutation({ type: "addKnowledgeDocument", input });
+      return null;
+    },
+    createKnowledgeDocumentForProjects: async (input) => {
+      await emitMutation({ type: "createKnowledgeDocumentForProjects", input });
+      return null;
+    },
+    updateKnowledgeDocument: (id, changes) =>
+      emitMutation({ type: "updateKnowledgeDocument", id, changes }),
+    deleteKnowledgeDocument: (id) =>
+      void emitMutation({ type: "deleteKnowledgeDocument", id }),
+    openKnowledgeDocument: (document) =>
+      emitMutation({ type: "openKnowledgeDocument", document }),
     addWorkstream: () => undefined,
     updateWorkstream: () => undefined,
     deleteWorkstream: () => undefined,
@@ -405,6 +444,7 @@ export function projectWorkspaceStateFromRuntime({
   workstreamActions,
   workstreamActionProjects,
   workstreamActionDependencies,
+  knowledgeDocuments,
   selectedProjectId,
   github,
 }: Omit<ProjectWorkspaceState, "github"> & { github: GitHubIntegrationController }): ProjectWorkspaceState {
@@ -420,6 +460,7 @@ export function projectWorkspaceStateFromRuntime({
     workstreamActions,
     workstreamActionProjects,
     workstreamActionDependencies,
+    knowledgeDocuments,
     selectedProjectId,
     github: githubStateFromController(github),
   };
@@ -437,6 +478,7 @@ export const emptyProjectWorkspaceState: ProjectWorkspaceState = {
   workstreamActions: [],
   workstreamActionProjects: [],
   workstreamActionDependencies: [],
+  knowledgeDocuments: [],
   selectedProjectId: null,
   github: {
     status: disconnectedGitHubStatus,

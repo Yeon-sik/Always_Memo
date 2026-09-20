@@ -12,6 +12,7 @@ import type {
   WorkstreamActionProject,
   WorkstreamMilestone,
   WorkstreamProject,
+  KnowledgeDocument,
 } from "../../types";
 import {
   getOpenNextCount,
@@ -38,6 +39,7 @@ export interface DevControlPanelProps {
   workstreamActions?: WorkstreamAction[];
   workstreamActionProjects?: WorkstreamActionProject[];
   workstreamActionDependencies?: WorkstreamActionDependency[];
+  knowledgeDocuments?: KnowledgeDocument[];
   selectedProjectId: string | null;
   selectedWorkstreamId?: string | null;
   onOpenProjectWorkspace: (projectId: string) => void;
@@ -93,6 +95,7 @@ export function DevControlPanel({
   workstreamActions = [],
   workstreamActionProjects = [],
   workstreamActionDependencies = [],
+  knowledgeDocuments = [],
   selectedProjectId,
   selectedWorkstreamId = null,
   onOpenProjectWorkspace,
@@ -171,6 +174,7 @@ export function DevControlPanel({
             workstreamActions={workstreamActions}
             workstreamActionProjects={workstreamActionProjects}
             workstreamActionDependencies={workstreamActionDependencies}
+            knowledgeDocuments={knowledgeDocuments}
             selectedWorkstreamId={selectedWorkstreamId}
             onOpenWorkstream={onOpenWorkstream}
             onCreateWorkstream={onCreateWorkstream}

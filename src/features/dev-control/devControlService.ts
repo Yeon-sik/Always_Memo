@@ -46,6 +46,7 @@ export interface ProjectGitHubFields {
 
 export interface ProjectChanges {
   name?: string;
+  description?: string;
   repository?: string | null;
   branch?: string | null;
   githubRepositoryId?: string | null;
@@ -289,7 +290,12 @@ export function createProject(
     | "lastVerifiedCommit"
     | "lastVerifiedAt"
   > &
-    Partial<Pick<Project, "githubRepositoryId" | "githubOwner" | "githubRepo">>,
+    Partial<
+      Pick<
+        Project,
+        "description" | "githubRepositoryId" | "githubOwner" | "githubRepo"
+      >
+    >,
   backfillInput?: BackfillInput,
 ): Project {
   const now = nowIso();
@@ -303,6 +309,7 @@ export function createProject(
     ...createEntityAuditFields(backfillInput, now),
     id: createId(),
     name: changes.name.trim(),
+    description: changes.description?.trim() ?? "",
     repository: cleanOptional(changes.repository),
     branch: cleanOptional(changes.branch),
     ...githubFields,
@@ -329,6 +336,9 @@ export function updateProject(
   return {
     ...project,
     ...(changes.name === undefined ? {} : { name: changes.name.trim() }),
+    ...(changes.description === undefined
+      ? {}
+      : { description: changes.description.trim() }),
     ...(changes.repository === undefined
       ? {}
       : { repository: cleanOptional(changes.repository) }),

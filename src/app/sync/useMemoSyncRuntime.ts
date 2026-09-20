@@ -66,6 +66,7 @@ const snapshotCollections = [
   "workstreamActions",
   "workstreamActionProjects",
   "workstreamActionDependencies",
+  "knowledgeDocuments",
 ] as const;
 
 function hasEntitySnapshotChanges(

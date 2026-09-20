@@ -1,6 +1,8 @@
 import type {
   Device,
   FitnessSummaryProjectionV2,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   LegacyWorkoutRecordV1,
   MealRecord,
   Note,
@@ -40,6 +42,7 @@ import type {
   WorkstreamMilestoneRow,
   WorkstreamProjectRow,
   WorkstreamRow,
+  KnowledgeDocumentRow,
 } from "./rows";
 
 export function auditFieldsFromRow(
@@ -217,6 +220,7 @@ export function projectFromRow(row: ProjectRow): Project {
     ...auditFieldsFromRow(row, row.updated_at),
     id: row.id,
     name: row.name,
+    description: row.description ?? "",
     repository: row.repository,
     branch: row.branch,
     ...githubIdentity,
@@ -372,6 +376,23 @@ export function workstreamActionDependencyFromRow(
   };
 }
 
+export function knowledgeDocumentFromRow(
+  row: KnowledgeDocumentRow,
+): KnowledgeDocument {
+  return {
+    ...auditFieldsFromRow(row, row.updated_at),
+    id: row.id,
+    title: row.title,
+    type: row.type as KnowledgeDocumentType,
+    projectId: row.project_id,
+    workstreamId: row.workstream_id,
+    relativePath: row.relative_path,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    deviceId: row.device_id,
+  };
+}
+
 export function deviceFromRow(row: DeviceRow): Device {
   return {
     id: row.id,
@@ -490,6 +511,7 @@ export function projectToRow(project: Project, userId: string): ProjectRow {
     id: project.id,
     user_id: userId,
     name: project.name,
+    description: project.description,
     repository: project.repository,
     branch: project.branch,
     github_repository_id: githubIdentity.githubRepositoryId,
@@ -672,6 +694,25 @@ export function workstreamActionDependencyToRow(
     updated_at: dependency.updatedAt,
     deleted_at: dependency.deletedAt,
     device_id: dependency.deviceId,
+  };
+}
+
+export function knowledgeDocumentToRow(
+  document: KnowledgeDocument,
+  userId: string,
+): KnowledgeDocumentRow {
+  return {
+    ...auditFieldsToRow(document),
+    id: document.id,
+    user_id: userId,
+    title: document.title,
+    type: document.type,
+    project_id: document.projectId,
+    workstream_id: document.workstreamId,
+    relative_path: document.relativePath,
+    updated_at: document.updatedAt,
+    deleted_at: document.deletedAt,
+    device_id: document.deviceId,
   };
 }
 

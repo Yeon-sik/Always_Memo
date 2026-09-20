@@ -4,6 +4,8 @@ import {
   deviceFromRow,
   deviceToRow,
   fitnessSummaryProjectionV2FromRow,
+  knowledgeDocumentFromRow,
+  knowledgeDocumentToRow,
   mealRecordFromRow,
   noteFromRow,
   noteToRow,
@@ -37,6 +39,7 @@ import {
 import type {
   DeviceRow,
   FitnessSummaryProjectionV2Row,
+  KnowledgeDocumentRow,
   MealRecordRow,
   NoteRow,
   ProjectActionRow,
@@ -172,6 +175,7 @@ async function fetchIncomingSnapshot(
     workstreamActionsResult,
     workstreamActionProjectsResult,
     workstreamActionDependenciesResult,
+    knowledgeDocumentsResult,
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
     transport.selectRows<TaskRow>("tasks", userId),
@@ -206,6 +210,7 @@ async function fetchIncomingSnapshot(
       "workstream_action_dependencies",
       userId,
     ),
+    transport.selectRows<KnowledgeDocumentRow>("knowledge_documents", userId),
   ]);
 
   for (const result of [
@@ -227,6 +232,7 @@ async function fetchIncomingSnapshot(
     workstreamActionsResult,
     workstreamActionProjectsResult,
     workstreamActionDependenciesResult,
+    knowledgeDocumentsResult,
   ]) {
     throwQueryError(result);
   }
@@ -266,6 +272,9 @@ async function fetchIncomingSnapshot(
     workstreamActionDependencies: (
       workstreamActionDependenciesResult.data ?? []
     ).map(workstreamActionDependencyFromRow),
+    knowledgeDocuments: (knowledgeDocumentsResult.data ?? []).map(
+      knowledgeDocumentFromRow,
+    ),
   };
 
   return incomingSnapshot;
@@ -305,6 +314,7 @@ export interface PushPayload {
   workstreamActions: WorkstreamActionRow[];
   workstreamActionProjects: WorkstreamActionProjectRow[];
   workstreamActionDependencies: WorkstreamActionDependencyRow[];
+  knowledgeDocuments: KnowledgeDocumentRow[];
 }
 
 export function createPushPayload(
@@ -367,6 +377,9 @@ export function createPushPayload(
       .map((dependency) =>
         workstreamActionDependencyToRow(dependency, context.userId),
       ),
+    knowledgeDocuments: localSnapshot.knowledgeDocuments
+      .filter(isOwnedByCurrentDevice)
+      .map((document) => knowledgeDocumentToRow(document, context.userId)),
   };
 }
 
@@ -417,6 +430,7 @@ export async function pushSnapshot(
       tableName: "workstream_action_dependencies",
       rows: payload.workstreamActionDependencies,
     },
+    { tableName: "knowledge_documents", rows: payload.knowledgeDocuments },
   ];
 
   for (const batch of batches) {

@@ -134,6 +134,7 @@ const snapshot: LocalDataSnapshot = {
   workstreamActions: [],
   workstreamActionProjects: [],
   workstreamActionDependencies: [],
+  knowledgeDocuments: [],
 };
 
 describe("recordAggregation", () => {

@@ -5,7 +5,7 @@ do $$
 declare
   table_name text;
 begin
-  foreach table_name in array[
+  foreach table_name in array array[
     'workout_records',
     'meal_records',
     'weight_records',
@@ -19,7 +19,7 @@ begin
     );
   end loop;
 
-  foreach table_name in array[
+  foreach table_name in array array[
     'notes',
     'tasks',
     'projects',

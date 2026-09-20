@@ -14,6 +14,8 @@ export type {
   FitnessSummaryProjectionContractVersion,
   FitnessSummaryProjectionV2,
   ISODateString,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   LegacyWorkoutRecordV1,
   LocalDataSnapshot,
   MealRecord,

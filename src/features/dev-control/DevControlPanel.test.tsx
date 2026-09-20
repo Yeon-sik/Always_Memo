@@ -12,6 +12,7 @@ function project(): Project {
     backfilledAt: null,
     backfillReason: null,
     name: "Personal OS",
+    description: "",
     repository: "https://github.com/octo/personal-os",
     branch: "main",
     githubRepositoryId: "42",

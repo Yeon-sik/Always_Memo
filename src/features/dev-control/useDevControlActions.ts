@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import type { SnapshotUpdater } from "../../app/sync/useSnapshotStore";
-import type { Device } from "../../types";
+import type { Device, KnowledgeDocument, LocalDataSnapshot } from "../../types";
 import type {
   BackfillInput,
   DevActionStatus,
@@ -10,7 +10,19 @@ import type {
   DevMilestoneStatus,
   DevProjectStatus,
   DevWorkstreamStatus,
+  KnowledgeDocumentType,
 } from "../../types";
+import { createId } from "../../lib/storage/id";
+import {
+  createKnowledgeDocument,
+  createKnowledgeDocumentFile,
+  openKnowledgeDocumentFile,
+  resolveKnowledgeDocumentRelativePath,
+  softDeleteKnowledgeDocument,
+  updateKnowledgeDocument,
+  updateKnowledgeDocumentFile,
+  type KnowledgeDocumentChanges,
+} from "../knowledge-vault/knowledgeVaultService";
 import {
   createProject,
   createProjectAction,
@@ -60,6 +72,7 @@ import type {
 
 interface UseDevControlActionsOptions {
   commitSnapshot: (updater: SnapshotUpdater) => void;
+  snapshot: LocalDataSnapshot;
   device: Device | null;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
@@ -70,6 +83,7 @@ interface UseDevControlActionsOptions {
 export interface DevControlActions {
   addProject: (input: {
     name: string;
+    description?: string;
     repository: string | null;
     branch: string | null;
     githubRepositoryId?: string | null;
@@ -140,10 +154,36 @@ export interface DevControlActions {
     dependsOnActionId: string,
   ) => void;
   deleteWorkstreamActionDependency: (id: string) => void;
+  addKnowledgeDocument: (input: {
+    title: string;
+    type: KnowledgeDocumentType;
+    projectId: string | null;
+    workstreamId: string | null;
+    backfillInput?: BackfillInput;
+  }) => Promise<KnowledgeDocument | null>;
+  createKnowledgeDocumentForProjects: (input: {
+    title: string;
+    type: KnowledgeDocumentType;
+    projectIds: string[];
+    workstreamId?: string | null;
+    addProjectIds?: string[];
+    newWorkstream?: {
+      name: string;
+      status: DevWorkstreamStatus;
+    };
+    backfillInput?: BackfillInput;
+  }) => Promise<KnowledgeDocument | null>;
+  updateKnowledgeDocument: (
+    id: string,
+    changes: KnowledgeDocumentChanges,
+  ) => Promise<void>;
+  deleteKnowledgeDocument: (id: string) => void;
+  openKnowledgeDocument: (document: KnowledgeDocument) => Promise<void>;
 }
 
 export function useDevControlActions({
   commitSnapshot,
+  snapshot,
   device,
   selectedProjectId,
   setSelectedProjectId,
@@ -716,6 +756,283 @@ export function useDevControlActions({
     [commitSnapshot, device],
   );
 
+  const addKnowledgeDocument = useCallback(
+    async (input: Parameters<DevControlActions["addKnowledgeDocument"]>[0]) => {
+      if (!device) return null;
+      if (!input.title.trim()) throw new Error("문서 제목을 입력하세요.");
+      if (input.projectId !== null && input.workstreamId !== null) {
+        throw new Error("문서는 Project와 Workstream을 동시에 소유할 수 없습니다.");
+      }
+
+      const id = createId();
+      const projectName = input.projectId
+        ? snapshot.projects.find((project) => project.id === input.projectId)?.name ?? null
+        : null;
+      const workstreamName = input.workstreamId
+        ? snapshot.workstreams.find((workstream) => workstream.id === input.workstreamId)?.name ?? null
+        : null;
+      const pathInput = {
+        id,
+        title: input.title,
+        type: input.type,
+        projectId: input.projectId,
+        workstreamId: input.workstreamId,
+        projectName,
+        workstreamName,
+      };
+      const existingPaths = snapshot.knowledgeDocuments
+        .filter((document) => document.deletedAt === null)
+        .map((document) => document.relativePath);
+      let document = createKnowledgeDocument(
+        device.id,
+        {
+          id,
+          title: input.title,
+          type: input.type,
+          projectId: input.projectId,
+          workstreamId: input.workstreamId,
+          relativePath: resolveKnowledgeDocumentRelativePath(pathInput, existingPaths),
+        },
+        input.backfillInput,
+      );
+
+      let result = await createKnowledgeDocumentFile({
+        document,
+        projectName,
+        workstreamName,
+      });
+      if (result.status === "conflict") {
+        const fallbackPath = resolveKnowledgeDocumentRelativePath(
+          pathInput,
+          [...existingPaths, document.relativePath],
+        );
+        if (fallbackPath === document.relativePath) {
+          throw new Error("같은 경로의 Knowledge Document가 이미 있습니다.");
+        }
+        document = { ...document, relativePath: fallbackPath };
+        result = await createKnowledgeDocumentFile({
+          document,
+          projectName,
+          workstreamName,
+        });
+      }
+      if (result.status === "conflict") {
+        throw new Error("Knowledge Document 파일 경로 충돌을 해결하지 못했습니다.");
+      }
+
+      commitSnapshot((current) => ({
+        ...current,
+        knowledgeDocuments: [...current.knowledgeDocuments, document],
+      }));
+      return document;
+    },
+    [commitSnapshot, device, snapshot],
+  );
+
+  const createKnowledgeDocumentForProjects = useCallback(
+    async (input: Parameters<DevControlActions["createKnowledgeDocumentForProjects"]>[0]) => {
+      if (!device) return null;
+      const title = input.title.trim();
+      if (!title) throw new Error("문서 제목을 입력하세요.");
+
+      const projectIds = [...new Set(input.projectIds)];
+      if (projectIds.length === 0) throw new Error("연결할 Project를 선택하세요.");
+      const activeProjects = projectIds.map((id) =>
+        snapshot.projects.find((project) => project.id === id && project.deletedAt === null),
+      );
+      if (activeProjects.some((project) => !project)) {
+        throw new Error("선택한 Project를 찾을 수 없습니다.");
+      }
+
+      let workstreamId: string | null = null;
+      let workstream = null as LocalDataSnapshot["workstreams"][number] | null;
+      let createdWorkstream = null as LocalDataSnapshot["workstreams"][number] | null;
+      let workstreamLinks: LocalDataSnapshot["workstreamProjects"] = [];
+
+      if (projectIds.length === 1) {
+        if (input.workstreamId || input.newWorkstream) {
+          throw new Error("단일 Project 문서는 Project 소유로 생성해야 합니다.");
+        }
+      } else if (input.newWorkstream && input.workstreamId) {
+        throw new Error("기존 Workstream과 새 Workstream을 동시에 선택할 수 없습니다.");
+      } else if (input.newWorkstream) {
+        const workstreamName = input.newWorkstream.name.trim();
+        if (!workstreamName) throw new Error("새 Workstream 이름을 입력하세요.");
+        workstream = createWorkstream(device.id, {
+          name: workstreamName,
+          status: input.newWorkstream.status,
+        }, input.backfillInput);
+        const newWorkstream = workstream;
+        createdWorkstream = newWorkstream;
+        workstreamId = newWorkstream.id;
+        workstreamLinks = projectIds.map((projectId) =>
+          createWorkstreamProject(newWorkstream.id, projectId, device.id, input.backfillInput),
+        );
+      } else {
+        if (!input.workstreamId) {
+          throw new Error("다중 Project 문서는 Workstream을 선택하거나 새로 만들어야 합니다.");
+        }
+        workstream = snapshot.workstreams.find(
+          (item) => item.id === input.workstreamId && item.deletedAt === null,
+        ) ?? null;
+        if (!workstream) throw new Error("선택한 Workstream을 찾을 수 없습니다.");
+        const selectedWorkstream = workstream;
+        workstreamId = selectedWorkstream.id;
+
+        const selectedSet = new Set(projectIds);
+        const existingLinks = snapshot.workstreamProjects.filter(
+          (link) => link.workstreamId === selectedWorkstream.id && selectedSet.has(link.projectId),
+        );
+        const activeProjectIds = new Set(
+          existingLinks.filter((link) => link.deletedAt === null).map((link) => link.projectId),
+        );
+        const addProjectIds = [...new Set(input.addProjectIds ?? [])];
+        if (addProjectIds.some((id) => !selectedSet.has(id))) {
+          throw new Error("Workstream에 추가할 Project는 문서에 선택된 Project여야 합니다.");
+        }
+        for (const projectId of projectIds) {
+          if (!activeProjectIds.has(projectId) && !addProjectIds.includes(projectId)) {
+            throw new Error("누락된 Project를 명시적으로 Workstream에 추가한 뒤 생성하세요.");
+          }
+        }
+        workstreamLinks = addProjectIds.flatMap((projectId) => {
+          const existing = existingLinks.find((link) => link.projectId === projectId);
+          if (existing?.deletedAt === null) return [];
+          if (existing) return [restoreWorkstreamProject(existing, device.id)];
+          return [createWorkstreamProject(selectedWorkstream.id, projectId, device.id, input.backfillInput)];
+        });
+      }
+
+      const project = activeProjects[0]!;
+      const projectName = projectIds.length === 1 ? project.name : null;
+      const workstreamName = workstream?.name ?? null;
+      const id = createId();
+      const pathInput = {
+        id,
+        title,
+        type: input.type,
+        projectId: projectIds.length === 1 ? projectIds[0] : null,
+        workstreamId,
+        projectName,
+        workstreamName,
+      };
+      const existingPaths = snapshot.knowledgeDocuments
+        .filter((document) => document.deletedAt === null)
+        .map((document) => document.relativePath);
+      let document = createKnowledgeDocument(
+        device.id,
+        {
+          id,
+          title,
+          type: input.type,
+          projectId: projectIds.length === 1 ? projectIds[0] : null,
+          workstreamId,
+          relativePath: resolveKnowledgeDocumentRelativePath(pathInput, existingPaths),
+        },
+        input.backfillInput,
+      );
+      let result = await createKnowledgeDocumentFile({ document, projectName, workstreamName });
+      if (result.status === "conflict") {
+        const fallbackPath = resolveKnowledgeDocumentRelativePath(
+          pathInput,
+          [...existingPaths, document.relativePath],
+        );
+        if (fallbackPath === document.relativePath) {
+          throw new Error("같은 경로의 Knowledge Document가 이미 있습니다.");
+        }
+        document = { ...document, relativePath: fallbackPath };
+        result = await createKnowledgeDocumentFile({ document, projectName, workstreamName });
+      }
+      if (result.status === "conflict") {
+        throw new Error("Knowledge Document 파일 경로 충돌을 해결하지 못했습니다.");
+      }
+
+      commitSnapshot((current) => ({
+        ...current,
+        workstreams: createdWorkstream
+          ? [...current.workstreams, createdWorkstream]
+          : current.workstreams,
+        workstreamProjects: workstreamLinks.length
+          ? [...current.workstreamProjects, ...workstreamLinks]
+          : current.workstreamProjects,
+        knowledgeDocuments: [...current.knowledgeDocuments, document],
+      }));
+      return document;
+    },
+    [commitSnapshot, device, snapshot],
+  );
+
+  const updateKnowledgeDocumentById = useCallback(
+    async (id: string, changes: KnowledgeDocumentChanges) => {
+      if (!device) return;
+      const current = snapshot.knowledgeDocuments.find(
+        (document) => document.id === id && document.deletedAt === null,
+      );
+      if (!current) return;
+
+      const nextProjectId = changes.projectId === undefined ? current.projectId : changes.projectId;
+      const nextWorkstreamId = changes.workstreamId === undefined ? current.workstreamId : changes.workstreamId;
+      const projectName = nextProjectId
+        ? snapshot.projects.find((project) => project.id === nextProjectId)?.name ?? null
+        : null;
+      const workstreamName = nextWorkstreamId
+        ? snapshot.workstreams.find((workstream) => workstream.id === nextWorkstreamId)?.name ?? null
+        : null;
+      const nextBase = updateKnowledgeDocument(current, changes, device.id);
+      const next = {
+        ...nextBase,
+        relativePath: resolveKnowledgeDocumentRelativePath(
+          {
+            ...nextBase,
+            projectName,
+            workstreamName,
+          },
+          snapshot.knowledgeDocuments
+            .filter((document) => document.id !== current.id && document.deletedAt === null)
+            .map((document) => document.relativePath),
+        ),
+      };
+      const result = await updateKnowledgeDocumentFile({
+        document: next,
+        currentRelativePath: current.relativePath,
+        projectName,
+        workstreamName,
+      });
+      if (result.status === "conflict") {
+        throw new Error("Knowledge Document 파일 경로 충돌이 있습니다.");
+      }
+      commitSnapshot((currentSnapshot) => ({
+        ...currentSnapshot,
+        knowledgeDocuments: currentSnapshot.knowledgeDocuments.map((document) =>
+          document.id === id ? next : document,
+        ),
+      }));
+    },
+    [commitSnapshot, device, snapshot],
+  );
+
+  const deleteKnowledgeDocument = useCallback(
+    (id: string) => {
+      if (!device) return;
+      commitSnapshot((current) => ({
+        ...current,
+        knowledgeDocuments: current.knowledgeDocuments.map((document) =>
+          document.id === id
+            ? softDeleteKnowledgeDocument(document, device.id)
+            : document,
+        ),
+      }));
+    },
+    [commitSnapshot, device],
+  );
+
+  const openKnowledgeDocument = useCallback(
+    async (document: KnowledgeDocument) => {
+      await openKnowledgeDocumentFile(document.relativePath);
+    },
+    [],
+  );
+
   return {
     addProject,
     updateProject: updateProjectById,
@@ -747,5 +1064,10 @@ export function useDevControlActions({
     deleteWorkstreamActionProject,
     addWorkstreamActionDependency,
     deleteWorkstreamActionDependency,
+    addKnowledgeDocument,
+    createKnowledgeDocumentForProjects,
+    updateKnowledgeDocument: updateKnowledgeDocumentById,
+    deleteKnowledgeDocument,
+    openKnowledgeDocument,
   };
 }

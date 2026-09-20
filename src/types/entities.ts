@@ -110,10 +110,17 @@ export type DevHistoryType =
   | "MILESTONE"
   | "RELEASE"
   | "NOTE";
+export type KnowledgeDocumentType =
+  | "IDEA"
+  | "PLAN"
+  | "DESIGN"
+  | "RESEARCH"
+  | "NOTE";
 
 /** Project operating state owned by the Dev Control bounded context. */
 export interface Project extends SyncableEntity {
   name: string;
+  description: string;
   repository: string | null;
   branch: string | null;
   /** Canonical GitHub repository identity. GitHub remains the source of truth. */
@@ -189,6 +196,16 @@ export interface WorkstreamActionDependency extends SyncableEntity {
   dependsOnActionId: EntityId;
 }
 
+/** Registry metadata for a Markdown document owned by the Knowledge Vault. */
+export interface KnowledgeDocument extends SyncableEntity {
+  title: string;
+  type: KnowledgeDocumentType;
+  projectId: EntityId | null;
+  workstreamId: EntityId | null;
+  /** Vault-relative POSIX path. Markdown body is intentionally not stored here. */
+  relativePath: string;
+}
+
 export interface Device {
   id: EntityId;
   name: string;
@@ -216,4 +233,5 @@ export interface LocalDataSnapshot {
   workstreamActions: WorkstreamAction[];
   workstreamActionProjects: WorkstreamActionProject[];
   workstreamActionDependencies: WorkstreamActionDependency[];
+  knowledgeDocuments: KnowledgeDocument[];
 }
