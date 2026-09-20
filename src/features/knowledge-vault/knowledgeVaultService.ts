@@ -479,6 +479,19 @@ export async function saveKnowledgeVaultPath(path: string): Promise<KnowledgeVau
   return { supported: true, vaultPath: result.vaultPath };
 }
 
+export async function pickKnowledgeVaultPath(): Promise<string | null> {
+  if (!getPlatformCapabilities().isTauriDesktop) {
+    throw new Error("Knowledge Vault 폴더 선택은 데스크톱 Tauri 앱에서만 지원됩니다.");
+  }
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  const result = await open({
+    directory: true,
+    multiple: false,
+    title: "Knowledge Vault 폴더 선택",
+  });
+  return typeof result === "string" ? result : null;
+}
+
 export async function createKnowledgeDocumentFile(
   input: KnowledgeDocumentFileInput,
 ): Promise<KnowledgeVaultOperationResult> {

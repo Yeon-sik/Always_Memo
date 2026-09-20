@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:default",
     "allow-load-runtime-config",
     "allow-load-persisted-device",
     "allow-save-persisted-device",

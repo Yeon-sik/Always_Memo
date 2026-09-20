@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:default",
     "allow-knowledge-vault-get-config",
     "allow-knowledge-vault-set-path",
     "allow-knowledge-vault-create-document",

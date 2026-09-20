@@ -122,7 +122,9 @@ fn validate_relative_path(relative_path: &str) -> Result<PathBuf, String> {
             return Err("Windows에서 허용되지 않는 문자가 path에 포함되어 있습니다.".to_string());
         }
         if segment.ends_with('.') || segment.ends_with(' ') || is_reserved_windows_name(segment) {
-            return Err("Windows reserved name 또는 trailing dot/space가 차단되었습니다.".to_string());
+            return Err(
+                "Windows reserved name 또는 trailing dot/space가 차단되었습니다.".to_string(),
+            );
         }
         safe_path.push(segment);
     }
@@ -176,7 +178,9 @@ fn atomic_write(path: &Path, contents: &str) -> Result<bool, String> {
             fs::remove_file(path)
                 .map_err(|error| format!("Knowledge Vault target replace failed: {error}"))?;
             fs::rename(&temporary, path).map_err(|error| {
-                format!("Knowledge Vault atomic rename failed after replace ({rename_error}): {error}")
+                format!(
+                    "Knowledge Vault atomic rename failed after replace ({rename_error}): {error}"
+                )
             })?;
             Ok(true)
         }
@@ -185,6 +189,20 @@ fn atomic_write(path: &Path, contents: &str) -> Result<bool, String> {
             Err(format!("Knowledge Vault atomic rename failed: {error}"))
         }
     }
+}
+
+fn percent_encode_uri_component(value: &str) -> String {
+    value
+        .as_bytes()
+        .iter()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~' | b'/') {
+                (*byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
 }
 
 fn yaml_string(value: &str) -> String {
@@ -201,7 +219,9 @@ fn managed_frontmatter(request: &UpdateKnowledgeDocumentRequest) -> Result<Strin
     }
 
     if request.project_id.is_some() && request.workstream_id.is_some() {
-        return Err("KnowledgeDocument는 Project와 Workstream을 동시에 소유할 수 없습니다.".to_string());
+        return Err(
+            "KnowledgeDocument는 Project와 Workstream을 동시에 소유할 수 없습니다.".to_string(),
+        );
     }
 
     Ok([
@@ -233,10 +253,7 @@ fn managed_frontmatter(request: &UpdateKnowledgeDocumentRequest) -> Result<Strin
     .join("\n"))
 }
 
-fn replace_managed_frontmatter(
-    contents: &str,
-    frontmatter: &str,
-) -> String {
+fn replace_managed_frontmatter(contents: &str, frontmatter: &str) -> String {
     let mut offset = 0usize;
     let mut line_index = 0usize;
     let mut closing_end = None;
@@ -400,17 +417,23 @@ pub fn knowledge_vault_move_file(
 }
 
 #[tauri::command]
-pub fn knowledge_vault_open_file(
-    app: AppHandle,
-    relative_path: String,
-) -> Result<(), String> {
+pub fn knowledge_vault_open_file(app: AppHandle, relative_path: String) -> Result<(), String> {
     let vault = configured_vault(&app)?;
     let target = target_path(&vault, &relative_path, false)?;
     if !target.is_file() {
         return Err("Knowledge document 파일이 아직 없습니다.".to_string());
     }
+    let absolute_path = target.to_string_lossy().to_string();
+    let obsidian_uri = format!(
+        "obsidian://open?path={}",
+        percent_encode_uri_component(&absolute_path)
+    );
+    if app.opener().open_url(obsidian_uri, None::<&str>).is_ok() {
+        return Ok(());
+    }
+
     app.opener()
-        .open_path(target.to_string_lossy(), None::<&str>)
+        .open_path(absolute_path, None::<&str>)
         .map_err(|error| format!("Knowledge document를 열지 못했습니다: {error}"))
 }
 

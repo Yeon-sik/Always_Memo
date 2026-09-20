@@ -58,6 +58,7 @@ export function App() {
       memo.workstreamMilestones,
       memo.workstreamProjects,
       memo.workstreams,
+      memo.knowledgeDocuments,
     ],
   );
   const { openWorkspace } = useProjectWorkspaceHost({
@@ -159,6 +160,7 @@ export function App() {
                 quickCapture.setShortcutPreference
               }
               onToggleAutostart={memo.setAutostartEnabled}
+              knowledgeVault={memo.knowledgeVault}
             />
           ) : activeView === "records" ? (
             <RecordsPanel
@@ -196,6 +198,7 @@ export function App() {
               workstreamActions={memo.workstreamActions}
               workstreamActionProjects={memo.workstreamActionProjects}
               workstreamActionDependencies={memo.workstreamActionDependencies}
+              knowledgeDocuments={memo.knowledgeDocuments}
               selectedWorkstreamId={memo.selectedWorkstreamId}
               onOpenWorkstream={(workstreamId) => {
                 memo.setSelectedWorkstreamId(workstreamId);

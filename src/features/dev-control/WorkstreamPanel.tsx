@@ -5,6 +5,8 @@ import type {
   DevActionType,
   DevMilestoneStatus,
   DevWorkstreamStatus,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   Project,
   Workstream,
   WorkstreamAction,
@@ -31,6 +33,7 @@ const MILESTONE_STATUSES: DevMilestoneStatus[] = [
 ];
 const ACTION_TYPES: DevActionType[] = ["NEXT", "LATER", "BLOCKED"];
 const ACTION_STATUSES: DevActionStatus[] = ["OPEN", "DONE"];
+const KNOWLEDGE_DOCUMENT_TYPES: KnowledgeDocumentType[] = ["IDEA", "PLAN", "DESIGN", "RESEARCH", "NOTE"];
 
 const WORKSTREAM_STATUS_LABELS: Record<DevWorkstreamStatus, string> = {
   ACTIVE: "진행 중",
@@ -46,6 +49,7 @@ interface WorkstreamPanelProps {
   workstreamActions: WorkstreamAction[];
   workstreamActionProjects: WorkstreamActionProject[];
   workstreamActionDependencies: WorkstreamActionDependency[];
+  knowledgeDocuments: KnowledgeDocument[];
   selectedWorkstreamId: string | null;
   onOpenWorkstream: (workstreamId: string) => void;
   onCreateWorkstream: () => void;
@@ -105,6 +109,7 @@ export function WorkstreamPanel({
   workstreamActions,
   workstreamActionProjects,
   workstreamActionDependencies,
+  knowledgeDocuments,
   selectedWorkstreamId,
   onOpenWorkstream,
   onCreateWorkstream,
@@ -124,6 +129,9 @@ export function WorkstreamPanel({
     Record<string, string>
   >({});
   const [dependencyError, setDependencyError] = useState<string | null>(null);
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeType, setKnowledgeType] = useState<KnowledgeDocumentType>("PLAN");
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
 
   const workstream =
     workstreams.find((item) => item.id === selectedWorkstreamId) ?? null;
@@ -164,6 +172,18 @@ export function WorkstreamPanel({
           )
         : [],
     [workstream, workstreamActions],
+  );
+  const selectedDocuments = useMemo(
+    () =>
+      workstream
+        ? knowledgeDocuments
+            .filter(
+              (document) =>
+                document.deletedAt === null && document.workstreamId === workstream.id,
+            )
+            .sort((first, second) => first.title.localeCompare(second.title))
+        : [],
+    [knowledgeDocuments, workstream],
   );
 
   useEffect(() => {
@@ -256,6 +276,23 @@ export function WorkstreamPanel({
     if (!workstream || !actionTitle.trim()) return;
     actions.addWorkstreamAction(workstream.id, actionTitle, actionType);
     setActionTitle("");
+  }
+
+  async function submitKnowledgeDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!workstream || !knowledgeTitle.trim()) return;
+    setKnowledgeError(null);
+    try {
+      await actions.addKnowledgeDocument({
+        title: knowledgeTitle,
+        type: knowledgeType,
+        projectId: null,
+        workstreamId: workstream.id,
+      });
+      setKnowledgeTitle("");
+    } catch (caughtError) {
+      setKnowledgeError(caughtError instanceof Error ? caughtError.message : "문서를 만들지 못했습니다.");
+    }
   }
 
   function toggleActionProject(action: WorkstreamAction, projectId: string) {
@@ -746,6 +783,28 @@ export function WorkstreamPanel({
                     {dependencyError}
                   </p>
                 ) : null}
+              </Section>
+
+              <Section title="KNOWLEDGE DOCUMENTS">
+                <form className="mb-2 flex flex-wrap gap-2" onSubmit={(event) => void submitKnowledgeDocument(event)}>
+                  <input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="새 문서 제목" value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} />
+                  <select className="rounded border border-slate-300 bg-transparent text-[10px] dark:border-neutral-700" value={knowledgeType} onChange={(event) => setKnowledgeType(event.target.value as KnowledgeDocumentType)}>
+                    {KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                  <button type="submit" disabled={!knowledgeTitle.trim()} className="rounded bg-teal-700 px-2 text-xs text-white disabled:opacity-50">새 문서</button>
+                </form>
+                <div className="grid gap-1">
+                  {selectedDocuments.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">관련 문서가 없습니다.</p> : selectedDocuments.map((document) => <div key={document.id} className="grid gap-1 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input className="min-w-0 flex-1 bg-transparent font-medium" value={document.title} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { title: event.target.value })} />
+                      <select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={document.type} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { type: event.target.value as KnowledgeDocumentType })}>{KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select>
+                      <button type="button" onClick={() => void actions.openKnowledgeDocument(document)} className="text-teal-700 hover:underline dark:text-teal-300">열기</button>
+                    </div>
+                    <span className="truncate text-[10px] text-slate-500 dark:text-neutral-400">{document.relativePath}</span>
+                  </div>)}
+                </div>
+                {knowledgeError ? <p role="alert" className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">{knowledgeError}</p> : null}
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Workstream 문서는 참여 중인 모든 Project Home에 Related Documents backlink로 표시됩니다.</p>
               </Section>
             </>
           ) : null}

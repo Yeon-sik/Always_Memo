@@ -113,7 +113,7 @@ export async function reconcileKnowledgeVaultProjection({
     }
 
     const currentDocuments = visible(snapshot.knowledgeDocuments);
-    const existingPaths = currentDocuments.map((document) => document.relativePath);
+    const occupiedPaths = new Set(currentDocuments.map((document) => document.relativePath));
     for (const document of currentDocuments) {
       const expectedPath = buildKnowledgeDocumentRelativePath({
         title: document.title,
@@ -128,15 +128,15 @@ export async function reconcileKnowledgeVaultProjection({
           ? expectedPath
           : resolveKnowledgeDocumentRelativePath(
               { ...document, id: document.id },
-              existingPaths.filter((path) => path !== document.relativePath),
+              [...occupiedPaths].filter((path) => path !== document.relativePath),
             );
-
-      if (nextRelativePath === document.relativePath) continue;
 
       const nextDocument: KnowledgeDocument = {
         ...document,
         relativePath: nextRelativePath,
-        updatedAt: new Date().toISOString(),
+        ...(nextRelativePath === document.relativePath
+          ? {}
+          : { updatedAt: new Date().toISOString() }),
       };
       const result = await updateKnowledgeDocumentFile({
         document: nextDocument,
@@ -147,7 +147,9 @@ export async function reconcileKnowledgeVaultProjection({
       if (result.status === "missing") {
         missingDocumentIds.push(document.id);
       }
-      if (result.status !== "conflict") {
+      if (result.status !== "conflict" && nextRelativePath !== document.relativePath) {
+        occupiedPaths.delete(document.relativePath);
+        occupiedPaths.add(nextRelativePath);
         onDocumentPathChange?.(document, nextDocument);
       }
     }

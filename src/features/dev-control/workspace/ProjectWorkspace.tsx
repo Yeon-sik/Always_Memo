@@ -6,6 +6,8 @@ import type {
   DevHistoryType,
   DevMilestoneStatus,
   DevProjectStatus,
+  KnowledgeDocument,
+  KnowledgeDocumentType,
   Project,
   ProjectAction,
   ProjectHistory,
@@ -37,6 +39,8 @@ import {
 import type { ProjectWorkspaceMode } from "./projectWorkspaceBridge";
 
 type WorkspaceTab = "overview" | "github" | "plan" | "history";
+
+const KNOWLEDGE_DOCUMENT_TYPES: KnowledgeDocumentType[] = ["IDEA", "PLAN", "DESIGN", "RESEARCH", "NOTE"];
 
 const PROJECT_STATUSES: DevProjectStatus[] = ["ACTIVE", "PLANNED", "COMPLETED"];
 const MILESTONE_STATUSES: DevMilestoneStatus[] = ["PLANNED", "IN_PROGRESS", "COMPLETED"];
@@ -121,6 +125,7 @@ export interface ProjectWorkspaceProps {
   workstreamActions: WorkstreamAction[];
   workstreamActionProjects: WorkstreamActionProject[];
   workstreamActionDependencies: WorkstreamActionDependency[];
+  knowledgeDocuments: KnowledgeDocument[];
   actions: DevControlActions;
   github?: GitHubIntegrationController;
 }
@@ -136,6 +141,7 @@ export function ProjectWorkspace({
   workstreams,
   workstreamProjects,
   workstreamActions,
+  knowledgeDocuments,
   actions,
   github = unavailableGitHubIntegration,
 }: ProjectWorkspaceProps) {
@@ -150,6 +156,9 @@ export function ProjectWorkspace({
     githubOwner: null as string | null,
     githubRepo: null as string | null,
     status: "PLANNED" as DevProjectStatus,
+    description: "",
+    currentSummary: "",
+    targetSummary: "",
     lastVerifiedCommit: "",
     lastVerifiedAt: "",
   });
@@ -163,6 +172,9 @@ export function ProjectWorkspace({
     occurredAt: "",
     githubRef: "",
   });
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeType, setKnowledgeType] = useState<KnowledgeDocumentType>("PLAN");
+  const [knowledgeError, setKnowledgeError] = useState<string | null>(null);
 
   useEffect(() => {
     setActiveTab("overview");
@@ -177,6 +189,9 @@ export function ProjectWorkspace({
         githubOwner: null,
         githubRepo: null,
         status: "PLANNED",
+        description: "",
+        currentSummary: "",
+        targetSummary: "",
         lastVerifiedCommit: "",
         lastVerifiedAt: "",
       });
@@ -193,6 +208,9 @@ export function ProjectWorkspace({
       githubOwner: project.githubOwner,
       githubRepo: project.githubRepo,
       status: project.status,
+      description: project.description,
+      currentSummary: project.currentSummary,
+      targetSummary: project.targetSummary,
       lastVerifiedCommit: project.lastVerifiedCommit ?? "",
       lastVerifiedAt: toDateTimeLocal(project.lastVerifiedAt),
     });
@@ -230,6 +248,18 @@ export function ProjectWorkspace({
         : [],
     [project, workstreamProjects, workstreams],
   );
+  const selectedKnowledgeDocuments = useMemo(() => {
+    if (!project) return [];
+    const workstreamIds = new Set(selectedWorkstreams.map((item) => item.id));
+    return knowledgeDocuments
+      .filter(
+        (document) =>
+          document.deletedAt === null &&
+          (document.projectId === project.id ||
+            (document.workstreamId !== null && workstreamIds.has(document.workstreamId))),
+      )
+      .sort((first, second) => first.title.localeCompare(second.title));
+  }, [knowledgeDocuments, project, selectedWorkstreams]);
   const readState = project ? github.readStates[project.id] : undefined;
 
   function handleRepositoryModeChange(nextMode: "github" | "text") {
@@ -281,16 +311,34 @@ export function ProjectWorkspace({
       ...normalizedRepositoryFields,
       ...normalizeProjectGitHubFields(repositoryMode, projectDraft.githubRepositoryId, projectDraft.githubOwner, projectDraft.githubRepo),
       status: projectDraft.status,
+      description: projectDraft.description,
+      currentSummary: projectDraft.currentSummary,
+      targetSummary: projectDraft.targetSummary,
     };
     if (mode === "create" || !project) {
       actions.addProject({
         ...input,
-        currentSummary: "",
-        targetSummary: "",
         backfillInput: undefined,
       });
     } else {
       actions.updateProject(project.id, input);
+    }
+  }
+
+  async function submitKnowledgeDocument(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !knowledgeTitle.trim()) return;
+    setKnowledgeError(null);
+    try {
+      await actions.addKnowledgeDocument({
+        title: knowledgeTitle,
+        type: knowledgeType,
+        projectId: project.id,
+        workstreamId: null,
+      });
+      setKnowledgeTitle("");
+    } catch (caughtError) {
+      setKnowledgeError(caughtError instanceof Error ? caughtError.message : "문서를 만들지 못했습니다.");
     }
   }
 
@@ -352,6 +400,11 @@ export function ProjectWorkspace({
               <Section title="PROJECT OVERVIEW">
                 <form className="grid gap-2" onSubmit={submitProject}>
                   <Field label="이름" value={projectDraft.name} onChange={(value) => setProjectDraft((draft) => ({ ...draft, name: value }))} />
+                  <Field label="설명" value={projectDraft.description} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, description: value }))} placeholder="프로젝트의 목적과 맥락" />
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <Field label="CURRENT" value={projectDraft.currentSummary} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, currentSummary: value }))} placeholder="현재 상태" />
+                    <Field label="TARGET" value={projectDraft.targetSummary} multiline onChange={(value) => setProjectDraft((draft) => ({ ...draft, targetSummary: value }))} placeholder="도달하려는 상태" />
+                  </div>
                   <label className="grid gap-1 text-[11px] font-medium text-slate-600 dark:text-neutral-300"><span>상태</span><select className="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" value={projectDraft.status} onChange={(event) => setProjectDraft((draft) => ({ ...draft, status: event.target.value as DevProjectStatus }))}>{PROJECT_STATUSES.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>
                   <fieldset className="grid gap-2 rounded border border-slate-200 p-2 dark:border-neutral-800"><legend className="px-1 text-[11px] font-semibold text-slate-600 dark:text-neutral-300">Repository 연결</legend><div className="flex flex-wrap gap-3 text-xs"><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "github"} onChange={() => handleRepositoryModeChange("github")} />GitHub Repository</label><label className="inline-flex items-center gap-2"><input type="radio" checked={repositoryMode === "text"} onChange={() => handleRepositoryModeChange("text")} />GitHub 미연결</label></div>{repositoryMode === "github" ? <GitHubRepositoryPicker integration={github} repository={projectDraft.repository} branch={projectDraft.branch} githubRepositoryId={projectDraft.githubRepositoryId} githubOwner={projectDraft.githubOwner} githubRepo={projectDraft.githubRepo} onRepositoryChange={(value) => setProjectDraft((draft) => ({ ...draft, repository: value, githubRepositoryId: null, githubOwner: null, githubRepo: null }))} onBranchChange={(value) => setProjectDraft((draft) => ({ ...draft, branch: value }))} onIdentityChange={handleRepositorySelection} /> : <p className="text-[11px] text-slate-500">GitHub 연결 없이 상태를 관리합니다.</p>}</fieldset>
                   {repositoryMode === "github" ? <div className="grid grid-cols-1 gap-2 md:grid-cols-2"><Field label="Last verified commit" value={projectDraft.lastVerifiedCommit} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedCommit: value }))} /><Field label="Last verified time" value={projectDraft.lastVerifiedAt} onChange={(value) => setProjectDraft((draft) => ({ ...draft, lastVerifiedAt: value }))} /></div> : null}
@@ -361,6 +414,27 @@ export function ProjectWorkspace({
               </Section>
               {project ? <Section title="VERIFICATION"><div className="grid grid-cols-1 gap-2 text-xs text-slate-600 dark:text-neutral-300 md:grid-cols-2"><p>Repository: <strong>{project.repository || "-"}</strong></p><p>tracked branch: <strong>{project.branch || "-"}</strong></p><p>Last verified commit: <strong className="font-mono">{project.lastVerifiedCommit || "-"}</strong></p><p>Last verified time: <strong>{project.lastVerifiedAt ? formatTimestamp(project.lastVerifiedAt) : "-"}</strong></p></div></Section> : null}
               {project ? <Section title="WORKSTREAMS"><div className="grid gap-1">{selectedWorkstreams.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">참여 중인 Workstream이 없습니다.</p> : selectedWorkstreams.map((workstream) => { const openActions = workstreamActions.filter((action) => action.deletedAt === null && action.workstreamId === workstream.id && action.status === "OPEN").length; return <div key={workstream.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800"><span className="min-w-0 truncate font-semibold">{workstream.name}</span><span className="shrink-0 text-[10px] text-slate-500">{WORKSTREAM_STATUS_LABELS[workstream.status]} · OPEN {openActions}</span></div>; })}</div><p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Workstream의 Source of Truth는 공통 작업 화면이며, 이 영역은 Project 참여 상태만 읽습니다.</p></Section> : null}
+              {project ? <Section title="KNOWLEDGE DOCUMENTS">
+                <form className="mb-2 flex flex-wrap gap-2" onSubmit={(event) => void submitKnowledgeDocument(event)}>
+                  <input className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-neutral-700 dark:bg-neutral-950" placeholder="새 문서 제목" value={knowledgeTitle} onChange={(event) => setKnowledgeTitle(event.target.value)} />
+                  <select className="rounded border border-slate-300 bg-transparent text-[10px] dark:border-neutral-700" value={knowledgeType} onChange={(event) => setKnowledgeType(event.target.value as KnowledgeDocumentType)}>
+                    {KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                  <button type="submit" disabled={!knowledgeTitle.trim()} className="rounded bg-teal-700 px-2 text-xs text-white disabled:opacity-50">새 문서</button>
+                </form>
+                <div className="grid gap-1">
+                  {selectedKnowledgeDocuments.length === 0 ? <p className="text-xs text-slate-500 dark:text-neutral-400">관련 문서가 없습니다.</p> : selectedKnowledgeDocuments.map((document) => <div key={document.id} className="grid gap-1 rounded border border-slate-200 p-2 text-xs dark:border-neutral-800">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input className="min-w-0 flex-1 bg-transparent font-medium" value={document.title} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { title: event.target.value })} />
+                      <select className="rounded border border-slate-200 bg-transparent text-[10px] dark:border-neutral-700" value={document.type} onChange={(event) => void actions.updateKnowledgeDocument(document.id, { type: event.target.value as KnowledgeDocumentType })}>{KNOWLEDGE_DOCUMENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select>
+                      <button type="button" onClick={() => void actions.openKnowledgeDocument(document)} className="text-teal-700 hover:underline dark:text-teal-300">열기</button>
+                    </div>
+                    <span className="truncate text-[10px] text-slate-500 dark:text-neutral-400">{document.workstreamId ? "Workstream" : "Project"} · {document.relativePath}</span>
+                  </div>)}
+                </div>
+                {knowledgeError ? <p role="alert" className="mt-2 text-[11px] text-rose-700 dark:text-rose-300">{knowledgeError}</p> : null}
+                <p className="mt-2 text-[10px] text-slate-500 dark:text-neutral-400">Project Home은 generated projection이며 여기서 직접 편집하지 않습니다.</p>
+              </Section> : null}
             </div>
           ) : null}
 
