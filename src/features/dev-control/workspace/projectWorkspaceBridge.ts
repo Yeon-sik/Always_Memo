@@ -79,6 +79,7 @@ type UpdateActionInput = Parameters<DevControlActions["updateProjectAction"]>[1]
 type UpdateIdeaInput = Parameters<DevControlActions["updateProjectIdea"]>[1];
 type UpdateHistoryInput = Parameters<DevControlActions["updateProjectHistory"]>[1];
 type AddKnowledgeDocumentInput = Parameters<DevControlActions["addKnowledgeDocument"]>[0];
+type CreateKnowledgeDocumentForProjectsInput = Parameters<DevControlActions["createKnowledgeDocumentForProjects"]>[0];
 type UpdateKnowledgeDocumentInput = Parameters<DevControlActions["updateKnowledgeDocument"]>[1];
 
 export type ProjectWorkspaceMutation =
@@ -98,6 +99,7 @@ export type ProjectWorkspaceMutation =
   | { type: "updateProjectHistory"; id: string; changes: UpdateHistoryInput }
   | { type: "deleteProjectHistory"; id: string }
   | { type: "addKnowledgeDocument"; input: AddKnowledgeDocumentInput }
+  | { type: "createKnowledgeDocumentForProjects"; input: CreateKnowledgeDocumentForProjectsInput }
   | { type: "updateKnowledgeDocument"; id: string; changes: UpdateKnowledgeDocumentInput }
   | { type: "deleteKnowledgeDocument"; id: string }
   | { type: "openKnowledgeDocument"; document: KnowledgeDocument };
@@ -237,6 +239,9 @@ export function useProjectWorkspaceHost({
               break;
             case "addKnowledgeDocument":
               void current.addKnowledgeDocument(payload.input);
+              break;
+            case "createKnowledgeDocumentForProjects":
+              void current.createKnowledgeDocumentForProjects(payload.input);
               break;
             case "updateKnowledgeDocument":
               void current.updateKnowledgeDocument(payload.id, payload.changes);
@@ -378,6 +383,10 @@ export function useProjectWorkspaceClient() {
     deleteProjectHistory: (id) => void emitMutation({ type: "deleteProjectHistory", id }),
     addKnowledgeDocument: async (input) => {
       await emitMutation({ type: "addKnowledgeDocument", input });
+      return null;
+    },
+    createKnowledgeDocumentForProjects: async (input) => {
+      await emitMutation({ type: "createKnowledgeDocumentForProjects", input });
       return null;
     },
     updateKnowledgeDocument: (id, changes) =>
