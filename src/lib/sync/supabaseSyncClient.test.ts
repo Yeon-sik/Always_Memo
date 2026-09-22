@@ -140,7 +140,7 @@ describe("SupabaseSyncClient facade", () => {
     await expect(
       client.pull(snapshot, { userId: "user-1", device: makeDevice() }),
     ).resolves.toBe(snapshot);
-    expect(fake.select).toHaveBeenCalledTimes(19);
+    expect(fake.select).toHaveBeenCalledTimes(17);
     expect(client.getStatus()).toMatchObject({
       mode: "error",
       detail: "RLS denied",
@@ -179,7 +179,7 @@ describe("SupabaseSyncClient facade", () => {
 
     expect(result.status.mode).toBe("synced");
     expect(result.snapshot?.notes[0].content).toBe("server value");
-    expect(fake.select).toHaveBeenCalledTimes(19);
+    expect(fake.select).toHaveBeenCalledTimes(17);
   });
 
   it("uses the server value for equal-time active rows during reconciliation", async () => {

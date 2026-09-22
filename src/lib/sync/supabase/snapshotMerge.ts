@@ -46,6 +46,8 @@ export function mergeSnapshot(
   incomingSnapshot: LocalDataSnapshot,
 ): LocalDataSnapshot {
   return {
+    // Removed/moved meal dates disappear from the view without a tombstone.
+    fitnessNutritionSummaries: incomingSnapshot.fitnessNutritionSummaries ?? localSnapshot.fitnessNutritionSummaries,
     notes: mergeEntities(localSnapshot.notes, incomingSnapshot.notes),
     tasks: mergeEntities(localSnapshot.tasks, incomingSnapshot.tasks),
     workoutRecords: mergeEntities(
@@ -118,6 +120,8 @@ export function mergeAuthoritativeSnapshot(
   incomingSnapshot: LocalDataSnapshot,
 ): LocalDataSnapshot {
   return {
+    // Removed/moved meal dates disappear from the view without a tombstone.
+    fitnessNutritionSummaries: incomingSnapshot.fitnessNutritionSummaries ?? localSnapshot.fitnessNutritionSummaries,
     notes: mergeAuthoritativeEntities(
       localSnapshot.notes,
       incomingSnapshot.notes,

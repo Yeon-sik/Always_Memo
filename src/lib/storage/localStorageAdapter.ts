@@ -1,3 +1,4 @@
+import { parseFitnessNutritionSummary } from "../../features/fitness-summary/fitnessNutritionContract";
 import type {
   Device,
   LocalDataSnapshot,
@@ -659,6 +660,11 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     tasks,
     workoutRecords,
     fitnessSummaryProjections,
+    fitnessNutritionSummaries: Array.isArray(value.fitnessNutritionSummaries)
+      ? normalizeArray(value.fitnessNutritionSummaries, (row) => {
+          try { return parseFitnessNutritionSummary(row); } catch { return null; }
+        })
+      : undefined,
     mealRecords,
     weightRecords,
     devices,

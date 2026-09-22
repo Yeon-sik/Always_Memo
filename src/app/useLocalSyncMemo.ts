@@ -77,7 +77,7 @@ export function useLocalSyncMemo(
         .filter(
           (projection) =>
             projection.deletedAt === null &&
-            projection.completionStatus === "completed",
+            projection.completionStatus === "completed" && projection.contractVersion === 2,
         )
         .sort((first, second) => {
           if (first.date !== second.date) {
@@ -139,6 +139,7 @@ export function useLocalSyncMemo(
     projects: visibleProjects,
     error: runtime.error,
     fitnessSummaryProjections: visibleFitnessSummaryProjections,
+    fitnessNutritionSummaries: runtime.snapshot.fitnessNutritionSummaries,
     isAuthenticated: runtime.isAuthenticated,
     isManualSyncing: runtime.isManualSyncing,
     isReady: runtime.isReady,
@@ -147,7 +148,7 @@ export function useLocalSyncMemo(
     knowledgeVault,
     loadFinanceDailySummaries: runtime.loadFinanceDailySummaries,
     manualSync: runtime.manualSync,
-    mealRecords: visibleMealRecords,
+    mealRecords: [],
     notes: visibleNotes,
     saveState: runtime.saveState,
     saveSupabaseConfig: runtime.saveSupabaseConfig,
@@ -164,8 +165,8 @@ export function useLocalSyncMemo(
     syncStatus: runtime.syncStatus,
     tasks: visibleTasks,
     userId: runtime.userId,
-    weightRecords: visibleWeightRecords,
-    workoutRecords: visibleWorkoutRecords,
+    weightRecords: [],
+    workoutRecords: [],
     ...devControlActions,
   };
 }

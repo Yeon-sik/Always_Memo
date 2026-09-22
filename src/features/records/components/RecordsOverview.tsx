@@ -84,10 +84,19 @@ export function RecordsOverview({
     () => getRecordsForDate(snapshot, today),
     [snapshot, today],
   );
-  const dashboardStats = useMemo(
-    () => getDashboardStats(snapshot, selectedRange),
-    [selectedRange, snapshot],
-  );
+  const dashboardStats = useMemo(() => {
+    const base = getDashboardStats(snapshot, selectedRange);
+    const nutrition = (snapshot.fitnessNutritionSummaries ?? []).filter(
+      (row) => row.date >= selectedRange.startDate && row.date <= selectedRange.endDate,
+    );
+    const calories = nutrition.flatMap((row) => row.calories === null ? [] : [row.calories]);
+    const protein = nutrition.flatMap((row) => row.proteinGrams === null ? [] : [row.proteinGrams]);
+    return {
+      ...base,
+      averageCalories: calories.length ? calories.reduce((sum, value) => sum + value, 0) / calories.length : null,
+      averageProteinGrams: protein.length ? protein.reduce((sum, value) => sum + value, 0) / protein.length : null,
+    };
+  }, [selectedRange, snapshot]);
   const fitnessSummary = useMemo(
     () => getFitnessSummary(snapshot, today),
     [snapshot, today],
@@ -96,10 +105,19 @@ export function RecordsOverview({
     () => getProductivitySeries(snapshot.tasks, selectedRange),
     [selectedRange, snapshot.tasks],
   );
-  const nutritionSeries = useMemo(
-    () => getNutritionSeries(snapshot.mealRecords, selectedRange),
-    [selectedRange, snapshot.mealRecords],
-  );
+  const nutritionSeries = useMemo(() => {
+    const summaries = new Map(
+      (snapshot.fitnessNutritionSummaries ?? [])
+        .filter((row) => row.date >= selectedRange.startDate && row.date <= selectedRange.endDate)
+        .map((row) => [row.date, row]),
+    );
+    return getNutritionSeries([], selectedRange).map((point) => {
+      const summary = summaries.get(point.date);
+      return summary
+        ? { date: point.date, averageCalories: summary.calories, averageProteinGrams: summary.proteinGrams }
+        : point;
+    });
+  }, [selectedRange, snapshot.fitnessNutritionSummaries]);
   const weightSeries = useMemo(
     () => getWeightSeries(snapshot.weightRecords, selectedRange),
     [selectedRange, snapshot.weightRecords],
@@ -151,9 +169,7 @@ export function RecordsOverview({
           !hasBackfillMetadata(task),
       )
     : [];
-  const nutritionDetailRecords = activeNutritionPoint
-    ? getRecordsForDate(snapshot, activeNutritionPoint.date)
-    : null;
+
   const weightDetailRecords = activeWeightPoint
     ? getRecordsForDate(snapshot, activeWeightPoint.date)
     : null;
@@ -190,10 +206,14 @@ export function RecordsOverview({
       </p>
       <p>
         {summarizeItems(
-          (nutritionDetailRecords?.mealRecords ?? []).map(
-            (record) =>
-              `${record.menu} ${record.calories.toLocaleString("ko-KR")} kcal / ${formatMetric(record.proteinGrams)} g`,
-          ),
+          (() => {
+            const summary = (snapshot.fitnessNutritionSummaries ?? []).find(
+              (row) => row.date === activeNutritionPoint.date,
+            );
+            return summary
+              ? [`식사 ${summary.mealCount}회 · ${summary.calories === null ? "미확인" : `${formatMetric(summary.calories, 0)} kcal`} / 단백질 ${summary.proteinGrams === null ? "미확인" : `${formatMetric(summary.proteinGrams)} g`}`]
+              : [];
+          })(),
           "이 날 등록된 식사 기록이 없습니다.",
         )}
       </p>
@@ -358,9 +378,11 @@ export function RecordsOverview({
             <span className="font-semibold text-slate-800 dark:text-neutral-100">
               Latest meal:
             </span>{" "}
-            {fitnessSummary.latestMeal
-              ? `${fitnessSummary.latestMeal.date} ${fitnessSummary.latestMeal.menu}`
-              : "No meal record."}
+            {fitnessSummary.latestNutritionSummary
+              ? `${fitnessSummary.latestNutritionSummary.date} 식사 ${fitnessSummary.latestNutritionSummary.mealCount}회 · ${fitnessSummary.latestNutritionSummary.calories ?? "미확인"} kcal`
+              : fitnessSummary.latestMeal
+                ? `${fitnessSummary.latestMeal.date} ${fitnessSummary.latestMeal.menu}`
+                : "No meal summary."}
           </p>
         </div>
 

@@ -1,3 +1,4 @@
+import { fitnessNutritionSummaryFromRow } from "../../../features/fitness-summary/fitnessNutritionContract";
 import type { Device, LocalDataSnapshot } from "../../../types";
 import type { SyncContext } from "../syncTypes";
 import {
@@ -6,7 +7,6 @@ import {
   fitnessSummaryProjectionV2FromRow,
   knowledgeDocumentFromRow,
   knowledgeDocumentToRow,
-  mealRecordFromRow,
   noteFromRow,
   noteToRow,
   projectActionFromRow,
@@ -33,14 +33,11 @@ import {
   workstreamToRow,
   taskFromRow,
   taskToRow,
-  weightRecordFromRow,
-  workoutRecordFromRow,
 } from "./mappers";
 import type {
   DeviceRow,
   FitnessSummaryProjectionV2Row,
   KnowledgeDocumentRow,
-  MealRecordRow,
   NoteRow,
   ProjectActionRow,
   ProjectHistoryRow,
@@ -50,8 +47,6 @@ import type {
   SnapshotTableName,
   SupabaseClient,
   TaskRow,
-  WeightRecordRow,
-  WorkoutRecordRow,
   WorkstreamActionDependencyRow,
   WorkstreamActionProjectRow,
   WorkstreamActionRow,
@@ -159,9 +154,7 @@ async function fetchIncomingSnapshot(
   const [
     notesResult,
     tasksResult,
-    workoutRecordsResult,
-    mealRecordsResult,
-    weightRecordsResult,
+    fitnessNutritionSummariesResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
     projectsResult,
@@ -179,9 +172,7 @@ async function fetchIncomingSnapshot(
   ] = await Promise.all([
     transport.selectRows<NoteRow>("notes", userId),
     transport.selectRows<TaskRow>("tasks", userId),
-    transport.selectRows<WorkoutRecordRow>("workout_records", userId),
-    transport.selectRows<MealRecordRow>("meal_records", userId),
-    transport.selectRows<WeightRecordRow>("weight_records", userId),
+    transport.selectRows<unknown>("fitness_nutrition_summary_v1", userId),
     transport.selectRows<FitnessSummaryProjectionV2Row>(
       "fitness_summary_projections_v2",
       userId,
@@ -216,9 +207,7 @@ async function fetchIncomingSnapshot(
   for (const result of [
     notesResult,
     tasksResult,
-    workoutRecordsResult,
-    mealRecordsResult,
-    weightRecordsResult,
+    fitnessNutritionSummariesResult,
     fitnessSummaryProjectionsResult,
     devicesResult,
     projectsResult,
@@ -240,11 +229,11 @@ async function fetchIncomingSnapshot(
   const incomingSnapshot: LocalDataSnapshot = {
     notes: (notesResult.data ?? []).map(noteFromRow),
     tasks: (tasksResult.data ?? []).map(taskFromRow),
-    workoutRecords: (workoutRecordsResult.data ?? []).map(
-      workoutRecordFromRow,
-    ),
-    mealRecords: (mealRecordsResult.data ?? []).map(mealRecordFromRow),
-    weightRecords: (weightRecordsResult.data ?? []).map(weightRecordFromRow),
+    // Preserve existing archives, but never download new Fitness source records.
+    workoutRecords: [],
+    mealRecords: [],
+    weightRecords: [],
+    fitnessNutritionSummaries: (fitnessNutritionSummariesResult.data ?? []).map(fitnessNutritionSummaryFromRow),
     fitnessSummaryProjections: (fitnessSummaryProjectionsResult.data ?? []).map(
       fitnessSummaryProjectionV2FromRow,
     ),

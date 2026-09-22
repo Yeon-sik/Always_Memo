@@ -17,6 +17,7 @@ export interface FitnessSummary {
   weightDeltaKg: number | null;
   latestMeal: MealRecord | null;
   todayHasMeal: boolean;
+  latestNutritionSummary: import("./fitnessNutritionContract").FitnessNutritionSummaryV1 | null;
   connection: FitnessConnectionSummary;
 }
 
@@ -57,8 +58,9 @@ const STRENGTH_PARTS: Array<{
 function isVisibleLegacyRecord(entity: {
   deletedAt: string | null;
   scope?: string;
+  sourceApp?: string;
 }): boolean {
-  return entity.deletedAt === null && entity.scope !== "fitness";
+  return entity.deletedAt === null && entity.scope !== "fitness" && entity.sourceApp !== "fitness";
 }
 
 function isVisibleProjection(
@@ -105,17 +107,10 @@ export function formatFitnessProjectionLabels(
     ({ key }) => projection[key] > 0,
   ).map(({ key, label }) => `${label} 운동 ${projection[key]}세트`);
 
-  if (strengthLabels.length > 0) {
-    return strengthLabels;
+  if (projection.cardioDurationSeconds !== null) {
+    strengthLabels.push(`유산소 ${formatDurationSeconds(projection.cardioDurationSeconds)}`);
   }
-
-  const cardioDuration =
-    projection.cardioDurationSeconds ?? projection.totalDurationSeconds;
-  if (cardioDuration !== null) {
-    return [`유산소 ${formatDurationSeconds(cardioDuration)}`];
-  }
-
-  return ["완료 운동 요약"];
+  return strengthLabels.length ? strengthLabels : ["완료 운동 요약"];
 }
 
 function getWeeklyStrengthSetSummaries(
@@ -139,7 +134,6 @@ function getWeeklyStrengthSetSummaries(
       }
       return first[0].localeCompare(second[0]);
     })
-    .slice(0, 3)
     .map(([key, count]) => {
       const label = STRENGTH_PARTS.find((part) => part.key === key)?.label ?? "기타";
       return `${label} 운동 ${count}세트`;
@@ -150,12 +144,8 @@ function getConnectionSummary(
   snapshot: LocalDataSnapshot,
   visibleProjections: FitnessSummaryProjectionV2[],
 ): FitnessConnectionSummary {
-  const hiddenInProgressFitnessRecords = snapshot.workoutRecords.filter(
-    (record) =>
-      record.deletedAt === null &&
-      record.sourceApp === "fitness" &&
-      record.scope === "fitness",
-  ).length;
+  // Source records are never read to infer Fitness progress.
+  const hiddenInProgressFitnessRecords = 0;
 
   if (visibleProjections.length === 0) {
     return {
@@ -190,6 +180,8 @@ export function getFitnessSummary(
   const visibleMeals = sortByDateDescThenUpdatedDesc(
     snapshot.mealRecords.filter(isVisibleLegacyRecord),
   );
+  const nutritionSummaries = (snapshot.fitnessNutritionSummaries ?? []).filter((summary) => summary.date <= today).sort((first, second) => second.date.localeCompare(first.date));
+  const latestNutritionSummary = nutritionSummaries[0] ?? null;
   const weekRange = getLastSevenDayRange(today);
   const weeklyWorkouts = visibleProjections.filter((record) =>
     isWithinDateRange(record.date, weekRange.startDate, weekRange.endDate),
@@ -208,8 +200,9 @@ export function getFitnessSummary(
       latestWeight && previousWeight
         ? latestWeight.weightKg - previousWeight.weightKg
         : null,
-    latestMeal: visibleMeals[0] ?? null,
-    todayHasMeal: visibleMeals.some((record) => record.date === today),
+    latestMeal: snapshot.fitnessNutritionSummaries === undefined ? visibleMeals[0] ?? null : null,
+    latestNutritionSummary,
+    todayHasMeal: snapshot.fitnessNutritionSummaries === undefined ? visibleMeals.some((record) => record.date === today) : snapshot.fitnessNutritionSummaries.some((record) => record.date === today),
     connection: getConnectionSummary(snapshot, visibleProjections),
   };
 }

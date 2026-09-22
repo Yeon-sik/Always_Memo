@@ -99,9 +99,7 @@ describe("Supabase snapshot IO", () => {
     const tableNames: SnapshotTableName[] = [
       "notes",
       "tasks",
-      "workout_records",
-      "meal_records",
-      "weight_records",
+      "fitness_nutrition_summary_v1",
       "fitness_summary_projections_v2",
       "devices",
       "projects",
@@ -158,9 +156,7 @@ describe("Supabase snapshot IO", () => {
     expect(transport.selectCalls.map((call) => call.tableName)).toEqual([
       "notes",
       "tasks",
-      "workout_records",
-      "meal_records",
-      "weight_records",
+      "fitness_nutrition_summary_v1",
       "fitness_summary_projections_v2",
       "devices",
       "projects",

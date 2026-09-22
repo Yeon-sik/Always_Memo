@@ -1,9 +1,9 @@
+import type { FitnessNutritionSummaryV1 } from "../fitness-summary/fitnessNutritionContract";
+import { FitnessNutritionCard, formatNutritionMetric } from "../fitness-summary/FitnessNutritionCard";
 import { BarChart3, Download, Dumbbell, Salad, Scale } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
   FitnessSummaryProjectionV2,
-  MealRecord,
-  WeightRecord,
 } from "../../types";
 import { BACKFILL_LABEL } from "../../lib/dataTrust/backfillMetadata";
 import { formatLocalDate, getCurrentMonthRange } from "./fitnessDate";
@@ -18,9 +18,9 @@ import { calculateFitnessStats, formatMetric } from "./stats/fitnessStats";
 
 interface FitnessPanelProps {
   fitnessSummaryProjections: FitnessSummaryProjectionV2[];
-  mealRecords: MealRecord[];
+  nutritionSummaries: FitnessNutritionSummaryV1[] | undefined;
   selectedDate: string;
-  weightRecords: WeightRecord[];
+
 }
 
 type ActionPanel = "stats" | "export" | null;
@@ -28,9 +28,9 @@ type ActionPanel = "stats" | "export" | null;
 /** Personal OS consumes the Fitness-owned Summary Projection v2 as read-only data. */
 export function FitnessPanel({
   fitnessSummaryProjections,
-  mealRecords,
+  nutritionSummaries,
   selectedDate,
-  weightRecords,
+
 }: FitnessPanelProps) {
   const currentMonthRange = getCurrentMonthRange();
   const [actionPanel, setActionPanel] = useState<ActionPanel>(null);
@@ -42,34 +42,36 @@ export function FitnessPanel({
     () =>
       calculateFitnessStats(
         fitnessSummaryProjections,
-        mealRecords,
-        weightRecords,
+        [],
+        [],
+
         rangeStartDate,
         rangeEndDate,
       ),
     [
       fitnessSummaryProjections,
-      mealRecords,
+      nutritionSummaries,
       rangeEndDate,
       rangeStartDate,
-      weightRecords,
+
     ],
   );
   const exportMarkdown = useMemo(
     () =>
       createFitnessMarkdownExport({
         workoutRecords: fitnessSummaryProjections,
-        mealRecords,
-        weightRecords,
+        mealRecords: [],
+        weightRecords: [],
+
         startDate: rangeStartDate,
         endDate: rangeEndDate,
       }),
     [
       fitnessSummaryProjections,
-      mealRecords,
+      nutritionSummaries,
       rangeEndDate,
       rangeStartDate,
-      weightRecords,
+
     ],
   );
   const exportFileName = createFitnessExportFileName(
@@ -77,8 +79,16 @@ export function FitnessPanel({
     rangeEndDate,
   );
   const selectedDateProjections = fitnessSummaryProjections.filter(
-    (projection) => projection.date === selectedDate,
+    (projection) => projection.date === selectedDate && projection.deletedAt === null && projection.contractVersion === 2 && projection.completionStatus === "completed",
   );
+
+  const rangedNutrition = (nutritionSummaries ?? []).filter(
+    (row) => row.date >= rangeStartDate && row.date <= rangeEndDate,
+  );
+  const summaryExport = exportMarkdown + "\n## 일별 식단 요약 v1\n\n" +
+    (rangedNutrition.length ? rangedNutrition.map((row) =>
+      `- ${row.date}: 식사 ${row.mealCount}회 · ${formatNutritionMetric(row.calories)} kcal · 탄수화물 ${formatNutritionMetric(row.carbsGrams)} g · 단백질 ${formatNutritionMetric(row.proteinGrams)} g · 지방 ${formatNutritionMetric(row.fatGrams)} g`,
+    ).join("\n") : "수신된 식단 요약 없음") + "\n";
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
@@ -88,7 +98,7 @@ export function FitnessPanel({
             Fitness Summary
           </h2>
           <p className="truncate text-xs text-slate-500 dark:text-neutral-400">
-            FitnessApp 소유 원본의 Summary Projection v2 읽기 전용 화면
+            Fitness 운동 v2 · 일별 식단 v1 읽기 전용 요약
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -123,7 +133,7 @@ export function FitnessPanel({
         <div className="font-semibold">읽기 전용</div>
         <p className="mt-1 text-xs leading-5">
           운동·식사·체중 원본은 FitnessApp이 소유합니다. Personal OS에는
-          완료된 운동의 부위별 세트 수와 시간 수준의 projection만 동기화됩니다.
+          운동 세트·시간과 일별 식단 요약만 동기화됩니다.
           원본 입력과 상세 수정은 FitnessApp에서 수행하세요.
         </p>
       </div>
@@ -150,7 +160,7 @@ export function FitnessPanel({
             {actionPanel === "export" ? (
               <button
                 type="button"
-                onClick={() => downloadMarkdown(exportFileName, exportMarkdown)}
+                onClick={() => downloadMarkdown(exportFileName, summaryExport)}
                 className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-teal-700 px-3 text-sm font-semibold text-white transition hover:bg-teal-800"
               >
                 <Download className="h-4 w-4" aria-hidden="true" />
@@ -183,32 +193,11 @@ export function FitnessPanel({
               </MetricPanel>
               <MetricPanel
                 icon={<Salad className="h-4 w-4 text-yellow-600" />}
-                title="식사 평균"
-                primary={`${stats.mealCount}개`}
+                title="식단 요약"
+                primary={`${rangedNutrition.reduce((sum, day) => sum + day.mealCount, 0)}회`}
               >
-                <p>칼로리 {formatMetric(stats.averageCalories, 0)} kcal</p>
-                <p>단백질 {formatMetric(stats.averageProteinGrams)} g</p>
-                {stats.backfilledMealCount > 0 ? (
-                  <p>
-                    {BACKFILL_LABEL} {stats.backfilledMealCount}건 포함
-                  </p>
-                ) : null}
-              </MetricPanel>
-              <MetricPanel
-                icon={<Scale className="h-4 w-4 text-emerald-600" />}
-                title="체중 평균"
-                primary={`${stats.weightCount}개`}
-              >
-                <p>평균 {formatMetric(stats.averageWeightKg)} kg</p>
-                <p>
-                  최저 {formatMetric(stats.minWeightKg)} kg / 최고{" "}
-                  {formatMetric(stats.maxWeightKg)} kg
-                </p>
-                {stats.backfilledWeightCount > 0 ? (
-                  <p>
-                    {BACKFILL_LABEL} {stats.backfilledWeightCount}건 포함
-                  </p>
-                ) : null}
+                <p>수신된 식단 {rangedNutrition.length}일</p>
+                <p>일별 합계는 아래 식단 요약에서 확인하세요.</p>
               </MetricPanel>
             </div>
           ) : (
@@ -218,13 +207,15 @@ export function FitnessPanel({
               </div>
               <textarea
                 readOnly
-                value={exportMarkdown}
+                value={summaryExport}
                 className="h-48 w-full resize-none rounded-md border border-slate-200 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-700 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-200"
               />
             </div>
           )}
         </div>
       ) : null}
+
+      <FitnessNutritionCard summaries={nutritionSummaries} date={selectedDate} />
 
       <div className="shrink-0 rounded-md border border-slate-300 bg-white p-3 dark:border-neutral-800 dark:bg-black">
         <div className="flex items-center justify-between gap-2">

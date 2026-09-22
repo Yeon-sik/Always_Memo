@@ -1,3 +1,5 @@
+import type { FitnessNutritionSummaryV1 } from "../features/fitness-summary/fitnessNutritionContract";
+
 export type EntityId = string;
 export type ISODateString = string;
 
@@ -219,6 +221,8 @@ export interface LocalDataSnapshot {
   /** Frozen v1 rows retained for legacy reads and migration compatibility. */
   workoutRecords: LegacyWorkoutRecordV1[];
   fitnessSummaryProjections: FitnessSummaryProjectionV2[];
+  /** Absent in old caches; full owner-view reads replace this collection. */
+  fitnessNutritionSummaries?: FitnessNutritionSummaryV1[];
   mealRecords: MealRecord[];
   weightRecords: WeightRecord[];
   devices: Device[];

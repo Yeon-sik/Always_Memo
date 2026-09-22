@@ -53,6 +53,7 @@ const snapshotCollections = [
   "tasks",
   "workoutRecords",
   "fitnessSummaryProjections",
+  "fitnessNutritionSummaries",
   "mealRecords",
   "weightRecords",
   "projects",
@@ -74,8 +75,8 @@ function hasEntitySnapshotChanges(
   next: LocalDataSnapshot,
 ): boolean {
   return snapshotCollections.some((collection) => {
-    const currentEntities = current[collection];
-    const nextEntities = next[collection];
+    const currentEntities = current[collection] ?? [];
+    const nextEntities = next[collection] ?? [];
 
     if (currentEntities.length !== nextEntities.length) {
       return true;
