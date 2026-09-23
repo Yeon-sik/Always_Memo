@@ -12,6 +12,7 @@ import {
   getNutritionSeries,
   getProductivitySeries,
   getRecordsForDate,
+  getWeightRecordsForDisplay,
 } from "./recordAggregation";
 
 const liveWorkout: FitnessSummaryProjectionV2 = {
@@ -239,6 +240,26 @@ describe("recordAggregation", () => {
     expect(series[0].averageProteinGrams).toBe(40);
   });
 
+  it("keeps Fitness meal details out of OS date records even when the legacy scope is both", () => {
+    const fitnessMeal = {
+      ...liveMeal,
+      sourceApp: "fitness" as const,
+      scope: "both" as const,
+      menu: "private Fitness meal detail",
+    };
+    const records = getRecordsForDate(
+      { ...snapshot, mealRecords: [fitnessMeal] },
+      "2026-06-09",
+    );
+
+    expect(records.mealRecords).toEqual([]);
+  });
+
+  it("does not present cached weights as current until a remote pull succeeds", () => {
+    expect(getWeightRecordsForDisplay([liveWeight], { mode: "offline" })).toEqual([]);
+    expect(getWeightRecordsForDisplay([liveWeight], { mode: "error" })).toEqual([]);
+    expect(getWeightRecordsForDisplay([liveWeight], { mode: "synced" })).toEqual([liveWeight]);
+  });
   it("does not create markers for tombstone-only dates", () => {
     const markers = getCalendarMarkers(
       {

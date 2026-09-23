@@ -15,6 +15,7 @@ export function createEmptySnapshot(): LocalDataSnapshot {
     workoutRecords: [],
     fitnessSummaryProjections: [],
     fitnessNutritionSummaries: [],
+    fitnessWeightRecords: [],
     mealRecords: [],
     weightRecords: [],
     devices: [],

@@ -23,11 +23,13 @@ import { formatMetric } from "../../fitness/stats/fitnessStats";
 import {
   getDashboardStats,
   getMonthRange,
-  getNutritionSeries,
+  getDateRangeDays,
   getProductivitySeries,
   getRecordsForDate,
+  getWeightRecordsForDisplay,
   getWeightSeries,
 } from "../recordAggregation";
+import { getFitnessNutritionMetrics } from "../fitnessNutritionMetrics";
 import {
   formatNullableMetric,
   getWeightDeltaLabel,
@@ -80,26 +82,25 @@ export function RecordsOverview({
   today,
 }: RecordsOverviewProps) {
   const selectedRange = useMemo(() => getMonthRange(selectedDate), [selectedDate]);
-  const todayRecords = useMemo(
-    () => getRecordsForDate(snapshot, today),
-    [snapshot, today],
+  const displaySnapshot = useMemo(
+    () => ({ ...snapshot, fitnessWeightRecords: getWeightRecordsForDisplay(snapshot.fitnessWeightRecords ?? [], syncStatus) }),
+    [snapshot, syncStatus.mode],
   );
-  const dashboardStats = useMemo(() => {
-    const base = getDashboardStats(snapshot, selectedRange);
-    const nutrition = (snapshot.fitnessNutritionSummaries ?? []).filter(
-      (row) => row.date >= selectedRange.startDate && row.date <= selectedRange.endDate,
-    );
-    const calories = nutrition.flatMap((row) => row.calories === null ? [] : [row.calories]);
-    const protein = nutrition.flatMap((row) => row.proteinGrams === null ? [] : [row.proteinGrams]);
-    return {
-      ...base,
-      averageCalories: calories.length ? calories.reduce((sum, value) => sum + value, 0) / calories.length : null,
-      averageProteinGrams: protein.length ? protein.reduce((sum, value) => sum + value, 0) / protein.length : null,
-    };
-  }, [selectedRange, snapshot]);
+  const todayRecords = useMemo(
+    () => getRecordsForDate(displaySnapshot, today),
+    [displaySnapshot, today],
+  );
+  const dashboardStats = useMemo(
+    () => getDashboardStats(displaySnapshot, selectedRange),
+    [displaySnapshot, selectedRange],
+  );
+  const nutritionMetrics = useMemo(
+    () => getFitnessNutritionMetrics(snapshot.fitnessNutritionSummaries ?? [], selectedRange),
+    [selectedRange, snapshot.fitnessNutritionSummaries],
+  );
   const fitnessSummary = useMemo(
-    () => getFitnessSummary(snapshot, today),
-    [snapshot, today],
+    () => getFitnessSummary(displaySnapshot, today),
+    [displaySnapshot, today],
   );
   const productivitySeries = useMemo(
     () => getProductivitySeries(snapshot.tasks, selectedRange),
@@ -111,16 +112,20 @@ export function RecordsOverview({
         .filter((row) => row.date >= selectedRange.startDate && row.date <= selectedRange.endDate)
         .map((row) => [row.date, row]),
     );
-    return getNutritionSeries([], selectedRange).map((point) => {
-      const summary = summaries.get(point.date);
-      return summary
-        ? { date: point.date, averageCalories: summary.calories, averageProteinGrams: summary.proteinGrams }
-        : point;
+    return getDateRangeDays(selectedRange).map((date) => {
+      const summary = summaries.get(date);
+      return {
+        date,
+        mealCount: summary?.mealCount ?? 0,
+        hasSummary: summary !== undefined,
+        calories: summary?.calories ?? null,
+        proteinGrams: summary?.proteinGrams ?? null,
+      };
     });
   }, [selectedRange, snapshot.fitnessNutritionSummaries]);
   const weightSeries = useMemo(
-    () => getWeightSeries(snapshot.weightRecords, selectedRange),
-    [selectedRange, snapshot.weightRecords],
+    () => getWeightSeries(displaySnapshot.fitnessWeightRecords ?? [], selectedRange),
+    [selectedRange, displaySnapshot.fitnessWeightRecords],
   );
   const productivityInteraction = useChartInteraction(productivitySeries.length);
   const nutritionInteraction = useChartInteraction(nutritionSeries.length);
@@ -134,21 +139,16 @@ export function RecordsOverview({
   const hasProductivityData = productivitySeries.some(
     (point) => point.totalTasks > 0,
   );
-  const hasNutritionData = nutritionSeries.some(
-    (point) => point.averageCalories !== null,
-  );
+  const hasNutritionData = nutritionMetrics.summaryDays > 0;
+  const nutritionStatsDetail = `${nutritionMetrics.summaryDays}일 중 칼로리 확인 ${nutritionMetrics.daysWithCalories}일 · 단백질 확인 ${nutritionMetrics.daysWithProtein}일`;
   const productivityDetail =
     dashboardStats.backfilledTaskCount > 0
       ? `${dashboardStats.completedTasks}/${dashboardStats.totalTasks} 완료 · ${BACKFILL_LABEL} ${dashboardStats.backfilledTaskCount}건 제외`
       : `${dashboardStats.completedTasks}/${dashboardStats.totalTasks} 완료`;
-  const mealStatsDetail =
-    dashboardStats.backfilledMealCount > 0
-      ? `선택 월 식사 기준 · ${BACKFILL_LABEL} ${dashboardStats.backfilledMealCount}건 포함`
-      : "선택 월 식사 기준";
-  const weightStatsDetail =
-    dashboardStats.backfilledWeightCount > 0
-      ? `${BACKFILL_LABEL} ${dashboardStats.backfilledWeightCount}건 포함`
-      : null;
+  const mealStatsDetail = `${nutritionMetrics.summaryDays}일 요약 기준`;
+  const weightStatsDetail = syncStatus.mode === "synced"
+    ? (dashboardStats.backfilledWeightCount > 0 ? `${BACKFILL_LABEL} ${dashboardStats.backfilledWeightCount}건 포함` : "최근 동기화된 체중 기록")
+    : "동기화 확인 후 체중을 표시합니다.";
   const activeProductivityPoint =
     productivityInteraction.activeIndex === null
       ? null
@@ -196,30 +196,17 @@ export function RecordsOverview({
   const nutritionChartDetail = activeNutritionPoint ? (
     <div className="space-y-1">
       <p className="font-semibold text-slate-700 dark:text-neutral-100">
-        {formatKoreanDate(activeNutritionPoint.date)} · 평균{" "}
-        {activeNutritionPoint.averageCalories === null
-          ? "-"
-          : `${formatMetric(activeNutritionPoint.averageCalories, 0)} kcal`} / 단백질{" "}
-        {activeNutritionPoint.averageProteinGrams === null
-          ? "-"
-          : `${formatMetric(activeNutritionPoint.averageProteinGrams)} g`}
+        {formatKoreanDate(activeNutritionPoint.date)} · 일별 합계{" "}
+        {activeNutritionPoint.hasSummary
+          ? `${activeNutritionPoint.calories === null ? "칼로리 미확인" : `${formatMetric(activeNutritionPoint.calories, 0)} kcal`} / 단백질 ${activeNutritionPoint.proteinGrams === null ? "미확인" : `${formatMetric(activeNutritionPoint.proteinGrams)} g`}`
+          : "식사 기록 없음"}
       </p>
-      <p>
-        {summarizeItems(
-          (() => {
-            const summary = (snapshot.fitnessNutritionSummaries ?? []).find(
-              (row) => row.date === activeNutritionPoint.date,
-            );
-            return summary
-              ? [`식사 ${summary.mealCount}회 · ${summary.calories === null ? "미확인" : `${formatMetric(summary.calories, 0)} kcal`} / 단백질 ${summary.proteinGrams === null ? "미확인" : `${formatMetric(summary.proteinGrams)} g`}`]
-              : [];
-          })(),
-          "이 날 등록된 식사 기록이 없습니다.",
-        )}
-      </p>
+      {activeNutritionPoint.hasSummary ? (
+        <p>총 식사 {activeNutritionPoint.mealCount}회 · 영양소 미확인은 0으로 계산하지 않습니다.</p>
+      ) : null}
     </div>
   ) : (
-    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 식사 기록을 보여줍니다.</p>
+    <p>막대에 마우스를 올리거나 클릭하면 해당 날짜의 일별 합계를 확인할 수 있습니다.</p>
   );
 
   const weightChartDetail = activeWeightPoint ? (
@@ -288,15 +275,22 @@ export function RecordsOverview({
         />
         <KpiCard
           icon={Flame}
-          label="평균 칼로리"
-          value={formatNullableMetric(dashboardStats.averageCalories, "kcal")}
+          label="일 평균 섭취 칼로리"
+          value={formatNullableMetric(nutritionMetrics.averageDailyCalories, "kcal")}
           detail={mealStatsDetail}
           tone="amber"
         />
         <KpiCard
           icon={Salad}
-          label="평균 단백질"
-          value={formatNullableMetric(dashboardStats.averageProteinGrams, "g", 1)}
+          label="일 평균 단백질"
+          value={formatNullableMetric(nutritionMetrics.averageDailyProteinGrams, "g", 1)}
+          detail={mealStatsDetail}
+          tone="emerald"
+        />
+        <KpiCard
+          icon={Salad}
+          label="총 식사 횟수"
+          value={`${nutritionMetrics.totalMealCount}회`}
           detail={mealStatsDetail}
           tone="emerald"
         />
@@ -430,15 +424,16 @@ export function RecordsOverview({
         <ChartCard
           title="칼로리 / 단백질"
           icon={Salad}
-          caption={hasNutritionData ? "일별 평균 칼로리" : "선택 월에 식사 기록이 없습니다."}
+          caption={hasNutritionData ? "일별 합계 · 미확인 영양소는 공란" : "선택 월에 식사 요약이 없습니다."}
         >
           <BarSeries
             interaction={nutritionInteraction}
-            pointLabels={nutritionSeries.map(
-              (point) =>
-                `${formatKoreanDate(point.date)} 평균 ${point.averageCalories === null ? 0 : Math.round(point.averageCalories)} kcal`,
+            pointLabels={nutritionSeries.map((point) =>
+              !point.hasSummary
+                ? `${formatKoreanDate(point.date)} 식사 기록 없음`
+                : `${formatKoreanDate(point.date)} 칼로리 일별 합계 ${point.calories === null ? "미확인" : `${Math.round(point.calories)} kcal`}`,
             )}
-            values={nutritionSeries.map((point) => point.averageCalories ?? 0)}
+            values={nutritionSeries.map((point) => point.calories)}
             toneClassName="bg-amber-500"
           />
           <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">

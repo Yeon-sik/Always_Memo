@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type {
   FitnessSummaryProjectionV2,
+  LegacyWorkoutRecordV1,
   LocalDataSnapshot,
   MealRecord,
   WeightRecord,
 } from "../../types";
 import { getFitnessSummary } from "./fitnessSummary";
+import type { FitnessNutritionSummaryV1 } from "./fitnessNutritionContract";
 
 const auditFields = {
   createdAt: "2026-07-08T01:00:00.000Z",
@@ -35,6 +37,20 @@ const projection: FitnessSummaryProjectionV2 = {
   contractVersion: 2,
 };
 
+const legacyWorkout: LegacyWorkoutRecordV1 = {
+  ...auditFields,
+  id: "legacy-workout-detail",
+  date: "2026-07-08",
+  workoutType: "strength",
+  category: "chest",
+  exerciseName: "Bench press",
+  durationSeconds: 3600,
+  averageHeartRate: null,
+  sourceApp: "fitness",
+  scope: "fitness",
+  metadata: {},
+  contractVersion: 1,
+};
 const previousProjection: FitnessSummaryProjectionV2 = {
   ...projection,
   id: "workout-2",
@@ -55,6 +71,17 @@ const meal: MealRecord = {
   fatGrams: null,
 };
 
+const nutritionSummary: FitnessNutritionSummaryV1 = {
+  id: "2026-07-08",
+  date: "2026-07-08",
+  contractVersion: 1,
+  mealCount: 2,
+  calories: 1600,
+  carbsGrams: null,
+  proteinGrams: 80,
+  fatGrams: 50,
+  updatedAt: "2026-07-08T12:00:00.000Z",
+};
 const latestWeight: WeightRecord = {
   ...auditFields,
   id: "weight-1",
@@ -102,6 +129,7 @@ describe("getFitnessSummary", () => {
       snapshot({
         fitnessSummaryProjections: [previousProjection, projection],
         mealRecords: [meal],
+        fitnessNutritionSummaries: [nutritionSummary],
         weightRecords: [previousWeight, latestWeight],
       }),
       "2026-07-08",
@@ -117,11 +145,27 @@ describe("getFitnessSummary", () => {
     expect(summary.latestWeightKg).toBe(72);
     expect(summary.weightDeltaKg).toBe(-1.5);
     expect(summary.todayHasMeal).toBe(true);
-    expect(summary.latestMeal?.menu).toBe("chicken salad");
+    expect(summary.latestMeal).toBeNull();
+    expect(summary.latestNutritionSummary).toEqual(nutritionSummary);
     expect(summary.connection.status).toBe("summary_projection_v2");
     expect(summary.connection.linkedCount).toBe(2);
     expect(summary.connection.quickRecordOnlyCount).toBe(0);
     expect(summary.connection.possibleMismatchCount).toBe(0);
+  });
+
+  it("does not infer a live meal from the local legacy meal archive", () => {
+    const summary = getFitnessSummary(snapshot({ mealRecords: [meal] }), "2026-07-08");
+
+    expect(summary.todayHasMeal).toBe(false);
+    expect(summary.latestMeal).toBeNull();
+    expect(summary.latestNutritionSummary).toBeNull();
+  });
+
+  it("does not treat archived raw workout rows as a live Fitness workout", () => {
+    const summary = getFitnessSummary(snapshot({ workoutRecords: [legacyWorkout] }), "2026-07-08");
+
+    expect(summary.todayHasWorkout).toBe(false);
+    expect(summary.recentWorkouts).toEqual([]);
   });
 
   it("reports no projection when the v2 read model is empty", () => {

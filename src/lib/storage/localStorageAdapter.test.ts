@@ -84,8 +84,36 @@ describe("LocalStorageAdapter", () => {
             deviceId: "device-a",
           },
         ],
-        mealRecords: [],
-        weightRecords: [],
+        mealRecords: [
+          {
+            id: "meal-legacy",
+            date: "2026-07-31",
+            menu: "archived meal",
+            calories: 400,
+            proteinGrams: 25,
+            carbsGrams: null,
+            fatGrams: null,
+            sourceApp: "fitness",
+            scope: "fitness",
+            metadata: {},
+            updatedAt,
+            deletedAt: null,
+            deviceId: "device-a",
+          },
+        ],
+        weightRecords: [
+          {
+            id: "weight-legacy",
+            date: "2026-07-31",
+            weightKg: 72.4,
+            sourceApp: "fitness",
+            scope: "fitness",
+            metadata: {},
+            updatedAt,
+            deletedAt: null,
+            deviceId: "device-a",
+          },
+        ],
         devices: [],
       }),
     );
@@ -110,6 +138,9 @@ describe("LocalStorageAdapter", () => {
       scope: "both",
       metadata: {},
     });
+    expect(snapshot.mealRecords[0]).toMatchObject({ id: "meal-legacy", menu: "archived meal", sourceApp: "fitness" });
+    expect(snapshot.weightRecords[0]).toMatchObject({ id: "weight-legacy", weightKg: 72.4, sourceApp: "fitness" });
+    expect(snapshot.fitnessWeightRecords).toEqual([]);
   });
 
   it("keeps URL-only Project rows readable and adds nullable GitHub identity fields", async () => {

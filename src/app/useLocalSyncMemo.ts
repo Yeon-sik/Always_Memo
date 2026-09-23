@@ -1,10 +1,4 @@
 import { useMemo, useState } from "react";
-
-import {
-  getVisibleMealRecords,
-  getVisibleWeightRecords,
-  getVisibleWorkoutRecords,
-} from "../features/fitness/fitnessService";
 import { getVisibleNotes } from "../features/notes/noteService";
 import { useNoteActions } from "../features/notes/useNoteActions";
 import { getVisibleTasks } from "../features/tasks/taskService";
@@ -39,18 +33,6 @@ export function useLocalSyncMemo(
   const visibleTasks = useMemo(
     () => getVisibleTasks(runtime.snapshot.tasks),
     [runtime.snapshot.tasks],
-  );
-  const visibleWorkoutRecords = useMemo(
-    () => getVisibleWorkoutRecords(runtime.snapshot.workoutRecords),
-    [runtime.snapshot.workoutRecords],
-  );
-  const visibleMealRecords = useMemo(
-    () => getVisibleMealRecords(runtime.snapshot.mealRecords),
-    [runtime.snapshot.mealRecords],
-  );
-  const visibleWeightRecords = useMemo(
-    () => getVisibleWeightRecords(runtime.snapshot.weightRecords),
-    [runtime.snapshot.weightRecords],
   );
   const visibleProjects = useMemo(
     () => getVisibleProjects(runtime.snapshot.projects),
@@ -140,6 +122,7 @@ export function useLocalSyncMemo(
     error: runtime.error,
     fitnessSummaryProjections: visibleFitnessSummaryProjections,
     fitnessNutritionSummaries: runtime.snapshot.fitnessNutritionSummaries,
+    fitnessWeightRecords: runtime.snapshot.fitnessWeightRecords ?? [],
     isAuthenticated: runtime.isAuthenticated,
     isManualSyncing: runtime.isManualSyncing,
     isReady: runtime.isReady,
@@ -148,7 +131,8 @@ export function useLocalSyncMemo(
     knowledgeVault,
     loadFinanceDailySummaries: runtime.loadFinanceDailySummaries,
     manualSync: runtime.manualSync,
-    mealRecords: [],
+    // Legacy source records remain available for archive compatibility only.
+    mealRecords: runtime.snapshot.mealRecords,
     notes: visibleNotes,
     saveState: runtime.saveState,
     saveSupabaseConfig: runtime.saveSupabaseConfig,
@@ -165,8 +149,10 @@ export function useLocalSyncMemo(
     syncStatus: runtime.syncStatus,
     tasks: visibleTasks,
     userId: runtime.userId,
-    weightRecords: [],
-    workoutRecords: [],
+    // Legacy archive; RecordsOverview gates weight display on a successful pull.
+    weightRecords: runtime.snapshot.weightRecords,
+    // Legacy archive only; live workouts come from v2 projections.
+    workoutRecords: runtime.snapshot.workoutRecords,
     ...devControlActions,
   };
 }

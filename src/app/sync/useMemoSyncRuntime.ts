@@ -54,6 +54,7 @@ const snapshotCollections = [
   "workoutRecords",
   "fitnessSummaryProjections",
   "fitnessNutritionSummaries",
+  "fitnessWeightRecords",
   "mealRecords",
   "weightRecords",
   "projects",
@@ -399,7 +400,10 @@ export function useMemoSyncRuntime(
           setError(message);
         });
       },
-      onError: (message) => setError(message),
+      onError: (message) => {
+        setError(message);
+        setSyncStatus((current) => ({ ...current, mode: "error", label: "error", detail: message }));
+      },
     });
     const heartbeatSubscription = syncClient.startHeartbeat(context);
 

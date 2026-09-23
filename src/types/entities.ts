@@ -218,11 +218,14 @@ export interface Device {
 export interface LocalDataSnapshot {
   notes: Note[];
   tasks: Task[];
-  /** Frozen v1 rows retained for legacy reads and migration compatibility. */
+  /** Frozen v1 source rows retained only as a local compatibility archive. */
   workoutRecords: LegacyWorkoutRecordV1[];
   fitnessSummaryProjections: FitnessSummaryProjectionV2[];
   /** Absent in old caches; full owner-view reads replace this collection. */
   fitnessNutritionSummaries?: FitnessNutritionSummaryV1[];
+  /** Fresh, read-only compatibility pull; legacy local weights remain in weightRecords. */
+  fitnessWeightRecords?: WeightRecord[];
+  /** Legacy meal/weight source rows are local archives, not live OS read models. */
   mealRecords: MealRecord[];
   weightRecords: WeightRecord[];
   devices: Device[];

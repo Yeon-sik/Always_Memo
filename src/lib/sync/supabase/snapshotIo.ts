@@ -33,6 +33,7 @@ import {
   workstreamToRow,
   taskFromRow,
   taskToRow,
+  weightRecordFromRow,
 } from "./mappers";
 import type {
   DeviceRow,
@@ -47,6 +48,7 @@ import type {
   SnapshotTableName,
   SupabaseClient,
   TaskRow,
+  WeightRecordRow,
   WorkstreamActionDependencyRow,
   WorkstreamActionProjectRow,
   WorkstreamActionRow,
@@ -156,6 +158,7 @@ async function fetchIncomingSnapshot(
     tasksResult,
     fitnessNutritionSummariesResult,
     fitnessSummaryProjectionsResult,
+    weightRecordsResult,
     devicesResult,
     projectsResult,
     projectMilestonesResult,
@@ -177,6 +180,8 @@ async function fetchIncomingSnapshot(
       "fitness_summary_projections_v2",
       userId,
     ),
+    // Compatibility read path only; weight_records never enter a push payload.
+    transport.selectRows<WeightRecordRow>("weight_records", userId),
     transport.selectRows<DeviceRow>("devices", userId),
     transport.selectRows<ProjectRow>("projects", userId),
     transport.selectRows<ProjectMilestoneRow>("project_milestones", userId),
@@ -209,6 +214,7 @@ async function fetchIncomingSnapshot(
     tasksResult,
     fitnessNutritionSummariesResult,
     fitnessSummaryProjectionsResult,
+    weightRecordsResult,
     devicesResult,
     projectsResult,
     projectMilestonesResult,
@@ -229,10 +235,13 @@ async function fetchIncomingSnapshot(
   const incomingSnapshot: LocalDataSnapshot = {
     notes: (notesResult.data ?? []).map(noteFromRow),
     tasks: (tasksResult.data ?? []).map(taskFromRow),
-    // Preserve existing archives, but never download new Fitness source records.
+    // Legacy workout and meal records stay local; Fitness screens use the versioned read models.
     workoutRecords: [],
     mealRecords: [],
     weightRecords: [],
+    fitnessWeightRecords: (weightRecordsResult.data ?? [])
+      .map(weightRecordFromRow)
+      .filter((record) => record.sourceApp === "fitness" && (record.scope === "fitness" || record.scope === "both")),
     fitnessNutritionSummaries: (fitnessNutritionSummariesResult.data ?? []).map(fitnessNutritionSummaryFromRow),
     fitnessSummaryProjections: (fitnessSummaryProjectionsResult.data ?? []).map(
       fitnessSummaryProjectionV2FromRow,

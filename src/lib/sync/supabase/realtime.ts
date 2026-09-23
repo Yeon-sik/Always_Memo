@@ -69,6 +69,7 @@ const REALTIME_TABLES: RealtimeTableName[] = [
   "notes",
   "tasks",
   "fitness_summary_projections_v2",
+  "weight_records",
   "projects",
   "project_milestones",
   "project_actions",
@@ -170,7 +171,7 @@ export function applyRemoteWeightRecord(
 ): LocalDataSnapshot {
   return {
     ...snapshot,
-    weightRecords: mergeEntities(snapshot.weightRecords, [remoteRecord]),
+    fitnessWeightRecords: mergeEntities(snapshot.fitnessWeightRecords ?? [], [remoteRecord]),
   };
 }
 
@@ -333,8 +334,12 @@ export function applyRealtimePayload(
       );
     case "meal_records":
       return null;
-    case "weight_records":
-      return null;
+    case "weight_records": {
+      const remoteRecord = weightRecordFromRow(row as WeightRecordRow);
+      return remoteRecord.sourceApp === "fitness" && (remoteRecord.scope === "fitness" || remoteRecord.scope === "both")
+        ? applyRemoteWeightRecord(snapshot, remoteRecord)
+        : null;
+    }
     case "projects":
       return applyRemoteProject(snapshot, projectFromRow(row as ProjectRow));
     case "project_milestones":

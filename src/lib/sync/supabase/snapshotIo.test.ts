@@ -101,6 +101,7 @@ describe("Supabase snapshot IO", () => {
       "tasks",
       "fitness_nutrition_summary_v1",
       "fitness_summary_projections_v2",
+      "weight_records",
       "devices",
       "projects",
       "project_milestones",
@@ -158,6 +159,7 @@ describe("Supabase snapshot IO", () => {
       "tasks",
       "fitness_nutrition_summary_v1",
       "fitness_summary_projections_v2",
+      "weight_records",
       "devices",
       "projects",
       "project_milestones",
@@ -175,6 +177,81 @@ describe("Supabase snapshot IO", () => {
     expect(result.notes[0].content).toBe("remote");
   });
 
+  it("pulls read-only weights while preserving legacy workout and meal archives", async () => {
+    const transport = new FakeSnapshotTransport();
+    transport.selectedRows.set("weight_records", {
+      data: [{
+        id: "fitness-weight-1",
+        user_id: context.userId,
+        date: "2026-08-02",
+        weight_kg: 72,
+        source_app: "fitness",
+        scope: "both",
+        metadata: {},
+        contract_version: 1,
+        updated_at: "2026-08-02T00:00:00.000Z",
+        deleted_at: null,
+        device_id: "fitness-phone",
+      }],
+      error: null,
+    });
+    const archivedWorkout = makeWorkoutRecord();
+    const archivedMeal = makeMealRecord();
+    const cachedWeight = makeWeightRecord({
+      id: "fitness-weight-1",
+      date: "2026-08-01",
+      weightKg: 74,
+      sourceApp: "fitness",
+      scope: "both",
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    });
+
+    const result = await pullSnapshot(
+      transport,
+      makeSnapshot({
+        workoutRecords: [archivedWorkout],
+        mealRecords: [archivedMeal],
+        weightRecords: [cachedWeight],
+      }),
+      context.userId,
+    );
+
+    expect(result.workoutRecords).toEqual([archivedWorkout]);
+    expect(result.mealRecords).toEqual([archivedMeal]);
+    expect(result.fitnessWeightRecords?.find((record) => record.id === "fitness-weight-1")).toMatchObject({
+      date: "2026-08-02",
+      weightKg: 72,
+    });
+    const pulledTables = transport.selectCalls.map((call) => call.tableName);
+    expect(pulledTables).toContain("fitness_summary_projections_v2");
+    expect(pulledTables).toContain("fitness_nutrition_summary_v1");
+    expect(pulledTables).toContain("weight_records");
+    expect(pulledTables).not.toContain("workout_records");
+    expect(pulledTables).not.toContain("meal_records");
+  });
+  it("removes nutrition dates omitted by the next full view pull", async () => {
+    const transport = new FakeSnapshotTransport();
+    transport.selectedRows.set("fitness_nutrition_summary_v1", { data: [], error: null });
+    const oldSummary = {
+      id: "2026-08-01",
+      date: "2026-08-01",
+      contractVersion: 1 as const,
+      mealCount: 1,
+      calories: 500,
+      carbsGrams: 40,
+      proteinGrams: 30,
+      fatGrams: 10,
+      updatedAt: "2026-08-01T00:00:00.000Z",
+    };
+
+    const result = await pullSnapshot(
+      transport,
+      makeSnapshot({ fitnessNutritionSummaries: [oldSummary] }),
+      context.userId,
+    );
+
+    expect(result.fitnessNutritionSummaries).toEqual([]);
+  });
   it("fails the pull when any table query fails", async () => {
     const transport = new FakeSnapshotTransport();
     const queryError = new Error("RLS denied tasks");
@@ -213,6 +290,11 @@ describe("Supabase snapshot IO", () => {
     });
     expect(JSON.stringify(payload)).not.toContain("access_token");
     expect(JSON.stringify(payload)).not.toContain("refresh_token");
+    expect(payload).not.toHaveProperty("workoutRecords");
+    expect(payload).not.toHaveProperty("mealRecords");
+    expect(payload).not.toHaveProperty("weightRecords");
+    expect(payload).not.toHaveProperty("fitnessSummaryProjections");
+    expect(payload).not.toHaveProperty("fitnessNutritionSummaries");
   });
 
   it("pushes device then entity batches with the canonical conflicts", async () => {

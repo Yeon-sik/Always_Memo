@@ -613,6 +613,7 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
     value.fitnessSummaryProjections,
     normalizeFitnessSummaryProjection,
   );
+  const fitnessWeightRecords = normalizeArray(value.fitnessWeightRecords, normalizeWeightRecord);
   const mealRecords = normalizeArray(value.mealRecords, normalizeMealRecord);
   const weightRecords = normalizeArray(
     value.weightRecords,
@@ -665,6 +666,7 @@ function normalizeSnapshot(value: unknown): LocalDataSnapshot {
           try { return parseFitnessNutritionSummary(row); } catch { return null; }
         })
       : undefined,
+    fitnessWeightRecords,
     mealRecords,
     weightRecords,
     devices,

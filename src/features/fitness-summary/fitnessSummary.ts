@@ -175,10 +175,8 @@ export function getFitnessSummary(
     snapshot.fitnessSummaryProjections.filter(isVisibleProjection),
   );
   const visibleWeights = sortByDateDescThenUpdatedDesc(
-    snapshot.weightRecords.filter(isVisibleLegacyRecord),
-  );
-  const visibleMeals = sortByDateDescThenUpdatedDesc(
-    snapshot.mealRecords.filter(isVisibleLegacyRecord),
+    (snapshot.fitnessWeightRecords ?? snapshot.weightRecords.filter(isVisibleLegacyRecord))
+      .filter((record) => record.deletedAt === null),
   );
   const nutritionSummaries = (snapshot.fitnessNutritionSummaries ?? []).filter((summary) => summary.date <= today).sort((first, second) => second.date.localeCompare(first.date));
   const latestNutritionSummary = nutritionSummaries[0] ?? null;
@@ -200,9 +198,9 @@ export function getFitnessSummary(
       latestWeight && previousWeight
         ? latestWeight.weightKg - previousWeight.weightKg
         : null,
-    latestMeal: snapshot.fitnessNutritionSummaries === undefined ? visibleMeals[0] ?? null : null,
+    latestMeal: null,
     latestNutritionSummary,
-    todayHasMeal: snapshot.fitnessNutritionSummaries === undefined ? visibleMeals.some((record) => record.date === today) : snapshot.fitnessNutritionSummaries.some((record) => record.date === today),
+    todayHasMeal: nutritionSummaries.some((record) => record.date === today),
     connection: getConnectionSummary(snapshot, visibleProjections),
   };
 }
